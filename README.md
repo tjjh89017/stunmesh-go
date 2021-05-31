@@ -5,6 +5,8 @@ Inspired by manuels' [wireguard-p2p](https://github.com/manuels/wireguard-p2p) p
 
 Tested with UBNT ER-X v2.0.8-hotfix.1 and Wireguard v1.0.20210424
 
+:warning: This PoC code is dirty and need refactor.
+
 ## Implement
 Use raw socket and cBPF filter to send and receive STUN 5389's packet to get public ip and port with same port of wireguard interface.
 Encrypt public info with Curve25519 sealedbox and save it into Cloudflare DNS TXT record.
