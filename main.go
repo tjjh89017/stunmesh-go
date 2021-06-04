@@ -251,7 +251,8 @@ func main() {
 	var LocalPrivateKeyBytes [32]byte
 	LocalPublicKey := local_data[1]
 	var LocalPublicKeyBytes [32]byte
-	LocalListenPort, err := strconv.ParseInt(local_data[2], 10, 16)
+	localListenPort, err := strconv.ParseInt(local_data[2], 10, 32)
+	LocalListenPort := uint16(localListenPort)
 	if err != nil {
 		log.Fatal(err)
 	}
