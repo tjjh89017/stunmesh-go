@@ -55,6 +55,94 @@ If you used this with your public network, and it's possible to enable VRF, plea
 Once you need Wireguard interface or private network to access internet.<br />
 Try to use VRF leaking to setup another default route to internet<br />
 
+## Example config
+
+Wireguard in Edgerouter
+```
+    wireguard wg03 {
+        address <some route peer to peer IP>/30
+        description "to lab"
+        ip {
+            ospf {
+                network point-to-point
+            }
+        }
+        listen-port <wg port>
+        mtu 1420
+        peer <Remote Peer Public Key> {
+            allowed-ips 0.0.0.0/0
+            allowed-ips 224.0.0.5/32
+            persistent-keepalive 15
+        }
+        private-key ****************
+        route-allowed-ips false
+    }
+```
+
+OSPF in Edgerouter
+```
+policy {
+    access-list 1 {
+        description OSPF
+        rule 1 {
+            action permit
+            source {
+                inverse-mask 0.0.0.255
+                network <Your LAN CIDR>
+            }
+        }
+        rule 99 {
+            action deny
+            source {
+                any
+            }
+        }
+    }
+}
+
+protocols {
+    ospf {
+        access-list 1 {
+            export connected
+        }
+        area 0.0.0.0 {
+            network <Your network CIDR>
+        }
+        parameters {
+            abr-type cisco
+            router-id <Router ID>
+        }
+        passive-interface default
+        passive-interface-exclude <Your WG interface>
+        redistribute {
+            connected {
+                metric-type 2
+            }
+        }
+    }
+}
+```
+
+in stunmesh-go start.sh
+```
+#!/bin/bash
+
+export CF_API_KEY=<Your API Key>
+export CF_API_EMAIL=<Your email>
+export CF_ZONE_NAME=<Your Domain>
+
+wgs=("wg02" "wg03")
+
+for wg in ${wgs[@]}
+do
+        echo $wg
+        export WG=$wg
+        /tmp/stunmesh-go
+        sleep 10
+        /tmp/stunmesh-go
+done
+```
+
 ## Future work / Roadmap
 
 - daemon and one shot command
