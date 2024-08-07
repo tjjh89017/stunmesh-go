@@ -1,29 +1,29 @@
 package main
 
 import (
-	"fmt"
-	"net"
-	"log"
-	"errors"
-	"time"
-	"os"
-	"os/exec"
-	"strings"
-	"strconv"
-	"io"
+	"context"
 	crypto_rand "crypto/rand"
 	"crypto/sha1"
-	"context"
+	"errors"
+	"fmt"
+	"io"
+	"log"
+	"net"
+	"os/exec"
+	"strconv"
+	"strings"
+	"time"
 
-	"encoding/binary"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
 
-	"golang.org/x/net/ipv4"
-	"golang.org/x/net/bpf"
-	"github.com/pion/stun"
 	"github.com/cloudflare/cloudflare-go"
+	"github.com/pion/stun"
+	"github.com/tjjh89017/stunmesh-go/internal/config"
 	"golang.org/x/crypto/nacl/box"
+	"golang.org/x/net/bpf"
+	"golang.org/x/net/ipv4"
 )
 
 var (
@@ -37,19 +37,19 @@ var (
 )
 
 type UDPHeader struct {
-	SrcPort uint16
-	DstPort uint16
-	Length uint16
+	SrcPort  uint16
+	DstPort  uint16
+	Length   uint16
 	Checksum uint16
 }
 
 type STUNSession struct {
-	conn *ipv4.PacketConn
-	innerConn net.PacketConn
-	LocalAddr net.Addr
-	LocalPort uint16
-	RemoteAddr *net.UDPAddr
-	OtherAddr *net.UDPAddr
+	conn        *ipv4.PacketConn
+	innerConn   net.PacketConn
+	LocalAddr   net.Addr
+	LocalPort   uint16
+	RemoteAddr  *net.UDPAddr
+	OtherAddr   *net.UDPAddr
 	messageChan chan *stun.Message
 }
 
@@ -61,10 +61,10 @@ func (c *STUNSession) roundTrip(msg *stun.Message, addr net.Addr) (*stun.Message
 	_ = msg.NewTransactionID()
 	log.Printf("Send to %v: (%v bytes)\n", addr, msg.Length)
 
-	send_udp := &UDPHeader {
-		SrcPort: c.LocalPort,
-		DstPort: uint16(c.RemoteAddr.Port),
-		Length: uint16(8 + len(msg.Raw)),
+	send_udp := &UDPHeader{
+		SrcPort:  c.LocalPort,
+		DstPort:  uint16(c.RemoteAddr.Port),
+		Length:   uint16(8 + len(msg.Raw)),
 		Checksum: 0,
 	}
 
@@ -81,14 +81,14 @@ func (c *STUNSession) roundTrip(msg *stun.Message, addr net.Addr) (*stun.Message
 
 	// wait for respone
 	select {
-		case m, ok := <-c.messageChan:
-			if!ok {
-				return nil, errResponseMessage
-			}
-			return m, nil
-		case <-time.After(time.Duration(timeoutPtr) * time.Second):
-			log.Printf("time out")
-			return nil, errTimedOut
+	case m, ok := <-c.messageChan:
+		if !ok {
+			return nil, errResponseMessage
+		}
+		return m, nil
+	case <-time.After(time.Duration(timeoutPtr) * time.Second):
+		log.Printf("time out")
+		return nil, errTimedOut
 	}
 }
 
@@ -147,12 +147,12 @@ func connect(port uint16, addrStr string) (*STUNSession, error) {
 
 	mChan := listen(p)
 
-	return &STUNSession {
-		conn: p,
-		innerConn: c,
-		LocalAddr: p.LocalAddr(),
-		LocalPort: port,
-		RemoteAddr: addr,
+	return &STUNSession{
+		conn:        p,
+		innerConn:   c,
+		LocalAddr:   p.LocalAddr(),
+		LocalPort:   port,
+		RemoteAddr:  addr,
 		messageChan: mChan,
 	}, nil
 
@@ -188,43 +188,43 @@ func listen(conn *ipv4.PacketConn) (messages chan *stun.Message) {
 
 func stun_bpf_filter(port uint16) ([]bpf.RawInstruction, error) {
 	// if possible make some magic here to determine STUN packet
-	const  (
-		ipOff = 0
-		udpOff = ipOff + 5 * 4
-		payloadOff = udpOff + 2 * 4
+	const (
+		ipOff              = 0
+		udpOff             = ipOff + 5*4
+		payloadOff         = udpOff + 2*4
 		stunMagicCookieOff = payloadOff + 4
 
 		stunMagicCookie = 0x2112A442
 	)
 	r, e := bpf.Assemble([]bpf.Instruction{
-		bpf.LoadAbsolute {
+		bpf.LoadAbsolute{
 			// A = dst port
-			Off: udpOff + 2,
+			Off:  udpOff + 2,
 			Size: 2,
 		},
-		bpf.JumpIf {
+		bpf.JumpIf{
 			// if A == `port`
-			Cond: bpf.JumpEqual,
-			Val: uint32(port),
+			Cond:      bpf.JumpEqual,
+			Val:       uint32(port),
 			SkipFalse: 3,
 		},
-		bpf.LoadAbsolute {
+		bpf.LoadAbsolute{
 			// A = stun magic part
-			Off: stunMagicCookieOff,
+			Off:  stunMagicCookieOff,
 			Size: 4,
 		},
-		bpf.JumpIf {
+		bpf.JumpIf{
 			// if A == stun magic value
-			Cond: bpf.JumpEqual,
-			Val: stunMagicCookie,
+			Cond:      bpf.JumpEqual,
+			Val:       stunMagicCookie,
 			SkipFalse: 1,
 		},
 		// we need
-		bpf.RetConstant {
+		bpf.RetConstant{
 			Val: 262144,
 		},
 		// port and stun are not we need
-		bpf.RetConstant {
+		bpf.RetConstant{
 			Val: 0,
 		},
 	})
@@ -235,13 +235,18 @@ func stun_bpf_filter(port uint16) ([]bpf.RawInstruction, error) {
 }
 
 func main() {
-	fmt.Println("Hello")
+	fmt.Println("Stunmesh Go")
+
+	config, err := config.Load()
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	// read config from env
-	WG := os.Getenv("WG")
-	CF_API_KEY := os.Getenv("CF_API_KEY")
-	CF_API_EMAIL := os.Getenv("CF_API_EMAIL")
-	CF_ZONE_NAME := os.Getenv("CF_ZONE_NAME")
+	WG := config.WireGuard
+	CF_API_KEY := config.Cloudflare.ApiKey
+	CF_API_EMAIL := config.Cloudflare.ApiEmail
+	CF_ZONE_NAME := config.Cloudflare.ZoneName
 
 	// get wg setting
 	raw_data, err := exec.Command("wg", "show", WG, "dump").Output()
@@ -279,7 +284,7 @@ func main() {
 	}
 	copy(RemotePublicKeyBytes[:], RemotePublicKeyBytePtr)
 
-	Conn, err := connect(uint16(LocalListenPort) ,"stun.l.google.com:19302")
+	Conn, err := connect(uint16(LocalListenPort), "stun.l.google.com:19302")
 	defer Conn.Close()
 	if err != nil {
 		log.Fatal(err)
@@ -318,7 +323,6 @@ func main() {
 	}
 	log.Printf("sha1: %s\n", sha1Domain)
 
-
 	// prepare save to CloudFlare
 	CFApi, err := cloudflare.New(CF_API_KEY, CF_API_EMAIL)
 	if err != nil {
@@ -331,7 +335,7 @@ func main() {
 	}
 
 	// fetch dns record id
-	records, err := CFApi.DNSRecords(context.Background(), ZoneID, cloudflare.DNSRecord{ Type: "TXT", Name: sha1Domain + "." + CF_ZONE_NAME })
+	records, err := CFApi.DNSRecords(context.Background(), ZoneID, cloudflare.DNSRecord{Type: "TXT", Name: sha1Domain + "." + CF_ZONE_NAME})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -339,10 +343,10 @@ func main() {
 		log.Printf("%s: %s\n", r.Name, r.Content)
 	}
 
-	record := cloudflare.DNSRecord {
-		Type: "TXT",
-		Name: sha1Domain + "." + CF_ZONE_NAME,
-		TTL: 1,
+	record := cloudflare.DNSRecord{
+		Type:    "TXT",
+		Name:    sha1Domain + "." + CF_ZONE_NAME,
+		TTL:     1,
 		Content: hex.EncodeToString(encryptedData),
 	}
 	// if record empty
@@ -376,7 +380,7 @@ func main() {
 	}
 	log.Printf("sha1: %s\n", sha1Domain)
 	// fetch dns records
-	records, err = CFApi.DNSRecords(context.Background(), ZoneID, cloudflare.DNSRecord{ Type: "TXT", Name: sha1Domain + "." + CF_ZONE_NAME })
+	records, err = CFApi.DNSRecords(context.Background(), ZoneID, cloudflare.DNSRecord{Type: "TXT", Name: sha1Domain + "." + CF_ZONE_NAME})
 	if err != nil {
 		log.Fatal(err)
 	}

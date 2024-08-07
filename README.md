@@ -33,6 +33,25 @@ go build .
 Please edit `start.sh` and execute it with root privileges.<br />
 You should use crontab to trigger stunmesh-go periodically to update Cloudflare TXT record and receive remote peer's public info. <br />
 
+### Configuration
+
+Put the configuration below paths:
+
+* `/etc/stunmesh/config.toml`
+* `~/.stunmesh/config.toml`
+* `./config.toml`
+
+```toml
+wg = "wg03"
+
+[cloudflare]
+api_key = "<Your API Key>"
+api_email = "<Your email>"
+zone_name = "<Your Domain>"
+```
+
+> The environment variables is higher priority than the configuration file.
+
 ## Extra Usage
 You could use OSPF on Wireguard interface to create full mesh site-to-site VPN with dynamic routing.<br />
 Never be bothered to setup static route.<br />

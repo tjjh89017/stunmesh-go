@@ -5,6 +5,7 @@ go 1.13
 require (
 	github.com/cloudflare/cloudflare-go v0.17.0
 	github.com/pion/stun v0.3.5
-	golang.org/x/crypto v0.0.0-20210513164829-c07d793c2f9a
-	golang.org/x/net v0.0.0-20210521195947-fe42d452be8f
+	github.com/spf13/viper v1.19.0
+	golang.org/x/crypto v0.21.0
+	golang.org/x/net v0.23.0
 )
