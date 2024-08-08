@@ -9,12 +9,9 @@ import (
 	"io"
 	"log"
 	"net"
-	"os/exec"
 	"strconv"
-	"strings"
 	"time"
 
-	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
 
@@ -24,6 +21,8 @@ import (
 	"golang.org/x/crypto/nacl/box"
 	"golang.org/x/net/bpf"
 	"golang.org/x/net/ipv4"
+	"golang.zx2c4.com/wireguard/wgctrl"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 var (
@@ -242,47 +241,43 @@ func main() {
 		log.Fatal(err)
 	}
 
+	wg, err := wgctrl.New()
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	// read config from env
 	WG := config.WireGuard
 	CF_API_KEY := config.Cloudflare.ApiKey
 	CF_API_EMAIL := config.Cloudflare.ApiEmail
 	CF_ZONE_NAME := config.Cloudflare.ZoneName
 
+	device, err := wg.Device(WG)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	// get wg setting
-	raw_data, err := exec.Command("wg", "show", WG, "dump").Output()
-	raw_data_slice := strings.Split(string(raw_data), "\n")
-	local_data := strings.Fields(raw_data_slice[0])
-	LocalPrivateKey := local_data[0]
 	var LocalPrivateKeyBytes [32]byte
-	LocalPublicKey := local_data[1]
 	var LocalPublicKeyBytes [32]byte
-	localListenPort, err := strconv.ParseInt(local_data[2], 10, 32)
-	LocalListenPort := uint16(localListenPort)
+	LocalListenPort := device.ListenPort
 	if err != nil {
 		log.Fatal(err)
 	}
-	LocalPrivateKeyBytePtr, err := base64.StdEncoding.DecodeString(LocalPrivateKey)
-	if err != nil {
-		log.Fatal(err)
-	}
-	copy(LocalPrivateKeyBytes[:], LocalPrivateKeyBytePtr)
-	LocalPublicKeyBytePtr, err := base64.StdEncoding.DecodeString(LocalPublicKey)
-	if err != nil {
-		log.Fatal(err)
-	}
-	copy(LocalPublicKeyBytes[:], LocalPublicKeyBytePtr)
+	copy(LocalPrivateKeyBytes[:], device.PrivateKey[:])
+	copy(LocalPublicKeyBytes[:], device.PublicKey[:])
 
 	// assume we only have one peer
 	// FIXME
-	remote_data := strings.Fields(raw_data_slice[1])
-	RemotePublicKey := remote_data[0]
-	var RemotePublicKeyBytes [32]byte
-	RemoteEndpoint := remote_data[2]
-	RemotePublicKeyBytePtr, err := base64.StdEncoding.DecodeString(RemotePublicKey)
-	if err != nil {
-		log.Fatal(err)
+	peerCount := len(device.Peers)
+	hasPeer := peerCount > 0
+	if !hasPeer {
+		log.Fatalf("at least one peer is required, found %d\n", peerCount)
 	}
-	copy(RemotePublicKeyBytes[:], RemotePublicKeyBytePtr)
+
+	firstPeer := device.Peers[0]
+	var RemotePublicKeyBytes [32]byte
+	copy(RemotePublicKeyBytes[:], firstPeer.PublicKey[:])
 
 	Conn, err := connect(uint16(LocalListenPort), "stun.l.google.com:19302")
 	defer Conn.Close()
@@ -316,7 +311,7 @@ func main() {
 
 	// prepare domain for storing
 	// sha1(From..To)
-	sha1DomainSlice := sha1.Sum(append(LocalPublicKeyBytePtr, RemotePublicKeyBytePtr...))
+	sha1DomainSlice := sha1.Sum(append(device.PublicKey[:], firstPeer.PublicKey[:]...))
 	sha1Domain := ""
 	for _, i := range sha1DomainSlice {
 		sha1Domain = sha1Domain + fmt.Sprintf("%02x", i)
@@ -373,7 +368,7 @@ func main() {
 
 	// get record from remote peer to update peer endpoint
 	// prepare domain to get
-	sha1DomainSlice = sha1.Sum(append(RemotePublicKeyBytePtr, LocalPublicKeyBytePtr...))
+	sha1DomainSlice = sha1.Sum(append(firstPeer.PublicKey[:], device.PublicKey[:]...))
 	sha1Domain = ""
 	for _, i := range sha1DomainSlice {
 		sha1Domain = sha1Domain + fmt.Sprintf("%02x", i)
@@ -405,8 +400,26 @@ func main() {
 	log.Printf("%s", decryptedData)
 
 	// ready to setup endpoint
-	raw_data, err = exec.Command("wg", "set", WG, "peer", RemotePublicKey, "endpoint", string(decryptedData)).Output()
+	host, port, err := net.SplitHostPort(string(decryptedData))
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	_ = raw_data
-	_ = RemoteEndpoint
+	intPort, err := strconv.Atoi(port)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	wg.ConfigureDevice(device.Name, wgtypes.Config{
+		Peers: []wgtypes.PeerConfig{
+			{
+				PublicKey:  firstPeer.PublicKey,
+				UpdateOnly: true,
+				Endpoint: &net.UDPAddr{
+					IP:   net.ParseIP(host),
+					Port: intPort,
+				},
+			},
+		},
+	})
 }
