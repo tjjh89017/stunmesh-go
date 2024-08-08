@@ -34,7 +34,11 @@ jobs:
         with:
           go-version: ${{ env.GOVERSION }}
       - name: Build
-        run: go build -v ./...
+        run: go build -v -o stunmesh-${{ matrix.arch }} .
         env:
           GOARCH: ${{ matrix.arch }}
           GOOS: linux
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stunmesh-${{ matrix.arch }}
+          path: stunmesh-${{ matrix.arch }}
