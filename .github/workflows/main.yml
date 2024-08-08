@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: {{ env.GOVERSION }}
+          go-version: ${{ env.GOVERSION }}
           cache: false
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v6
@@ -32,7 +32,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: {{ env.GOVERSION }}
+          go-version: ${{ env.GOVERSION }}
       - name: Build
         run: go build -v ./...
         env:
