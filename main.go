@@ -73,7 +73,7 @@ func (c *STUNSession) roundTrip(msg *stun.Message, addr net.Addr) (*stun.Message
 	binary.BigEndian.PutUint16(buf[6:], send_udp.Checksum)
 
 	if _, err := c.conn.WriteTo(append(buf, msg.Raw...), nil, addr); err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 		return nil, err
 	}
 
@@ -125,13 +125,13 @@ func connect(port uint16, addrStr string) (*STUNSession, error) {
 	log.Printf("connecting to STUN server: %s\n", addrStr)
 	addr, err := net.ResolveUDPAddr("udp4", addrStr)
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 		return nil, err
 	}
 
 	c, err := net.ListenPacket("ip4:17", "0.0.0.0")
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 		return nil, err
 	}
 
@@ -139,12 +139,12 @@ func connect(port uint16, addrStr string) (*STUNSession, error) {
 	// set port here
 	bpf_filter, err := stun_bpf_filter(port)
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	err = p.SetBPF(bpf_filter)
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	mChan := listen(p)
@@ -231,7 +231,7 @@ func stun_bpf_filter(port uint16) ([]bpf.RawInstruction, error) {
 		},
 	})
 	if e != nil {
-		log.Fatal(e)
+		log.Panic(e)
 	}
 	return r, e
 }
@@ -241,12 +241,12 @@ func main() {
 
 	config, err := config.Load()
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	wg, err := wgctrl.New()
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	// read config from env
@@ -257,7 +257,7 @@ func main() {
 
 	device, err := wg.Device(WG)
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	// get wg setting
@@ -265,7 +265,7 @@ func main() {
 	var LocalPublicKeyBytes [32]byte
 	LocalListenPort := device.ListenPort
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 	copy(LocalPrivateKeyBytes[:], device.PrivateKey[:])
 	copy(LocalPublicKeyBytes[:], device.PublicKey[:])
@@ -275,7 +275,7 @@ func main() {
 	peerCount := len(device.Peers)
 	hasPeer := peerCount > 0
 	if !hasPeer {
-		log.Fatalf("at least one peer is required, found %d\n", peerCount)
+		log.Panicf("at least one peer is required, found %d\n", peerCount)
 	}
 
 	firstPeer := device.Peers[0]
@@ -284,14 +284,14 @@ func main() {
 
 	Conn, err := connect(uint16(LocalListenPort), "stun.l.google.com:19302")
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 	defer Conn.Close()
 
 	request := stun.MustBuild(stun.TransactionID, stun.BindingRequest)
 	response_data, err := Conn.roundTrip(request, Conn.RemoteAddr)
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	response := parse(response_data)
@@ -304,7 +304,7 @@ func main() {
 	// prepare sealedbox for storage
 	var nonce [24]byte
 	if _, err := io.ReadFull(crypto_rand.Reader, nonce[:]); err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 	log.Printf("nonce: %s\n", hex.EncodeToString(nonce[:]))
 	// msg = public ip and port
@@ -324,18 +324,18 @@ func main() {
 	// prepare save to CloudFlare
 	CFApi, err := cloudflare.New(CF_API_KEY, CF_API_EMAIL)
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 	// Fetch zone id
 	ZoneID, err := CFApi.ZoneIDByName(CF_ZONE_NAME)
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	// fetch dns record id
 	records, err := CFApi.DNSRecords(context.Background(), ZoneID, cloudflare.DNSRecord{Type: "TXT", Name: sha1Domain + "." + CF_ZONE_NAME})
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 	for _, r := range records {
 		log.Printf("%s: %s\n", r.Name, r.Content)
@@ -351,19 +351,19 @@ func main() {
 	if len(records) == 0 {
 		// create it
 		if _, err := CFApi.CreateDNSRecord(context.Background(), ZoneID, record); err != nil {
-			log.Fatal(err)
+			log.Panic(err)
 		}
 	} else {
 		// Update it
 		// TODO if data is same, don't update it
 		recordID := records[0].ID
 		if err := CFApi.UpdateDNSRecord(context.Background(), ZoneID, recordID, record); err != nil {
-			log.Fatal(err)
+			log.Panic(err)
 		}
 		if len(records) > 1 {
 			for _, x := range records[1:] {
 				if err := CFApi.DeleteDNSRecord(context.Background(), ZoneID, x.ID); err != nil {
-					log.Fatal(err)
+					log.Panic(err)
 				}
 			}
 		}
@@ -380,7 +380,7 @@ func main() {
 	// fetch dns records
 	records, err = CFApi.DNSRecords(context.Background(), ZoneID, cloudflare.DNSRecord{Type: "TXT", Name: sha1Domain + "." + CF_ZONE_NAME})
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 	for _, r := range records {
 		log.Printf("%s: %s\n", r.Name, r.Content)
@@ -392,25 +392,25 @@ func main() {
 	record = records[0]
 	encryptedData, err = hex.DecodeString(record.Content)
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 	var decryptedNonce [24]byte
 	copy(decryptedNonce[:], encryptedData[:24])
 	decryptedData, ok := box.Open(nil, encryptedData[24:], &decryptedNonce, &RemotePublicKeyBytes, &LocalPrivateKeyBytes)
 	if !ok {
-		log.Fatal("err")
+		log.Panic("err")
 	}
 	log.Printf("%s", decryptedData)
 
 	// ready to setup endpoint
 	host, port, err := net.SplitHostPort(string(decryptedData))
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	intPort, err := strconv.Atoi(port)
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	err = wg.ConfigureDevice(device.Name, wgtypes.Config{
@@ -427,6 +427,6 @@ func main() {
 	})
 
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 }
