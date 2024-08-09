@@ -28,7 +28,6 @@ import (
 var (
 	errResponseMessage = errors.New("error reading from response message channel")
 	errTimedOut        = errors.New("timed out waiting for response")
-	errNoOtherAddress  = errors.New("no OTHER-ADDRESS in message")
 )
 
 var (
@@ -139,6 +138,10 @@ func connect(port uint16, addrStr string) (*STUNSession, error) {
 	p := ipv4.NewPacketConn(c)
 	// set port here
 	bpf_filter, err := stun_bpf_filter(port)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	err = p.SetBPF(bpf_filter)
 	if err != nil {
 		log.Fatal(err)
@@ -280,10 +283,10 @@ func main() {
 	copy(RemotePublicKeyBytes[:], firstPeer.PublicKey[:])
 
 	Conn, err := connect(uint16(LocalListenPort), "stun.l.google.com:19302")
-	defer Conn.Close()
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer Conn.Close()
 
 	request := stun.MustBuild(stun.TransactionID, stun.BindingRequest)
 	response_data, err := Conn.roundTrip(request, Conn.RemoteAddr)
@@ -410,7 +413,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	wg.ConfigureDevice(device.Name, wgtypes.Config{
+	err = wg.ConfigureDevice(device.Name, wgtypes.Config{
 		Peers: []wgtypes.PeerConfig{
 			{
 				PublicKey:  firstPeer.PublicKey,
@@ -422,4 +425,8 @@ func main() {
 			},
 		},
 	})
+
+	if err != nil {
+		log.Fatal(err)
+	}
 }
