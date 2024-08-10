@@ -2,25 +2,20 @@ package main
 
 import (
 	"context"
-	crypto_rand "crypto/rand"
-	"encoding/hex"
-	"io"
 	"log"
 
 	"github.com/cloudflare/cloudflare-go"
 	"github.com/pion/stun"
-	"golang.org/x/crypto/nacl/box"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 func broadcastPeers(
 	device *wgtypes.Device,
 	peer *wgtypes.Peer,
+	encryptor Encryptor,
 	cfApi *cloudflare.API,
 	zoneName string,
 	zoneId string,
-	remotePublicKey [32]byte,
-	localPrivateKey [32]byte,
 ) {
 	// get wg setting
 
@@ -43,16 +38,10 @@ func broadcastPeers(
 		log.Printf("error no xor addr")
 	}
 
-	// prepare sealedbox for storage
-	var nonce [24]byte
-	if _, err := io.ReadFull(crypto_rand.Reader, nonce[:]); err != nil {
+	encryptedData, err := encryptor.Encrypt(response.xorAddr.IP.String(), response.xorAddr.Port)
+	if err != nil {
 		log.Panic(err)
 	}
-	log.Printf("nonce: %s\n", hex.EncodeToString(nonce[:]))
-	// msg = public ip and port
-	msg := []byte(response.xorAddr.String())
-	encryptedData := box.Seal(nonce[:], msg, &nonce, &remotePublicKey, &localPrivateKey)
-	log.Printf("encryptedData: %s\n", hex.EncodeToString(encryptedData))
 
 	// prepare domain for storing
 	// sha1(From..To)
@@ -72,7 +61,7 @@ func broadcastPeers(
 		Type:    "TXT",
 		Name:    sha1Domain + "." + zoneName,
 		TTL:     1,
-		Content: hex.EncodeToString(encryptedData),
+		Content: encryptedData,
 	}
 	// if record empty
 	if len(records) == 0 {
