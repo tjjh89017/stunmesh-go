@@ -15,30 +15,30 @@ var (
 	ErrUnableToDecrypt = errors.New("unable to decrypt peer information")
 )
 
-type Encryptor interface {
-	Encrypt(address string, port int) (string, error)
+type Serializer interface {
+	Serialize(address string, port int) (string, error)
 }
 
-type Decryptor interface {
-	Decrypt(data string) (string, int, error)
+type Deserializer interface {
+	Deserialize(data string) (string, int, error)
 }
 
-var _ Encryptor = &SecureEnvelope{}
-var _ Decryptor = &SecureEnvelope{}
+var _ Serializer = &CryptoSerializer{}
+var _ Deserializer = &CryptoSerializer{}
 
-type SecureEnvelope struct {
+type CryptoSerializer struct {
 	localPrivateKey [32]byte
 	remotePublicKey [32]byte
 }
 
-func NewSecureEnvelope(localPrivateKey, remotePublicKey [32]byte) *SecureEnvelope {
-	return &SecureEnvelope{
+func NewCryptoSerializer(localPrivateKey, remotePublicKey [32]byte) *CryptoSerializer {
+	return &CryptoSerializer{
 		localPrivateKey: localPrivateKey,
 		remotePublicKey: remotePublicKey,
 	}
 }
 
-func (s *SecureEnvelope) Encrypt(address string, port int) (string, error) {
+func (s *CryptoSerializer) Serialize(address string, port int) (string, error) {
 	var nonce [24]byte
 	if _, err := io.ReadFull(crypto_rand.Reader, nonce[:]); err != nil {
 		return "", err
@@ -51,7 +51,7 @@ func (s *SecureEnvelope) Encrypt(address string, port int) (string, error) {
 	return encryptedDataHex, nil
 }
 
-func (s *SecureEnvelope) Decrypt(rawData string) (string, int, error) {
+func (s *CryptoSerializer) Deserialize(rawData string) (string, int, error) {
 	data, err := hex.DecodeString(rawData)
 	if err != nil {
 		return "", 0, err

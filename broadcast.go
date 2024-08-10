@@ -12,7 +12,7 @@ import (
 func broadcastPeers(
 	device *wgtypes.Device,
 	peer *wgtypes.Peer,
-	encryptor Encryptor,
+	serializer Serializer,
 	cfApi *cloudflare.API,
 	zoneName string,
 	zoneId string,
@@ -38,13 +38,12 @@ func broadcastPeers(
 		log.Printf("error no xor addr")
 	}
 
-	encryptedData, err := encryptor.Encrypt(response.xorAddr.IP.String(), response.xorAddr.Port)
+	endpointData, err := serializer.Serialize(response.xorAddr.IP.String(), response.xorAddr.Port)
 	if err != nil {
 		log.Panic(err)
 	}
 
 	// prepare domain for storing
-	// sha1(From..To)
 	sha1Domain := buildExchangeKey(device.PublicKey[:], peer.PublicKey[:])
 	log.Printf("sha1: %s\n", sha1Domain)
 
@@ -61,7 +60,7 @@ func broadcastPeers(
 		Type:    "TXT",
 		Name:    sha1Domain + "." + zoneName,
 		TTL:     1,
-		Content: encryptedData,
+		Content: endpointData,
 	}
 	// if record empty
 	if len(records) == 0 {
