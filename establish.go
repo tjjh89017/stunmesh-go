@@ -14,7 +14,7 @@ func establishPeers(
 	ctrl *wgctrl.Client,
 	device *wgtypes.Device,
 	peer *wgtypes.Peer,
-	decryptor Decryptor,
+	serializer Deserializer,
 	cfApi *cloudflare.API,
 	zoneId string,
 	zoneName string,
@@ -39,7 +39,7 @@ func establishPeers(
 	}
 
 	record := records[0]
-	host, port, err := decryptor.Decrypt(record.Content)
+	host, port, err := serializer.Deserialize(record.Content)
 	if err != nil {
 		log.Panic(err)
 	}

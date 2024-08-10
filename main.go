@@ -47,7 +47,7 @@ func main() {
 
 	copy(remotePublicKey[:], firstPeer.PublicKey[:])
 	copy(localPrivateKey[:], device.PrivateKey[:])
-	envelop := NewSecureEnvelope(localPrivateKey, remotePublicKey)
+	serializer := NewCryptoSerializer(localPrivateKey, remotePublicKey)
 
 	// prepare save to CloudFlare
 	cfApi, err := cloudflare.New(config.Cloudflare.ApiKey, config.Cloudflare.ApiEmail)
@@ -63,7 +63,7 @@ func main() {
 	broadcastPeers(
 		device,
 		&firstPeer,
-		envelop,
+		serializer,
 		cfApi,
 		config.Cloudflare.ZoneName,
 		zoneID,
@@ -73,7 +73,7 @@ func main() {
 		wg,
 		device,
 		&firstPeer,
-		envelop,
+		serializer,
 		cfApi,
 		zoneID,
 		config.Cloudflare.ZoneName,
