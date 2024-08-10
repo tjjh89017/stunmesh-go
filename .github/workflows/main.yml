@@ -22,9 +22,24 @@ jobs:
         uses: golangci/golangci-lint-action@v6
         with:
           version: v1.59
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GOVERSION }}
+      - name: Test
+        run: go test -cover -v ./...
+
   build:
     name: Build
     runs-on: ubuntu-latest
+    needs:
+      - lint
+      - test
     strategy:
       matrix:
         arch: [amd64, arm64, mipsle]

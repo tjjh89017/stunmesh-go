@@ -2,13 +2,10 @@ package main
 
 import (
 	"context"
-	"encoding/hex"
 	"log"
 	"net"
-	"strconv"
 
 	"github.com/cloudflare/cloudflare-go"
-	"golang.org/x/crypto/nacl/box"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
@@ -17,11 +14,10 @@ func establishPeers(
 	ctrl *wgctrl.Client,
 	device *wgtypes.Device,
 	peer *wgtypes.Peer,
+	decryptor Decryptor,
 	cfApi *cloudflare.API,
 	zoneId string,
 	zoneName string,
-	remotePublicKey [32]byte,
-	localPrivateKey [32]byte,
 ) {
 	// get record from remote peer to update peer endpoint
 	// prepare domain to get
@@ -43,26 +39,7 @@ func establishPeers(
 	}
 
 	record := records[0]
-	encryptedData, err := hex.DecodeString(record.Content)
-	if err != nil {
-		log.Panic(err)
-	}
-	var decryptedNonce [24]byte
-	copy(decryptedNonce[:], encryptedData[:24])
-
-	decryptedData, ok := box.Open(nil, encryptedData[24:], &decryptedNonce, &remotePublicKey, &localPrivateKey)
-	if !ok {
-		log.Panic("err")
-	}
-	log.Printf("%s", decryptedData)
-
-	// ready to setup endpoint
-	host, port, err := net.SplitHostPort(string(decryptedData))
-	if err != nil {
-		log.Panic(err)
-	}
-
-	intPort, err := strconv.Atoi(port)
+	host, port, err := decryptor.Decrypt(record.Content)
 	if err != nil {
 		log.Panic(err)
 	}
@@ -74,7 +51,7 @@ func establishPeers(
 				UpdateOnly: true,
 				Endpoint: &net.UDPAddr{
 					IP:   net.ParseIP(host),
-					Port: intPort,
+					Port: port,
 				},
 			},
 		},
