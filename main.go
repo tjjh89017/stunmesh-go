@@ -54,19 +54,14 @@ func main() {
 	if err != nil {
 		log.Panic(err)
 	}
-	// Fetch zone id
-	zoneID, err := cfApi.ZoneIDByName(config.Cloudflare.ZoneName)
-	if err != nil {
-		log.Panic(err)
-	}
+
+	store := NewCloudflareStore(cfApi, config.Cloudflare.ZoneName)
 
 	broadcastPeers(
 		device,
 		&firstPeer,
 		serializer,
-		cfApi,
-		config.Cloudflare.ZoneName,
-		zoneID,
+		store,
 	)
 
 	establishPeers(
@@ -74,8 +69,6 @@ func main() {
 		device,
 		&firstPeer,
 		serializer,
-		cfApi,
-		zoneID,
-		config.Cloudflare.ZoneName,
+		store,
 	)
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"log"
 
-	"github.com/cloudflare/cloudflare-go"
 	"github.com/pion/stun"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
@@ -13,12 +12,8 @@ func broadcastPeers(
 	device *wgtypes.Device,
 	peer *wgtypes.Peer,
 	serializer Serializer,
-	cfApi *cloudflare.API,
-	zoneName string,
-	zoneId string,
+	store Store,
 ) {
-	// get wg setting
-
 	conn, err := connect(uint16(device.ListenPort), "stun.l.google.com:19302")
 	if err != nil {
 		log.Panic(err)
@@ -43,44 +38,9 @@ func broadcastPeers(
 		log.Panic(err)
 	}
 
-	// prepare domain for storing
-	sha1Domain := buildExchangeKey(device.PublicKey[:], peer.PublicKey[:])
-	log.Printf("sha1: %s\n", sha1Domain)
-
-	// fetch dns record id
-	records, err := cfApi.DNSRecords(context.Background(), zoneId, cloudflare.DNSRecord{Type: "TXT", Name: sha1Domain + "." + zoneName})
+	endpointKey := buildEndpointKey(device.PublicKey[:], peer.PublicKey[:])
+	err = store.Set(context.Background(), endpointKey, endpointData)
 	if err != nil {
 		log.Panic(err)
-	}
-	for _, r := range records {
-		log.Printf("%s: %s\n", r.Name, r.Content)
-	}
-
-	record := cloudflare.DNSRecord{
-		Type:    "TXT",
-		Name:    sha1Domain + "." + zoneName,
-		TTL:     1,
-		Content: endpointData,
-	}
-	// if record empty
-	if len(records) == 0 {
-		// create it
-		if _, err := cfApi.CreateDNSRecord(context.Background(), zoneId, record); err != nil {
-			log.Panic(err)
-		}
-	} else {
-		// Update it
-		// TODO if data is same, don't update it
-		recordID := records[0].ID
-		if err := cfApi.UpdateDNSRecord(context.Background(), zoneId, recordID, record); err != nil {
-			log.Panic(err)
-		}
-		if len(records) > 1 {
-			for _, x := range records[1:] {
-				if err := cfApi.DeleteDNSRecord(context.Background(), zoneId, x.ID); err != nil {
-					log.Panic(err)
-				}
-			}
-		}
 	}
 }

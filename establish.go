@@ -5,7 +5,6 @@ import (
 	"log"
 	"net"
 
-	"github.com/cloudflare/cloudflare-go"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
@@ -15,31 +14,15 @@ func establishPeers(
 	device *wgtypes.Device,
 	peer *wgtypes.Peer,
 	serializer Deserializer,
-	cfApi *cloudflare.API,
-	zoneId string,
-	zoneName string,
+	store Store,
 ) {
-	// get record from remote peer to update peer endpoint
-	// prepare domain to get
-	sha1Domain := buildExchangeKey(peer.PublicKey[:], device.PublicKey[:])
-	log.Printf("sha1: %s\n", sha1Domain)
-	// fetch dns records
-	records, err := cfApi.DNSRecords(context.Background(), zoneId, cloudflare.DNSRecord{Type: "TXT", Name: sha1Domain + "." + zoneName})
+	endpointKey := buildEndpointKey(peer.PublicKey[:], device.PublicKey[:])
+	endpointData, err := store.Get(context.Background(), endpointKey)
 	if err != nil {
 		log.Panic(err)
 	}
 
-	for _, r := range records {
-		log.Printf("%s: %s\n", r.Name, r.Content)
-	}
-
-	if len(records) == 0 {
-		log.Printf("no record found\n")
-		return
-	}
-
-	record := records[0]
-	host, port, err := serializer.Deserialize(record.Content)
+	host, port, err := serializer.Deserialize(endpointData)
 	if err != nil {
 		log.Panic(err)
 	}
