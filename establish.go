@@ -11,13 +11,11 @@ import (
 
 func establishPeers(
 	ctrl *wgctrl.Client,
-	device *wgtypes.Device,
-	peer *wgtypes.Peer,
+	peer *Peer,
 	serializer Deserializer,
 	store Store,
 ) {
-	endpointKey := buildEndpointKey(peer.PublicKey[:], device.PublicKey[:])
-	endpointData, err := store.Get(context.Background(), endpointKey)
+	endpointData, err := store.Get(context.Background(), peer.RemoteId())
 	if err != nil {
 		log.Panic(err)
 	}
@@ -27,10 +25,10 @@ func establishPeers(
 		log.Panic(err)
 	}
 
-	err = ctrl.ConfigureDevice(device.Name, wgtypes.Config{
+	err = ctrl.ConfigureDevice(peer.DeviceName(), wgtypes.Config{
 		Peers: []wgtypes.PeerConfig{
 			{
-				PublicKey:  peer.PublicKey,
+				PublicKey:  peer.PublicKey(),
 				UpdateOnly: true,
 				Endpoint: &net.UDPAddr{
 					IP:   net.ParseIP(host),
