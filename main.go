@@ -48,6 +48,13 @@ func main() {
 	copy(remotePublicKey[:], firstPeer.PublicKey[:])
 	copy(localPrivateKey[:], device.PrivateKey[:])
 	serializer := NewCryptoSerializer(localPrivateKey, remotePublicKey)
+	peer := NewPeer(
+		buildEndpointKey(device.PublicKey[:], firstPeer.PublicKey[:]),
+		buildEndpointKey(firstPeer.PublicKey[:], device.PublicKey[:]),
+		device.Name,
+		device.ListenPort,
+		firstPeer.PublicKey,
+	)
 
 	// prepare save to CloudFlare
 	cfApi, err := cloudflare.New(config.Cloudflare.ApiKey, config.Cloudflare.ApiEmail)
@@ -58,16 +65,14 @@ func main() {
 	store := NewCloudflareStore(cfApi, config.Cloudflare.ZoneName)
 
 	broadcastPeers(
-		device,
-		&firstPeer,
+		peer,
 		serializer,
 		store,
 	)
 
 	establishPeers(
 		wg,
-		device,
-		&firstPeer,
+		peer,
 		serializer,
 		store,
 	)

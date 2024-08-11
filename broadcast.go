@@ -5,16 +5,14 @@ import (
 	"log"
 
 	"github.com/pion/stun"
-	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 func broadcastPeers(
-	device *wgtypes.Device,
-	peer *wgtypes.Peer,
+	peer *Peer,
 	serializer Serializer,
 	store Store,
 ) {
-	conn, err := connect(uint16(device.ListenPort), "stun.l.google.com:19302")
+	conn, err := connect(uint16(peer.ListenPort()), "stun.l.google.com:19302")
 	if err != nil {
 		log.Panic(err)
 	}
@@ -38,8 +36,7 @@ func broadcastPeers(
 		log.Panic(err)
 	}
 
-	endpointKey := buildEndpointKey(device.PublicKey[:], peer.PublicKey[:])
-	err = store.Set(context.Background(), endpointKey, endpointData)
+	err = store.Set(context.Background(), peer.Id(), endpointData)
 	if err != nil {
 		log.Panic(err)
 	}
