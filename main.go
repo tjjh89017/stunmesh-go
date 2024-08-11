@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -17,6 +18,7 @@ var (
 
 func main() {
 	fmt.Println("Stunmesh Go")
+	ctx := context.Background()
 
 	config, err := config.Load()
 	if err != nil {
@@ -33,28 +35,8 @@ func main() {
 		log.Panic(err)
 	}
 
-	// assume we only have one peer
-	peerCount := len(device.Peers)
-	hasPeer := peerCount > 0
-	if !hasPeer {
-		log.Panicf("at least one peer is required, found %d\n", peerCount)
-	}
-
-	firstPeer := device.Peers[0]
-
-	var remotePublicKey [32]byte
 	var localPrivateKey [32]byte
-
-	copy(remotePublicKey[:], firstPeer.PublicKey[:])
 	copy(localPrivateKey[:], device.PrivateKey[:])
-	serializer := NewCryptoSerializer(localPrivateKey, remotePublicKey)
-	peer := NewPeer(
-		buildEndpointKey(device.PublicKey[:], firstPeer.PublicKey[:]),
-		buildEndpointKey(firstPeer.PublicKey[:], device.PublicKey[:]),
-		device.Name,
-		device.ListenPort,
-		firstPeer.PublicKey,
-	)
 
 	// prepare save to CloudFlare
 	cfApi, err := cloudflare.New(config.Cloudflare.ApiKey, config.Cloudflare.ApiEmail)
@@ -63,17 +45,20 @@ func main() {
 	}
 
 	store := NewCloudflareStore(cfApi, config.Cloudflare.ZoneName)
+	ctrl := NewController(wg, store)
 
-	broadcastPeers(
-		peer,
-		serializer,
-		store,
-	)
+	for _, p := range device.Peers {
+		peer := NewPeer(
+			buildEndpointKey(device.PublicKey[:], p.PublicKey[:]),
+			buildEndpointKey(p.PublicKey[:], device.PublicKey[:]),
+			device.Name,
+			device.ListenPort,
+			p.PublicKey,
+		)
 
-	establishPeers(
-		wg,
-		peer,
-		serializer,
-		store,
-	)
+		serializer := NewCryptoSerializer(localPrivateKey, peer.PublicKey())
+
+		ctrl.Publish(ctx, serializer, peer)
+		ctrl.Establish(ctx, serializer, peer)
+	}
 }
