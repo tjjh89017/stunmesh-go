@@ -38,7 +38,6 @@ func main() {
 	var localPrivateKey [32]byte
 	copy(localPrivateKey[:], device.PrivateKey[:])
 
-	// prepare save to CloudFlare
 	cfApi, err := cloudflare.New(config.Cloudflare.ApiKey, config.Cloudflare.ApiEmail)
 	if err != nil {
 		log.Panic(err)
@@ -46,6 +45,8 @@ func main() {
 
 	store := NewCloudflareStore(cfApi, config.Cloudflare.ZoneName)
 	ctrl := NewController(wg, store)
+
+	peers := make([]*Peer, len(device.Peers))
 
 	for _, p := range device.Peers {
 		peer := NewPeer(
@@ -56,9 +57,8 @@ func main() {
 			p.PublicKey,
 		)
 
-		serializer := NewCryptoSerializer(localPrivateKey, peer.PublicKey())
-
-		ctrl.Publish(ctx, serializer, peer)
-		ctrl.Establish(ctx, serializer, peer)
+		peers = append(peers, peer)
 	}
+
+	Run(ctx, localPrivateKey, ctrl, peers)
 }
