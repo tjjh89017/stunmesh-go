@@ -10,6 +10,8 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
+const StunServerAddr = "stun.l.google.com:19302"
+
 type Controller struct {
 	wgCtrl *wgctrl.Client
 	store  Store
@@ -23,14 +25,24 @@ func NewController(ctrl *wgctrl.Client, store Store) *Controller {
 }
 
 func (c *Controller) Publish(ctx context.Context, serializer Serializer, peer *Peer) {
-	conn, err := connect(uint16(peer.ListenPort()), "stun.l.google.com:19302")
+	log.Printf("connecting to STUN server: %s\n", StunServerAddr)
+	stunAddr, err := net.ResolveUDPAddr("udp4", StunServerAddr)
 	if err != nil {
 		log.Panic(err)
 	}
+
+	conn, err := NewSession(uint16(peer.ListenPort()))
+	if err != nil {
+		log.Panic(err)
+	}
+
 	defer conn.Close()
+	if err := conn.Start(); err != nil {
+		log.Panic(err)
+	}
 
 	request := stun.MustBuild(stun.TransactionID, stun.BindingRequest)
-	resData, err := conn.roundTrip(request, conn.RemoteAddr)
+	resData, err := conn.roundTrip(request, stunAddr)
 	if err != nil {
 		log.Panic(err)
 	}
