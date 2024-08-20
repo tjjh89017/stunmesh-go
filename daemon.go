@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-const RefreshInterval = time.Duration(10) * time.Second
+const RefreshInterval = time.Duration(10) * time.Minute
 
 func Run(ctx context.Context, privateKey [32]byte, ctrl *Controller, peers []*Peer) {
 	daemonCtx, cancel := context.WithCancel(ctx)
