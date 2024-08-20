@@ -8,7 +8,6 @@ import (
 
 	"github.com/pion/stun"
 	"golang.org/x/net/bpf"
-	"golang.org/x/net/ipv4"
 )
 
 var (
@@ -22,27 +21,13 @@ type UDPHeader struct {
 	Checksum uint16
 }
 
-type STUNSession struct {
-	conn        *ipv4.PacketConn
-	innerConn   net.PacketConn
-	LocalAddr   net.Addr
-	LocalPort   uint16
-	RemoteAddr  *net.UDPAddr
-	OtherAddr   *net.UDPAddr
-	messageChan chan *stun.Message
-}
-
-func (c *STUNSession) Close() error {
-	return c.conn.Close()
-}
-
-func (c *STUNSession) roundTrip(msg *stun.Message, addr net.Addr) (*stun.Message, error) {
+func (s *Session) roundTrip(msg *stun.Message, addr *net.UDPAddr) (*stun.Message, error) {
 	_ = msg.NewTransactionID()
 	log.Printf("Send to %v: (%v bytes)\n", addr, msg.Length)
 
 	send_udp := &UDPHeader{
-		SrcPort:  c.LocalPort,
-		DstPort:  uint16(c.RemoteAddr.Port),
+		SrcPort:  s.LocalPort(),
+		DstPort:  uint16(addr.Port),
 		Length:   uint16(8 + len(msg.Raw)),
 		Checksum: 0,
 	}
@@ -53,14 +38,14 @@ func (c *STUNSession) roundTrip(msg *stun.Message, addr net.Addr) (*stun.Message
 	binary.BigEndian.PutUint16(buf[4:], send_udp.Length)
 	binary.BigEndian.PutUint16(buf[6:], send_udp.Checksum)
 
-	if _, err := c.conn.WriteTo(append(buf, msg.Raw...), nil, addr); err != nil {
+	if _, err := s.conn.WriteTo(append(buf, msg.Raw...), nil, addr); err != nil {
 		log.Panic(err)
 		return nil, err
 	}
 
 	// wait for respone
 	select {
-	case m, ok := <-c.messageChan:
+	case m, ok := <-s.messageChan:
 		if !ok {
 			return nil, ErrResponseMessage
 		}
@@ -102,74 +87,7 @@ func parse(msg *stun.Message) (ret struct {
 	return ret
 }
 
-func connect(port uint16, addrStr string) (*STUNSession, error) {
-	log.Printf("connecting to STUN server: %s\n", addrStr)
-	addr, err := net.ResolveUDPAddr("udp4", addrStr)
-	if err != nil {
-		log.Panic(err)
-		return nil, err
-	}
-
-	c, err := net.ListenPacket("ip4:17", "0.0.0.0")
-	if err != nil {
-		log.Panic(err)
-		return nil, err
-	}
-
-	p := ipv4.NewPacketConn(c)
-	// set port here
-	bpf_filter, err := stun_bpf_filter(port)
-	if err != nil {
-		log.Panic(err)
-	}
-
-	err = p.SetBPF(bpf_filter)
-	if err != nil {
-		log.Panic(err)
-	}
-
-	mChan := listen(p)
-
-	return &STUNSession{
-		conn:        p,
-		innerConn:   c,
-		LocalAddr:   p.LocalAddr(),
-		LocalPort:   port,
-		RemoteAddr:  addr,
-		messageChan: mChan,
-	}, nil
-
-}
-
-func listen(conn *ipv4.PacketConn) (messages chan *stun.Message) {
-	messages = make(chan *stun.Message)
-	go func() {
-		for {
-			buf := make([]byte, 1500)
-			n, _, addr, err := conn.ReadFrom(buf)
-			if err != nil {
-				close(messages)
-				return
-			}
-			log.Printf("Response from %v: (%v bytes)\n", addr, n)
-			// cut UDP header, cut postfix
-			buf = buf[8:n]
-
-			m := new(stun.Message)
-			m.Raw = buf
-			err = m.Decode()
-			if err != nil {
-				log.Printf("Error decoding message: %v\n", err)
-				close(messages)
-				return
-			}
-			messages <- m
-		}
-	}()
-	return
-}
-
-func stun_bpf_filter(port uint16) ([]bpf.RawInstruction, error) {
+func stunBpfFilter(port uint16) ([]bpf.RawInstruction, error) {
 	// if possible make some magic here to determine STUN packet
 	const (
 		ipOff              = 0
