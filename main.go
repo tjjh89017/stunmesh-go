@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 
@@ -10,11 +9,6 @@ import (
 	"github.com/tjjh89017/stunmesh-go/internal/config"
 	"github.com/tjjh89017/stunmesh-go/internal/store"
 	"golang.zx2c4.com/wireguard/wgctrl"
-)
-
-var (
-	ErrResponseMessage = errors.New("error reading from response message channel")
-	ErrTimeout         = errors.New("timed out waiting for response")
 )
 
 func main() {

@@ -6,6 +6,7 @@ import (
 	"net"
 
 	"github.com/pion/stun"
+	"github.com/tjjh89017/stunmesh-go/internal/session"
 	"github.com/tjjh89017/stunmesh-go/plugin"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
@@ -32,7 +33,7 @@ func (c *Controller) Publish(ctx context.Context, serializer Serializer, peer *P
 		log.Panic(err)
 	}
 
-	conn, err := NewSession(uint16(peer.ListenPort()))
+	conn, err := session.New(uint16(peer.ListenPort()))
 	if err != nil {
 		log.Panic(err)
 	}
@@ -43,19 +44,19 @@ func (c *Controller) Publish(ctx context.Context, serializer Serializer, peer *P
 	}
 
 	request := stun.MustBuild(stun.TransactionID, stun.BindingRequest)
-	resData, err := conn.roundTrip(request, stunAddr)
+	resData, err := conn.RoundTrip(request, stunAddr)
 	if err != nil {
 		log.Panic(err)
 	}
 
-	response := parse(resData)
-	if response.xorAddr != nil {
-		log.Printf("addr: %s\n", response.xorAddr.String())
+	xorAddr := session.Parse(resData)
+	if xorAddr != nil {
+		log.Printf("addr: %s\n", xorAddr.String())
 	} else {
 		log.Printf("error no xor addr")
 	}
 
-	endpointData, err := serializer.Serialize(response.xorAddr.IP.String(), response.xorAddr.Port)
+	endpointData, err := serializer.Serialize(xorAddr.IP.String(), xorAddr.Port)
 	if err != nil {
 		log.Panic(err)
 	}
