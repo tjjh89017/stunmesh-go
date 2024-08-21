@@ -6,6 +6,7 @@ import (
 	"net"
 
 	"github.com/pion/stun"
+	"github.com/tjjh89017/stunmesh-go/plugin"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
@@ -14,10 +15,10 @@ const StunServerAddr = "stun.l.google.com:19302"
 
 type Controller struct {
 	wgCtrl *wgctrl.Client
-	store  Store
+	store  plugin.Store
 }
 
-func NewController(ctrl *wgctrl.Client, store Store) *Controller {
+func NewController(ctrl *wgctrl.Client, store plugin.Store) *Controller {
 	return &Controller{
 		wgCtrl: ctrl,
 		store:  store,

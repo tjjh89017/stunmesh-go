@@ -8,6 +8,7 @@ import (
 
 	"github.com/cloudflare/cloudflare-go"
 	"github.com/tjjh89017/stunmesh-go/internal/config"
+	"github.com/tjjh89017/stunmesh-go/internal/store"
 	"golang.zx2c4.com/wireguard/wgctrl"
 )
 
@@ -43,7 +44,7 @@ func main() {
 		log.Panic(err)
 	}
 
-	store := NewCloudflareStore(cfApi, config.Cloudflare.ZoneName)
+	store := store.NewCloudflareStore(cfApi, config.Cloudflare.ZoneName)
 	ctrl := NewController(wg, store)
 
 	peers := make([]*Peer, len(device.Peers))
