@@ -1,4 +1,4 @@
-package main
+package store_test
 
 import (
 	"context"
@@ -7,9 +7,10 @@ import (
 	"testing"
 
 	"github.com/cloudflare/cloudflare-go"
+	"github.com/tjjh89017/stunmesh-go/internal/store"
 )
 
-var _ CloudflareApi = &mockCloudflareApi{}
+var _ store.CloudflareApi = &mockCloudflareApi{}
 
 type mockCloudflareApi struct {
 	mutex   sync.RWMutex
@@ -88,7 +89,7 @@ func Test_CloudflareStore(t *testing.T) {
 	t.Parallel()
 
 	mockApi := newMockCloudflareApi()
-	store := NewCloudflareStore(mockApi, "example.com")
+	store := store.NewCloudflareStore(mockApi, "example.com")
 	ctx := context.Background()
 
 	key := "key"
@@ -111,7 +112,7 @@ func Test_CloudflareStore(t *testing.T) {
 
 func Test_CloudflareStore_ExistsDuplicate(t *testing.T) {
 	mockApi := newMockCloudflareApi()
-	store := NewCloudflareStore(mockApi, "example.com")
+	store := store.NewCloudflareStore(mockApi, "example.com")
 	ctx := context.Background()
 
 	for i := 0; i < 3; i++ {

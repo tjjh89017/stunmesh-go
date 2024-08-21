@@ -1,10 +1,16 @@
-package main
+package store
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	"github.com/cloudflare/cloudflare-go"
+	"github.com/tjjh89017/stunmesh-go/plugin"
+)
+
+var (
+	ErrEndpointDataNotFound = errors.New("endpoint data not found")
 )
 
 type CloudflareApi interface {
@@ -15,7 +21,7 @@ type CloudflareApi interface {
 	ZoneIDByName(zoneName string) (string, error)
 }
 
-var _ Store = &CloudflareStore{}
+var _ plugin.Store = &CloudflareStore{}
 
 type CloudflareStore struct {
 	mutex    sync.RWMutex
