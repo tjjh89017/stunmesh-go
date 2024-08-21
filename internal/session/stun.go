@@ -1,13 +1,19 @@
-package main
+package session
 
 import (
 	"encoding/binary"
+	"errors"
 	"log"
 	"net"
 	"time"
 
 	"github.com/pion/stun"
 	"golang.org/x/net/bpf"
+)
+
+var (
+	ErrResponseMessage = errors.New("error reading from response message channel")
+	ErrTimeout         = errors.New("timed out waiting for response")
 )
 
 var (
@@ -21,7 +27,7 @@ type UDPHeader struct {
 	Checksum uint16
 }
 
-func (s *Session) roundTrip(msg *stun.Message, addr *net.UDPAddr) (*stun.Message, error) {
+func (s *Session) RoundTrip(msg *stun.Message, addr *net.UDPAddr) (*stun.Message, error) {
 	_ = msg.NewTransactionID()
 	log.Printf("Send to %v: (%v bytes)\n", addr, msg.Length)
 
@@ -56,35 +62,31 @@ func (s *Session) roundTrip(msg *stun.Message, addr *net.UDPAddr) (*stun.Message
 	}
 }
 
-func parse(msg *stun.Message) (ret struct {
-	xorAddr    *stun.XORMappedAddress
-	otherAddr  *stun.OtherAddress
-	mappedAddr *stun.MappedAddress
-	software   *stun.Software
-}) {
-	ret.mappedAddr = &stun.MappedAddress{}
-	ret.xorAddr = &stun.XORMappedAddress{}
-	ret.otherAddr = &stun.OtherAddress{}
-	ret.software = &stun.Software{}
-	if ret.xorAddr.GetFrom(msg) != nil {
-		ret.xorAddr = nil
+func Parse(msg *stun.Message) *stun.XORMappedAddress {
+	mappedAddr := &stun.MappedAddress{}
+	xorAddr := &stun.XORMappedAddress{}
+	otherAddr := &stun.OtherAddress{}
+	software := &stun.Software{}
+
+	if xorAddr.GetFrom(msg) != nil {
+		xorAddr = nil
 	}
-	if ret.otherAddr.GetFrom(msg) != nil {
-		ret.otherAddr = nil
+	if otherAddr.GetFrom(msg) != nil {
+		otherAddr = nil
 	}
-	if ret.mappedAddr.GetFrom(msg) != nil {
-		ret.mappedAddr = nil
+	if mappedAddr.GetFrom(msg) != nil {
+		mappedAddr = nil
 	}
-	if ret.software.GetFrom(msg) != nil {
-		ret.software = nil
+	if software.GetFrom(msg) != nil {
+		software = nil
 	}
 	log.Printf("%v\n", msg)
-	log.Printf("\tMAPPED-ADDRESS:     %v\n", ret.mappedAddr)
-	log.Printf("\tXOR-MAPPED-ADDRESS: %v\n", ret.xorAddr)
-	log.Printf("\tOTHER-ADDRESS:      %v\n", ret.otherAddr)
-	log.Printf("\tSOFTWARE:           %v\n", ret.software)
+	log.Printf("\tMAPPED-ADDRESS:     %v\n", mappedAddr)
+	log.Printf("\tXOR-MAPPED-ADDRESS: %v\n", xorAddr)
+	log.Printf("\tOTHER-ADDRESS:      %v\n", otherAddr)
+	log.Printf("\tSOFTWARE:           %v\n", software)
 
-	return ret
+	return xorAddr
 }
 
 func stunBpfFilter(port uint16) ([]bpf.RawInstruction, error) {

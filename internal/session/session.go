@@ -1,4 +1,4 @@
-package main
+package session
 
 import (
 	"log"
@@ -14,7 +14,7 @@ type Session struct {
 	messageChan chan *stun.Message
 }
 
-func NewSession(localPort uint16) (*Session, error) {
+func New(localPort uint16) (*Session, error) {
 	return &Session{
 		localPort:   localPort,
 		messageChan: make(chan *stun.Message),
