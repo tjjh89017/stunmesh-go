@@ -6,6 +6,7 @@ import (
 	"net"
 
 	"github.com/pion/stun"
+	"github.com/tjjh89017/stunmesh-go/internal/entity"
 	"github.com/tjjh89017/stunmesh-go/internal/session"
 	"github.com/tjjh89017/stunmesh-go/plugin"
 	"golang.zx2c4.com/wireguard/wgctrl"
@@ -26,7 +27,7 @@ func NewController(ctrl *wgctrl.Client, store plugin.Store) *Controller {
 	}
 }
 
-func (c *Controller) Publish(ctx context.Context, serializer Serializer, peer *Peer) {
+func (c *Controller) Publish(ctx context.Context, serializer Serializer, peer *entity.Peer) {
 	log.Printf("connecting to STUN server: %s\n", StunServerAddr)
 	stunAddr, err := net.ResolveUDPAddr("udp4", StunServerAddr)
 	if err != nil {
@@ -67,7 +68,7 @@ func (c *Controller) Publish(ctx context.Context, serializer Serializer, peer *P
 	}
 }
 
-func (c *Controller) Establish(ctx context.Context, serializer Deserializer, peer *Peer) {
+func (c *Controller) Establish(ctx context.Context, serializer Deserializer, peer *entity.Peer) {
 	endpointData, err := c.store.Get(ctx, peer.RemoteId())
 	if err != nil {
 		log.Panic(err)

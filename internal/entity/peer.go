@@ -1,4 +1,4 @@
-package main
+package entity
 
 type Peer struct {
 	id         string
