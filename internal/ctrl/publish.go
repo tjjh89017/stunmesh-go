@@ -1,4 +1,4 @@
-package main
+package ctrl
 
 import (
 	"context"
@@ -10,24 +10,23 @@ import (
 	"github.com/tjjh89017/stunmesh-go/internal/session"
 	"github.com/tjjh89017/stunmesh-go/plugin"
 	"golang.zx2c4.com/wireguard/wgctrl"
-	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 const StunServerAddr = "stun.l.google.com:19302"
 
-type Controller struct {
+type PublishController struct {
 	wgCtrl *wgctrl.Client
 	store  plugin.Store
 }
 
-func NewController(ctrl *wgctrl.Client, store plugin.Store) *Controller {
-	return &Controller{
+func NewPublishController(ctrl *wgctrl.Client, store plugin.Store) *PublishController {
+	return &PublishController{
 		wgCtrl: ctrl,
 		store:  store,
 	}
 }
 
-func (c *Controller) Publish(ctx context.Context, serializer Serializer, peer *entity.Peer) {
+func (c *PublishController) Execute(ctx context.Context, serializer Serializer, peer *entity.Peer) {
 	log.Printf("connecting to STUN server: %s\n", StunServerAddr)
 	stunAddr, err := net.ResolveUDPAddr("udp4", StunServerAddr)
 	if err != nil {
@@ -63,35 +62,6 @@ func (c *Controller) Publish(ctx context.Context, serializer Serializer, peer *e
 	}
 
 	err = c.store.Set(ctx, peer.Id(), endpointData)
-	if err != nil {
-		log.Panic(err)
-	}
-}
-
-func (c *Controller) Establish(ctx context.Context, serializer Deserializer, peer *entity.Peer) {
-	endpointData, err := c.store.Get(ctx, peer.RemoteId())
-	if err != nil {
-		log.Panic(err)
-	}
-
-	host, port, err := serializer.Deserialize(endpointData)
-	if err != nil {
-		log.Panic(err)
-	}
-
-	err = c.wgCtrl.ConfigureDevice(peer.DeviceName(), wgtypes.Config{
-		Peers: []wgtypes.PeerConfig{
-			{
-				PublicKey:  peer.PublicKey(),
-				UpdateOnly: true,
-				Endpoint: &net.UDPAddr{
-					IP:   net.ParseIP(host),
-					Port: port,
-				},
-			},
-		},
-	})
-
 	if err != nil {
 		log.Panic(err)
 	}
