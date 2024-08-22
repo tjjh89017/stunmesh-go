@@ -8,6 +8,7 @@ import (
 	"net"
 	"strconv"
 
+	"github.com/tjjh89017/stunmesh-go/internal/ctrl"
 	"golang.org/x/crypto/nacl/box"
 )
 
@@ -15,16 +16,8 @@ var (
 	ErrUnableToDecrypt = errors.New("unable to decrypt peer information")
 )
 
-type Serializer interface {
-	Serialize(address string, port int) (string, error)
-}
-
-type Deserializer interface {
-	Deserialize(data string) (string, int, error)
-}
-
-var _ Serializer = &CryptoSerializer{}
-var _ Deserializer = &CryptoSerializer{}
+var _ ctrl.Serializer = &CryptoSerializer{}
+var _ ctrl.Deserializer = &CryptoSerializer{}
 
 type CryptoSerializer struct {
 	localPrivateKey [32]byte

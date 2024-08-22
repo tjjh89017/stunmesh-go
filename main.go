@@ -7,6 +7,7 @@ import (
 
 	"github.com/cloudflare/cloudflare-go"
 	"github.com/tjjh89017/stunmesh-go/internal/config"
+	"github.com/tjjh89017/stunmesh-go/internal/ctrl"
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
 	"github.com/tjjh89017/stunmesh-go/internal/store"
 	"golang.zx2c4.com/wireguard/wgctrl"
@@ -40,7 +41,8 @@ func main() {
 	}
 
 	store := store.NewCloudflareStore(cfApi, config.Cloudflare.ZoneName)
-	ctrl := NewController(wg, store)
+	publishCtrl := ctrl.NewPublishController(wg, store)
+	establishCtrl := ctrl.NewEstablishController(wg, store)
 
 	peers := make([]*entity.Peer, len(device.Peers))
 
@@ -56,5 +58,5 @@ func main() {
 		peers = append(peers, peer)
 	}
 
-	Run(ctx, localPrivateKey, ctrl, peers)
+	Run(ctx, localPrivateKey, publishCtrl, establishCtrl, peers)
 }

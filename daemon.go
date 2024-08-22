@@ -8,12 +8,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/tjjh89017/stunmesh-go/internal/ctrl"
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
 )
 
 const RefreshInterval = time.Duration(10) * time.Minute
 
-func Run(ctx context.Context, privateKey [32]byte, ctrl *Controller, peers []*entity.Peer) {
+func Run(ctx context.Context, privateKey [32]byte, publish *ctrl.PublishController, establish *ctrl.EstablishController, peers []*entity.Peer) {
 	daemonCtx, cancel := context.WithCancel(ctx)
 
 	signalChan := make(chan os.Signal, 1)
@@ -38,8 +39,8 @@ func Run(ctx context.Context, privateKey [32]byte, ctrl *Controller, peers []*en
 			for _, peer := range peers {
 				serializer := NewCryptoSerializer(privateKey, peer.PublicKey())
 
-				ctrl.Publish(daemonCtx, serializer, peer)
-				ctrl.Establish(daemonCtx, serializer, peer)
+				publish.Execute(daemonCtx, serializer, peer)
+				establish.Execute(daemonCtx, serializer, peer)
 			}
 		}
 	}
