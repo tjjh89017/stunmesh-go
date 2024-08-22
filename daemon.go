@@ -7,11 +7,13 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/tjjh89017/stunmesh-go/internal/entity"
 )
 
 const RefreshInterval = time.Duration(10) * time.Minute
 
-func Run(ctx context.Context, privateKey [32]byte, ctrl *Controller, peers []*Peer) {
+func Run(ctx context.Context, privateKey [32]byte, ctrl *Controller, peers []*entity.Peer) {
 	daemonCtx, cancel := context.WithCancel(ctx)
 
 	signalChan := make(chan os.Signal, 1)
