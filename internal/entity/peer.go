@@ -1,17 +1,15 @@
 package entity
 
 type Peer struct {
-	id         string
-	remoteId   string
+	id         PeerId
 	deviceName string
 	publicKey  [32]byte
 	listenPort int
 }
 
-func NewPeer(id, remoteId, deviceName string, listenPort int, publicKey [32]byte) *Peer {
+func NewPeer(id PeerId, deviceName string, listenPort int, publicKey [32]byte) *Peer {
 	return &Peer{
 		id:         id,
-		remoteId:   remoteId,
 		deviceName: deviceName,
 		listenPort: listenPort,
 		publicKey:  publicKey,
@@ -19,11 +17,11 @@ func NewPeer(id, remoteId, deviceName string, listenPort int, publicKey [32]byte
 }
 
 func (p *Peer) Id() string {
-	return p.id
+	return p.id.EndpointKey()
 }
 
 func (p *Peer) RemoteId() string {
-	return p.remoteId
+	return p.id.RemoteEndpointKey()
 }
 
 func (p *Peer) DeviceName() string {
