@@ -48,8 +48,7 @@ func main() {
 
 	for _, p := range device.Peers {
 		peer := entity.NewPeer(
-			buildEndpointKey(device.PublicKey[:], p.PublicKey[:]),
-			buildEndpointKey(p.PublicKey[:], device.PublicKey[:]),
+			entity.NewPeerId(device.PublicKey[:], p.PublicKey[:]),
 			device.Name,
 			device.ListenPort,
 			p.PublicKey,
