@@ -13,17 +13,25 @@ import (
 
 type EstablishController struct {
 	wgCtrl *wgctrl.Client
+	peers  PeerRepository
 	store  plugin.Store
 }
 
-func NewEstablishController(ctrl *wgctrl.Client, store plugin.Store) *EstablishController {
+func NewEstablishController(ctrl *wgctrl.Client, peers PeerRepository, store plugin.Store) *EstablishController {
 	return &EstablishController{
 		wgCtrl: ctrl,
+		peers:  peers,
 		store:  store,
 	}
 }
 
-func (c *EstablishController) Execute(ctx context.Context, serializer Deserializer, peer *entity.Peer) {
+func (c *EstablishController) Execute(ctx context.Context, serializer Deserializer, peerId entity.PeerId) {
+	peer, err := c.peers.Find(ctx, peerId)
+	if err != nil {
+		log.Print(err)
+		return
+	}
+
 	endpointData, err := c.store.Get(ctx, peer.RemoteId())
 	if err != nil {
 		log.Panic(err)
