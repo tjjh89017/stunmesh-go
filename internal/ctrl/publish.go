@@ -9,24 +9,29 @@ import (
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
 	"github.com/tjjh89017/stunmesh-go/internal/session"
 	"github.com/tjjh89017/stunmesh-go/plugin"
-	"golang.zx2c4.com/wireguard/wgctrl"
 )
 
 const StunServerAddr = "stun.l.google.com:19302"
 
 type PublishController struct {
-	wgCtrl *wgctrl.Client
-	store  plugin.Store
+	peers PeerRepository
+	store plugin.Store
 }
 
-func NewPublishController(ctrl *wgctrl.Client, store plugin.Store) *PublishController {
+func NewPublishController(peers PeerRepository, store plugin.Store) *PublishController {
 	return &PublishController{
-		wgCtrl: ctrl,
-		store:  store,
+		peers: peers,
+		store: store,
 	}
 }
 
-func (c *PublishController) Execute(ctx context.Context, serializer Serializer, peer *entity.Peer) {
+func (c *PublishController) Execute(ctx context.Context, serializer Serializer, peerId entity.PeerId) {
+	peer, err := c.peers.Find(ctx, peerId)
+	if err != nil {
+		log.Print(err)
+		return
+	}
+
 	log.Printf("connecting to STUN server: %s\n", StunServerAddr)
 	stunAddr, err := net.ResolveUDPAddr("udp4", StunServerAddr)
 	if err != nil {
@@ -61,7 +66,7 @@ func (c *PublishController) Execute(ctx context.Context, serializer Serializer, 
 		log.Panic(err)
 	}
 
-	err = c.store.Set(ctx, peer.Id(), endpointData)
+	err = c.store.Set(ctx, peer.LocalId(), endpointData)
 	if err != nil {
 		log.Panic(err)
 	}

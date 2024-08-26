@@ -1,5 +1,11 @@
 package entity
 
+import "errors"
+
+var (
+	ErrPeerNotFound = errors.New("peer not found")
+)
+
 type Peer struct {
 	id         PeerId
 	deviceName string
@@ -16,7 +22,11 @@ func NewPeer(id PeerId, deviceName string, listenPort int, publicKey [32]byte) *
 	}
 }
 
-func (p *Peer) Id() string {
+func (p *Peer) Id() PeerId {
+	return p.id
+}
+
+func (p *Peer) LocalId() string {
 	return p.id.EndpointKey()
 }
 

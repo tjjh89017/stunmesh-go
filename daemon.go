@@ -39,8 +39,8 @@ func Run(ctx context.Context, privateKey [32]byte, publish *ctrl.PublishControll
 			for _, peer := range peers {
 				serializer := NewCryptoSerializer(privateKey, peer.PublicKey())
 
-				publish.Execute(daemonCtx, serializer, peer)
-				establish.Execute(daemonCtx, serializer, peer)
+				publish.Execute(daemonCtx, serializer, peer.Id())
+				establish.Execute(daemonCtx, serializer, peer.Id())
 			}
 		}
 	}
