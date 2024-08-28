@@ -42,18 +42,22 @@ jobs:
       - test
     strategy:
       matrix:
+        os: [linux, darwin]
         arch: [amd64, arm64, mipsle]
+        exclude:
+          - os: darwin
+            arch: mipsle
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GOVERSION }}
       - name: Build
-        run: go build -v -o stunmesh-${{ matrix.arch }} .
+        run: go build -v -o stunmesh-${{ matrix.os }}-${{ matrix.arch }} .
         env:
           GOARCH: ${{ matrix.arch }}
-          GOOS: linux
+          GOOS: ${{ matrix.os }}
       - uses: actions/upload-artifact@v4
         with:
-          name: stunmesh-${{ matrix.arch }}
-          path: stunmesh-${{ matrix.arch }}
+          name: stunmesh-${{ matrix.os }}-${{ matrix.arch }}
+          path: stunmesh-${{ matrix.os }}-${{ matrix.arch }}
