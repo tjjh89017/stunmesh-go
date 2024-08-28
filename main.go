@@ -33,8 +33,10 @@ func main() {
 		log.Panic(err)
 	}
 
-	var localPrivateKey [32]byte
-	copy(localPrivateKey[:], device.PrivateKey[:])
+	deviceEntity := entity.NewDevice(
+		entity.DeviceId(device.Name),
+		device.PrivateKey[:],
+	)
 
 	cfApi, err := cloudflare.New(config.Cloudflare.ApiKey, config.Cloudflare.ApiEmail)
 	if err != nil {
@@ -43,8 +45,11 @@ func main() {
 
 	store := store.NewCloudflareStore(cfApi, config.Cloudflare.ZoneName)
 	peers := repo.NewPeers()
+	devices := repo.NewDevices()
 	publishCtrl := ctrl.NewPublishController(peers, store)
 	establishCtrl := ctrl.NewEstablishController(wg, peers, store)
+
+	devices.Save(ctx, deviceEntity)
 
 	legacyPeers := make([]*entity.Peer, len(device.Peers))
 
@@ -62,5 +67,5 @@ func main() {
 		legacyPeers = append(legacyPeers, peer)
 	}
 
-	Run(ctx, localPrivateKey, publishCtrl, establishCtrl, legacyPeers)
+	Run(ctx, deviceEntity.PrivateKey(), publishCtrl, establishCtrl, legacyPeers)
 }
