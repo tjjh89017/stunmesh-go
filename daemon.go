@@ -37,10 +37,8 @@ func Run(ctx context.Context, privateKey [32]byte, publish *ctrl.PublishControll
 			log.Println("Refreshing peers")
 
 			for _, peer := range peers {
-				serializer := NewCryptoSerializer(privateKey, peer.PublicKey())
-
-				publish.Execute(daemonCtx, serializer, peer.Id())
-				establish.Execute(daemonCtx, serializer, peer.Id())
+				publish.Execute(daemonCtx, peer.Id())
+				establish.Execute(daemonCtx, peer.Id())
 			}
 		}
 	}
