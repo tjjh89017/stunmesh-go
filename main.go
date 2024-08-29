@@ -7,6 +7,7 @@ import (
 
 	"github.com/cloudflare/cloudflare-go"
 	"github.com/tjjh89017/stunmesh-go/internal/config"
+	"github.com/tjjh89017/stunmesh-go/internal/crypto"
 	"github.com/tjjh89017/stunmesh-go/internal/ctrl"
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
 	"github.com/tjjh89017/stunmesh-go/internal/repo"
@@ -46,8 +47,9 @@ func main() {
 	store := store.NewCloudflareStore(cfApi, config.Cloudflare.ZoneName)
 	peers := repo.NewPeers()
 	devices := repo.NewDevices()
-	publishCtrl := ctrl.NewPublishController(peers, store)
-	establishCtrl := ctrl.NewEstablishController(wg, peers, store)
+	endpointCrypto := crypto.NewEndpoint()
+	publishCtrl := ctrl.NewPublishController(devices, peers, store, endpointCrypto)
+	establishCtrl := ctrl.NewEstablishController(wg, devices, peers, store, endpointCrypto)
 
 	devices.Save(ctx, deviceEntity)
 

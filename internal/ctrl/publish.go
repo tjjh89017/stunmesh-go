@@ -14,19 +14,29 @@ import (
 const StunServerAddr = "stun.l.google.com:19302"
 
 type PublishController struct {
-	peers PeerRepository
-	store plugin.Store
+	devices   DeviceRepository
+	peers     PeerRepository
+	store     plugin.Store
+	encryptor EndpointEncryptor
 }
 
-func NewPublishController(peers PeerRepository, store plugin.Store) *PublishController {
+func NewPublishController(devices DeviceRepository, peers PeerRepository, store plugin.Store, encryptor EndpointEncryptor) *PublishController {
 	return &PublishController{
-		peers: peers,
-		store: store,
+		devices:   devices,
+		peers:     peers,
+		store:     store,
+		encryptor: encryptor,
 	}
 }
 
-func (c *PublishController) Execute(ctx context.Context, serializer Serializer, peerId entity.PeerId) {
+func (c *PublishController) Execute(ctx context.Context, peerId entity.PeerId) {
 	peer, err := c.peers.Find(ctx, peerId)
+	if err != nil {
+		log.Print(err)
+		return
+	}
+
+	device, err := c.devices.Find(ctx, entity.DeviceId(peer.DeviceName()))
 	if err != nil {
 		log.Print(err)
 		return
@@ -61,12 +71,17 @@ func (c *PublishController) Execute(ctx context.Context, serializer Serializer, 
 		log.Printf("error no xor addr")
 	}
 
-	endpointData, err := serializer.Serialize(xorAddr.IP.String(), xorAddr.Port)
+	res, err := c.encryptor.Encrypt(ctx, &EndpointEncryptRequest{
+		PeerPublicKey: peer.PublicKey(),
+		PrivateKey:    device.PrivateKey(),
+		Host:          xorAddr.IP.String(),
+		Port:          xorAddr.Port,
+	})
 	if err != nil {
 		log.Panic(err)
 	}
 
-	err = c.store.Set(ctx, peer.LocalId(), endpointData)
+	err = c.store.Set(ctx, peer.LocalId(), res.Data)
 	if err != nil {
 		log.Panic(err)
 	}
