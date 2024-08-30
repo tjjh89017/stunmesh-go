@@ -12,6 +12,7 @@ type DeviceRepository interface {
 }
 
 type PeerRepository interface {
+	List(ctx context.Context) ([]*entity.Peer, error)
 	Find(ctx context.Context, id entity.PeerId) (*entity.Peer, error)
 	Save(ctx context.Context, peer *entity.Peer)
 }

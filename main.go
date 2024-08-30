@@ -10,6 +10,7 @@ import (
 	"github.com/tjjh89017/stunmesh-go/internal/crypto"
 	"github.com/tjjh89017/stunmesh-go/internal/ctrl"
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
+	"github.com/tjjh89017/stunmesh-go/internal/queue"
 	"github.com/tjjh89017/stunmesh-go/internal/repo"
 	"github.com/tjjh89017/stunmesh-go/internal/store"
 	"golang.zx2c4.com/wireguard/wgctrl"
@@ -48,12 +49,12 @@ func main() {
 	peers := repo.NewPeers()
 	devices := repo.NewDevices()
 	endpointCrypto := crypto.NewEndpoint()
+	refreshQueue := queue.New[entity.PeerId]()
 	publishCtrl := ctrl.NewPublishController(devices, peers, store, endpointCrypto)
 	establishCtrl := ctrl.NewEstablishController(wg, devices, peers, store, endpointCrypto)
+	refreshCtrl := ctrl.NewRefreshController(peers, refreshQueue)
 
 	devices.Save(ctx, deviceEntity)
-
-	legacyPeers := make([]*entity.Peer, len(device.Peers))
 
 	for _, p := range device.Peers {
 		peer := entity.NewPeer(
@@ -64,10 +65,7 @@ func main() {
 		)
 
 		peers.Save(ctx, peer)
-
-		// NOTE: After Device and Peer repository is ready, the legacyPeers can be removed.
-		legacyPeers = append(legacyPeers, peer)
 	}
 
-	Run(ctx, deviceEntity.PrivateKey(), publishCtrl, establishCtrl, legacyPeers)
+	Run(ctx, refreshQueue, publishCtrl, establishCtrl, refreshCtrl)
 }

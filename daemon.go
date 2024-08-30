@@ -10,11 +10,12 @@ import (
 
 	"github.com/tjjh89017/stunmesh-go/internal/ctrl"
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
+	"github.com/tjjh89017/stunmesh-go/internal/queue"
 )
 
 const RefreshInterval = time.Duration(10) * time.Minute
 
-func Run(ctx context.Context, privateKey [32]byte, publish *ctrl.PublishController, establish *ctrl.EstablishController, peers []*entity.Peer) {
+func Run(ctx context.Context, queue *queue.Queue[entity.PeerId], publish *ctrl.PublishController, establish *ctrl.EstablishController, refresh *ctrl.RefreshController) {
 	daemonCtx, cancel := context.WithCancel(ctx)
 
 	signalChan := make(chan os.Signal, 1)
@@ -27,19 +28,23 @@ func Run(ctx context.Context, privateKey [32]byte, publish *ctrl.PublishControll
 		cancel()
 	}()
 
+	go refresh.Execute(daemonCtx)
+
 	for {
 		select {
 		case <-daemonCtx.Done():
 			return
 		case <-signalChan:
 			return
+		case peerId := <-queue.Dequeue():
+			log.Printf("Processing peer %s", peerId)
+
+			go publish.Execute(daemonCtx, peerId)
+			go establish.Execute(daemonCtx, peerId)
 		case <-time.Tick(RefreshInterval):
 			log.Println("Refreshing peers")
 
-			for _, peer := range peers {
-				publish.Execute(daemonCtx, peer.Id())
-				establish.Execute(daemonCtx, peer.Id())
-			}
+			go refresh.Execute(daemonCtx)
 		}
 	}
 }
