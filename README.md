@@ -43,6 +43,7 @@ Put the configuration below paths:
 
 ```toml
 wg = "wg03"
+refresh_interval = "10m"
 
 [cloudflare]
 api_key = "<Your API Key>"
