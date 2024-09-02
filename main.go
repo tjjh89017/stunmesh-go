@@ -9,6 +9,7 @@ import (
 	"github.com/tjjh89017/stunmesh-go/internal/config"
 	"github.com/tjjh89017/stunmesh-go/internal/crypto"
 	"github.com/tjjh89017/stunmesh-go/internal/ctrl"
+	"github.com/tjjh89017/stunmesh-go/internal/daemon"
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
 	"github.com/tjjh89017/stunmesh-go/internal/queue"
 	"github.com/tjjh89017/stunmesh-go/internal/repo"
@@ -67,5 +68,6 @@ func main() {
 		peers.Save(ctx, peer)
 	}
 
-	Run(ctx, refreshQueue, publishCtrl, establishCtrl, refreshCtrl)
+	daemon := daemon.New(config, refreshQueue, publishCtrl, establishCtrl, refreshCtrl)
+	daemon.Run(ctx)
 }

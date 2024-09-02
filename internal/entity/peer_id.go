@@ -2,6 +2,7 @@ package entity
 
 import (
 	"crypto/sha1"
+	"encoding/base64"
 	"encoding/hex"
 )
 
@@ -43,4 +44,8 @@ func (p *PeerId) RemoteEndpointKey() string {
 
 	sum := sha1.Sum(append(src, dest...))
 	return hex.EncodeToString(sum[:])
+}
+
+func (p PeerId) String() string {
+	return base64.StdEncoding.EncodeToString(p.peerPublicKey[:])
 }

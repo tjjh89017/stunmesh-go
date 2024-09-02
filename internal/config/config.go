@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"time"
 
 	"github.com/spf13/viper"
 )
@@ -28,8 +29,9 @@ var envs = map[string][]string{
 }
 
 type Config struct {
-	WireGuard  string `mapstructure:"wg"`
-	Cloudflare struct {
+	WireGuard       string        `mapstructure:"wg"`
+	RefreshInterval time.Duration `mapstructure:"refresh_interval"`
+	Cloudflare      struct {
 		ApiKey   string `mapstructure:"api_key"`
 		ApiEmail string `mapstructure:"api_email"`
 		ZoneName string `mapstructure:"zone_name"`
@@ -42,6 +44,8 @@ func Load() (*Config, error) {
 		viper.AddConfigPath(path)
 	}
 	viper.AutomaticEnv()
+
+	viper.SetDefault("refresh_interval", time.Duration(10)*time.Minute)
 
 	for envName, keys := range envs {
 		binding := []string{envName}
