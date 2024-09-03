@@ -31,7 +31,10 @@ var envs = map[string][]string{
 type Config struct {
 	WireGuard       string        `mapstructure:"wg"`
 	RefreshInterval time.Duration `mapstructure:"refresh_interval"`
-	Cloudflare      struct {
+	Stun            struct {
+		Address string `mapstructure:"address"`
+	} `mapstructure:"stun"`
+	Cloudflare struct {
 		ApiKey   string `mapstructure:"api_key"`
 		ApiEmail string `mapstructure:"api_email"`
 		ZoneName string `mapstructure:"zone_name"`
@@ -46,6 +49,7 @@ func Load() (*Config, error) {
 	viper.AutomaticEnv()
 
 	viper.SetDefault("refresh_interval", time.Duration(10)*time.Minute)
+	viper.SetDefault("stun.addr", "stun.l.google.com:19302")
 
 	for envName, keys := range envs {
 		binding := []string{envName}
