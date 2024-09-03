@@ -13,6 +13,7 @@ import (
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
 	"github.com/tjjh89017/stunmesh-go/internal/queue"
 	"github.com/tjjh89017/stunmesh-go/internal/repo"
+	"github.com/tjjh89017/stunmesh-go/internal/session"
 	"github.com/tjjh89017/stunmesh-go/internal/store"
 	"golang.zx2c4.com/wireguard/wgctrl"
 )
@@ -49,9 +50,10 @@ func main() {
 	store := store.NewCloudflareStore(cfApi, config.Cloudflare.ZoneName)
 	peers := repo.NewPeers()
 	devices := repo.NewDevices()
+	resolver := session.NewResolver(config)
 	endpointCrypto := crypto.NewEndpoint()
 	refreshQueue := queue.New[entity.PeerId]()
-	publishCtrl := ctrl.NewPublishController(devices, peers, store, endpointCrypto)
+	publishCtrl := ctrl.NewPublishController(devices, peers, store, resolver, endpointCrypto)
 	establishCtrl := ctrl.NewEstablishController(wg, devices, peers, store, endpointCrypto)
 	refreshCtrl := ctrl.NewRefreshController(peers, refreshQueue)
 

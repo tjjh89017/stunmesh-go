@@ -45,6 +45,9 @@ Put the configuration below paths:
 wg = "wg03"
 refresh_interval = "10m"
 
+[stun]
+address = "stun.l.google.com:19302"
+
 [cloudflare]
 api_key = "<Your API Key>"
 api_email = "<Your email>"

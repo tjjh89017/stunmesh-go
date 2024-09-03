@@ -3,28 +3,25 @@ package ctrl
 import (
 	"context"
 	"log"
-	"net"
 
-	"github.com/pion/stun"
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
-	"github.com/tjjh89017/stunmesh-go/internal/session"
 	"github.com/tjjh89017/stunmesh-go/plugin"
 )
-
-const StunServerAddr = "stun.l.google.com:19302"
 
 type PublishController struct {
 	devices   DeviceRepository
 	peers     PeerRepository
 	store     plugin.Store
+	resolver  StunResolver
 	encryptor EndpointEncryptor
 }
 
-func NewPublishController(devices DeviceRepository, peers PeerRepository, store plugin.Store, encryptor EndpointEncryptor) *PublishController {
+func NewPublishController(devices DeviceRepository, peers PeerRepository, store plugin.Store, resolver StunResolver, encryptor EndpointEncryptor) *PublishController {
 	return &PublishController{
 		devices:   devices,
 		peers:     peers,
 		store:     store,
+		resolver:  resolver,
 		encryptor: encryptor,
 	}
 }
@@ -42,40 +39,16 @@ func (c *PublishController) Execute(ctx context.Context, peerId entity.PeerId) {
 		return
 	}
 
-	log.Printf("connecting to STUN server: %s\n", StunServerAddr)
-	stunAddr, err := net.ResolveUDPAddr("udp4", StunServerAddr)
+	host, port, err := c.resolver.Resolve(uint16(peer.ListenPort()))
 	if err != nil {
 		log.Panic(err)
-	}
-
-	conn, err := session.New(uint16(peer.ListenPort()))
-	if err != nil {
-		log.Panic(err)
-	}
-
-	defer conn.Close()
-	if err := conn.Start(); err != nil {
-		log.Panic(err)
-	}
-
-	request := stun.MustBuild(stun.TransactionID, stun.BindingRequest)
-	resData, err := conn.RoundTrip(request, stunAddr)
-	if err != nil {
-		log.Panic(err)
-	}
-
-	xorAddr := session.Parse(resData)
-	if xorAddr != nil {
-		log.Printf("addr: %s\n", xorAddr.String())
-	} else {
-		log.Printf("error no xor addr")
 	}
 
 	res, err := c.encryptor.Encrypt(ctx, &EndpointEncryptRequest{
 		PeerPublicKey: peer.PublicKey(),
 		PrivateKey:    device.PrivateKey(),
-		Host:          xorAddr.IP.String(),
-		Port:          xorAddr.Port,
+		Host:          host,
+		Port:          port,
 	})
 	if err != nil {
 		log.Panic(err)
