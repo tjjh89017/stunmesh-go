@@ -10,43 +10,53 @@ import (
 
 type Session struct {
 	conn        *ipv4.PacketConn
-	localPort   uint16
 	messageChan chan *stun.Message
 }
 
 func New(localPort uint16) (*Session, error) {
 	return &Session{
-		localPort:   localPort,
 		messageChan: make(chan *stun.Message),
 	}, nil
 
 }
 
-func (s *Session) Close() error {
-	return s.conn.Close()
-}
-
-func (s *Session) Start() error {
+func (s *Session) Wait(stunAddr string, port uint16) (*stun.Message, error) {
 	c, err := net.ListenPacket("ip4:17", "0.0.0.0")
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	s.conn = ipv4.NewPacketConn(c)
-	// set port here
-	bpfFilter, err := stunBpfFilter(s.localPort)
+	defer s.conn.Close()
+
+	bpfFilter, err := stunBpfFilter(port)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	err = s.conn.SetBPF(bpfFilter)
 	if err != nil {
-		return err
+		return nil, err
 	}
-
 	go s.listen()
 
-	return nil
+	request, err := stun.Build(stun.TransactionID, stun.BindingRequest)
+	if err != nil {
+		return nil, err
+	}
+
+	log.Printf("connecting to STUN server: %s\n", stunAddr)
+	addr, err := net.ResolveUDPAddr("udp4", stunAddr)
+	if err != nil {
+		return nil, err
+	}
+
+	resData, err := s.RoundTrip(port, request, addr)
+	if err != nil {
+		return nil, err
+	}
+
+	return resData, nil
 }
 
 func (s *Session) listen() {
@@ -74,8 +84,4 @@ func (s *Session) listen() {
 
 		s.messageChan <- m
 	}
-}
-
-func (s *Session) LocalPort() uint16 {
-	return s.localPort
 }
