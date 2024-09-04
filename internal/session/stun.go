@@ -27,12 +27,12 @@ type UDPHeader struct {
 	Checksum uint16
 }
 
-func (s *Session) RoundTrip(msg *stun.Message, addr *net.UDPAddr) (*stun.Message, error) {
+func (s *Session) RoundTrip(port uint16, msg *stun.Message, addr *net.UDPAddr) (*stun.Message, error) {
 	_ = msg.NewTransactionID()
 	log.Printf("Send to %v: (%v bytes)\n", addr, msg.Length)
 
 	send_udp := &UDPHeader{
-		SrcPort:  s.LocalPort(),
+		SrcPort:  port,
 		DstPort:  uint16(addr.Port),
 		Length:   uint16(8 + len(msg.Raw)),
 		Checksum: 0,

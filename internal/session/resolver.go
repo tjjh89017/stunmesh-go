@@ -3,9 +3,7 @@ package session
 import (
 	"fmt"
 	"log"
-	"net"
 
-	"github.com/pion/stun"
 	"github.com/tjjh89017/stunmesh-go/internal/config"
 )
 
@@ -20,24 +18,12 @@ func NewResolver(config *config.Config) *Resolver {
 }
 
 func (r *Resolver) Resolve(port uint16) (string, int, error) {
-	log.Printf("connecting to STUN server: %s\n", r.config.Stun.Address)
-	stunAddr, err := net.ResolveUDPAddr("udp4", r.config.Stun.Address)
-	if err != nil {
-		return "", 0, err
-	}
-
 	conn, err := New(port)
 	if err != nil {
 		return "", 0, err
 	}
 
-	defer conn.Close()
-	if err := conn.Start(); err != nil {
-		return "", 0, err
-	}
-
-	request := stun.MustBuild(stun.TransactionID, stun.BindingRequest)
-	resData, err := conn.RoundTrip(request, stunAddr)
+	resData, err := conn.Wait(r.config.Stun.Address, port)
 	if err != nil {
 		return "", 0, err
 	}
