@@ -40,18 +40,13 @@ func (s *Session) Wait(stunAddr string, port uint16) (*stun.Message, error) {
 	}
 	go s.listen()
 
-	request, err := stun.Build(stun.TransactionID, stun.BindingRequest)
-	if err != nil {
-		return nil, err
-	}
-
 	log.Printf("connecting to STUN server: %s\n", stunAddr)
 	addr, err := net.ResolveUDPAddr("udp4", stunAddr)
 	if err != nil {
 		return nil, err
 	}
 
-	resData, err := s.RoundTrip(port, request, addr)
+	resData, err := s.Bind(port, addr)
 	if err != nil {
 		return nil, err
 	}
