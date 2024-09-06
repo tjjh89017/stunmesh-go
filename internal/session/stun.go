@@ -16,35 +16,19 @@ var (
 	ErrTimeout         = errors.New("timed out waiting for response")
 )
 
+const BindingPacketHeaderSize = 8
+
 var (
 	StunTimeout = 5
 )
 
-type UDPHeader struct {
-	SrcPort  uint16
-	DstPort  uint16
-	Length   uint16
-	Checksum uint16
-}
-
-func (s *Session) RoundTrip(port uint16, msg *stun.Message, addr *net.UDPAddr) (*stun.Message, error) {
-	_ = msg.NewTransactionID()
-	log.Printf("Send to %v: (%v bytes)\n", addr, msg.Length)
-
-	send_udp := &UDPHeader{
-		SrcPort:  port,
-		DstPort:  uint16(addr.Port),
-		Length:   uint16(8 + len(msg.Raw)),
-		Checksum: 0,
+func (s *Session) Bind(port uint16, addr *net.UDPAddr) (*stun.Message, error) {
+	buf, err := createStunBindingPacket(port, uint16(addr.Port))
+	if err != nil {
+		return nil, err
 	}
 
-	buf := make([]byte, 8)
-	binary.BigEndian.PutUint16(buf[0:], send_udp.SrcPort)
-	binary.BigEndian.PutUint16(buf[2:], send_udp.DstPort)
-	binary.BigEndian.PutUint16(buf[4:], send_udp.Length)
-	binary.BigEndian.PutUint16(buf[6:], send_udp.Checksum)
-
-	if _, err := s.conn.WriteTo(append(buf, msg.Raw...), nil, addr); err != nil {
+	if _, err := s.conn.WriteTo(buf, nil, addr); err != nil {
 		log.Panic(err)
 		return nil, err
 	}
@@ -60,6 +44,24 @@ func (s *Session) RoundTrip(port uint16, msg *stun.Message, addr *net.UDPAddr) (
 		log.Printf("time out")
 		return nil, ErrTimeout
 	}
+}
+
+func createStunBindingPacket(srcPort, dstPort uint16) ([]byte, error) {
+	msg, err := stun.Build(stun.TransactionID, stun.BindingRequest)
+	if err != nil {
+		return nil, err
+	}
+
+	packetLength := uint16(BindingPacketHeaderSize + len(msg.Raw))
+	checksum := uint16(0)
+
+	buf := make([]byte, packetLength)
+	binary.BigEndian.PutUint16(buf[0:], srcPort)
+	binary.BigEndian.PutUint16(buf[2:], dstPort)
+	binary.BigEndian.PutUint16(buf[4:], packetLength)
+	binary.BigEndian.PutUint16(buf[6:], checksum)
+
+	return append(buf, msg.Raw...), nil
 }
 
 func Parse(msg *stun.Message) *stun.XORMappedAddress {
