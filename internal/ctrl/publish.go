@@ -39,7 +39,7 @@ func (c *PublishController) Execute(ctx context.Context, peerId entity.PeerId) {
 		return
 	}
 
-	host, port, err := c.resolver.Resolve(uint16(peer.ListenPort()))
+	host, port, err := c.resolver.Resolve(ctx, uint16(peer.ListenPort()))
 	if err != nil {
 		log.Panic(err)
 	}

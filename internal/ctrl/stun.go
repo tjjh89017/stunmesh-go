@@ -1,5 +1,7 @@
 package ctrl
 
+import "context"
+
 type StunResolver interface {
-	Resolve(port uint16) (string, int, error)
+	Resolve(ctx context.Context, port uint16) (string, int, error)
 }

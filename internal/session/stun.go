@@ -4,8 +4,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"log"
-	"net"
-	"time"
 
 	"github.com/pion/stun"
 	"golang.org/x/net/bpf"
@@ -21,30 +19,6 @@ const BindingPacketHeaderSize = 8
 var (
 	StunTimeout = 5
 )
-
-func (s *Session) Bind(port uint16, addr *net.UDPAddr) (*stun.Message, error) {
-	buf, err := createStunBindingPacket(port, uint16(addr.Port))
-	if err != nil {
-		return nil, err
-	}
-
-	if _, err := s.conn.WriteTo(buf, nil, addr); err != nil {
-		log.Panic(err)
-		return nil, err
-	}
-
-	// wait for respone
-	select {
-	case m, ok := <-s.messageChan:
-		if !ok {
-			return nil, ErrResponseMessage
-		}
-		return m, nil
-	case <-time.After(time.Duration(StunTimeout) * time.Second):
-		log.Printf("time out")
-		return nil, ErrTimeout
-	}
-}
 
 func createStunBindingPacket(srcPort, dstPort uint16) ([]byte, error) {
 	msg, err := stun.Build(stun.TransactionID, stun.BindingRequest)

@@ -1,82 +1,107 @@
 package session
 
 import (
+	"context"
 	"log"
 	"net"
+	"sync"
+	"time"
 
 	"github.com/pion/stun"
+	"golang.org/x/net/bpf"
 	"golang.org/x/net/ipv4"
 )
 
 type Session struct {
-	conn        *ipv4.PacketConn
-	messageChan chan *stun.Message
+	conn       *ipv4.PacketConn
+	once       sync.Once
+	packetChan chan []byte
 }
 
-func New(localPort uint16) (*Session, error) {
-	return &Session{
-		messageChan: make(chan *stun.Message),
-	}, nil
-
-}
-
-func (s *Session) Wait(stunAddr string, port uint16) (*stun.Message, error) {
+func New(filter ...bpf.RawInstruction) (*Session, error) {
 	c, err := net.ListenPacket("ip4:17", "0.0.0.0")
 	if err != nil {
 		return nil, err
 	}
 
-	s.conn = ipv4.NewPacketConn(c)
-	defer s.conn.Close()
-
-	bpfFilter, err := stunBpfFilter(port)
-	if err != nil {
+	conn := ipv4.NewPacketConn(c)
+	if err := conn.SetBPF(filter); err != nil {
 		return nil, err
 	}
 
-	err = s.conn.SetBPF(bpfFilter)
-	if err != nil {
-		return nil, err
-	}
-	go s.listen()
+	return &Session{
+		conn:       conn,
+		packetChan: make(chan []byte),
+	}, nil
+}
 
+func (s *Session) Stop() {
+	close(s.packetChan)
+	_ = s.conn.Close()
+}
+
+func (s *Session) Start(ctx context.Context) {
+	s.once.Do(func() {
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					buf := make([]byte, 1500)
+					n, _, _, err := s.conn.ReadFrom(buf)
+					if err != nil {
+						continue
+					}
+					s.packetChan <- buf[:n]
+				}
+			}
+		}()
+	})
+}
+
+func (s *Session) Bind(ctx context.Context, stunAddr string, port uint16) (string, int, error) {
 	log.Printf("connecting to STUN server: %s\n", stunAddr)
 	addr, err := net.ResolveUDPAddr("udp4", stunAddr)
 	if err != nil {
-		return nil, err
+		return "", 0, err
 	}
 
-	resData, err := s.Bind(port, addr)
+	packet, err := createStunBindingPacket(port, uint16(addr.Port))
 	if err != nil {
-		return nil, err
+		return "", 0, err
 	}
 
-	return resData, nil
+	_, err = s.conn.WriteTo(packet, nil, addr)
+	if err != nil {
+		return "", 0, err
+	}
+
+	reply, err := s.Read(ctx)
+	if err != nil {
+		return "", 0, err
+	}
+
+	replyAddr := Parse(reply)
+
+	return replyAddr.IP.String(), replyAddr.Port, nil
 }
 
-func (s *Session) listen() {
-	for {
-		buf := make([]byte, 1500)
-		n, _, addr, err := s.conn.ReadFrom(buf)
-		if err != nil {
-			close(s.messageChan)
-			return
-		}
-
-		log.Printf("Response from %v: (%v bytes)\n", addr, n)
-		// cut UDP header, cut postfix
-		buf = buf[8:n]
-
+func (s *Session) Read(ctx context.Context) (*stun.Message, error) {
+	select {
+	case buf := <-s.packetChan:
 		m := &stun.Message{
-			Raw: buf,
+			Raw: buf[8:],
 		}
 
 		if err := m.Decode(); err != nil {
-			log.Printf("Error decoding message: %v\n", err)
-			close(s.messageChan)
-			return
+			return nil, err
 		}
 
-		s.messageChan <- m
+		return m, nil
+	case <-time.After(time.Duration(StunTimeout) * time.Second):
+		return nil, ErrTimeout
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	}
 }
