@@ -1,8 +1,7 @@
 package session
 
 import (
-	"fmt"
-	"log"
+	"context"
 
 	"github.com/tjjh89017/stunmesh-go/internal/config"
 )
@@ -17,23 +16,19 @@ func NewResolver(config *config.Config) *Resolver {
 	}
 }
 
-func (r *Resolver) Resolve(port uint16) (string, int, error) {
-	conn, err := New(port)
+func (r *Resolver) Resolve(ctx context.Context, port uint16) (string, int, error) {
+	bpfFilter, err := stunBpfFilter(port)
 	if err != nil {
 		return "", 0, err
 	}
 
-	resData, err := conn.Wait(r.config.Stun.Address, port)
+	session, err := New(bpfFilter...)
 	if err != nil {
 		return "", 0, err
 	}
 
-	xorAddr := Parse(resData)
-	if xorAddr != nil {
-		log.Printf("addr: %s\n", xorAddr.String())
-	} else {
-		return "", 0, fmt.Errorf("no xor addr")
-	}
+	session.Start(ctx)
+	defer session.Stop()
 
-	return xorAddr.IP.String(), xorAddr.Port, nil
+	return session.Bind(ctx, r.config.Stun.Address, port)
 }
