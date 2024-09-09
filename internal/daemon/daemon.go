@@ -17,15 +17,17 @@ import (
 type Daemon struct {
 	config        *config.Config
 	queue         *queue.Queue[entity.PeerId]
+	bootCtrl      *ctrl.BootstrapController
 	publishCtrl   *ctrl.PublishController
 	establishCtrl *ctrl.EstablishController
 	refreshCtrl   *ctrl.RefreshController
 }
 
-func New(config *config.Config, queue *queue.Queue[entity.PeerId], publish *ctrl.PublishController, establish *ctrl.EstablishController, refresh *ctrl.RefreshController) *Daemon {
+func New(config *config.Config, queue *queue.Queue[entity.PeerId], boot *ctrl.BootstrapController, publish *ctrl.PublishController, establish *ctrl.EstablishController, refresh *ctrl.RefreshController) *Daemon {
 	return &Daemon{
 		config:        config,
 		queue:         queue,
+		bootCtrl:      boot,
 		publishCtrl:   publish,
 		establishCtrl: establish,
 		refreshCtrl:   refresh,
@@ -45,6 +47,7 @@ func (d *Daemon) Run(ctx context.Context) {
 		cancel()
 	}()
 
+	d.bootCtrl.Execute(daemonCtx)
 	go d.refreshCtrl.Execute(daemonCtx)
 	log.Printf("Daemon started with refresh interval %s", d.config.RefreshInterval)
 
