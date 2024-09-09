@@ -7,9 +7,16 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/wire"
 	"github.com/pion/stun"
+	"github.com/tjjh89017/stunmesh-go/internal/ctrl"
 	"golang.org/x/net/bpf"
 	"golang.org/x/net/ipv4"
+)
+
+var DefaultSet = wire.NewSet(
+	NewResolver,
+	wire.Bind(new(ctrl.StunResolver), new(*Resolver)),
 )
 
 type Session struct {
