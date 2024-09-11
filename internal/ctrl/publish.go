@@ -4,7 +4,6 @@ import (
 	"context"
 	"log"
 
-	"github.com/tjjh89017/stunmesh-go/internal/entity"
 	"github.com/tjjh89017/stunmesh-go/plugin"
 )
 
@@ -26,36 +25,42 @@ func NewPublishController(devices DeviceRepository, peers PeerRepository, store 
 	}
 }
 
-func (c *PublishController) Execute(ctx context.Context, peerId entity.PeerId) {
-	peer, err := c.peers.Find(ctx, peerId)
+func (c *PublishController) Execute(ctx context.Context) {
+	devices, err := c.devices.List(ctx)
 	if err != nil {
 		log.Print(err)
 		return
 	}
 
-	device, err := c.devices.Find(ctx, entity.DeviceId(peer.DeviceName()))
-	if err != nil {
-		log.Print(err)
-		return
-	}
+	for _, device := range devices {
+		host, port, err := c.resolver.Resolve(ctx, uint16(device.ListenPort()))
+		if err != nil {
+			log.Panic(err)
+		}
 
-	host, port, err := c.resolver.Resolve(ctx, uint16(peer.ListenPort()))
-	if err != nil {
-		log.Panic(err)
-	}
+		peers, err := c.peers.ListByDevice(ctx, device.Name())
+		if err != nil {
+			log.Print(err)
+			continue
+		}
 
-	res, err := c.encryptor.Encrypt(ctx, &EndpointEncryptRequest{
-		PeerPublicKey: peer.PublicKey(),
-		PrivateKey:    device.PrivateKey(),
-		Host:          host,
-		Port:          port,
-	})
-	if err != nil {
-		log.Panic(err)
-	}
+		for _, peer := range peers {
+			res, err := c.encryptor.Encrypt(ctx, &EndpointEncryptRequest{
+				PeerPublicKey: peer.PublicKey(),
+				PrivateKey:    device.PrivateKey(),
+				Host:          host,
+				Port:          port,
+			})
+			if err != nil {
+				log.Print(err)
+				continue
+			}
 
-	err = c.store.Set(ctx, peer.LocalId(), res.Data)
-	if err != nil {
-		log.Panic(err)
+			err = c.store.Set(ctx, peer.LocalId(), res.Data)
+			if err != nil {
+				log.Print(err)
+				continue
+			}
+		}
 	}
 }
