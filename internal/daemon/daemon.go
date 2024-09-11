@@ -62,11 +62,11 @@ func (d *Daemon) Run(ctx context.Context) {
 		case peerId := <-d.queue.Dequeue():
 			log.Printf("Processing peer %s", peerId)
 
-			go d.publishCtrl.Execute(daemonCtx, peerId)
 			go d.establishCtrl.Execute(daemonCtx, peerId)
 		case <-ticker.C:
 			log.Println("Refreshing peers")
 
+			go d.publishCtrl.Execute(daemonCtx)
 			go d.refreshCtrl.Execute(daemonCtx)
 		}
 	}

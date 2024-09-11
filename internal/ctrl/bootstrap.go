@@ -34,6 +34,7 @@ func (ctrl *BootstrapController) Execute(ctx context.Context) {
 
 	deviceEntity := entity.NewDevice(
 		entity.DeviceId(device.Name),
+		device.ListenPort,
 		device.PrivateKey[:],
 	)
 
@@ -43,7 +44,6 @@ func (ctrl *BootstrapController) Execute(ctx context.Context) {
 		peer := entity.NewPeer(
 			entity.NewPeerId(device.PublicKey[:], p.PublicKey[:]),
 			device.Name,
-			device.ListenPort,
 			p.PublicKey,
 		)
 

@@ -18,6 +18,18 @@ func NewDevices() *Devices {
 	}
 }
 
+func (r *Devices) List(ctx context.Context) ([]*entity.Device, error) {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	devices := make([]*entity.Device, 0, len(r.items))
+	for _, device := range r.items {
+		devices = append(devices, device)
+	}
+
+	return devices, nil
+}
+
 func (r *Devices) Find(ctx context.Context, name entity.DeviceId) (*entity.Device, error) {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
