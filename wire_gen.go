@@ -15,8 +15,8 @@ import (
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
 	"github.com/tjjh89017/stunmesh-go/internal/queue"
 	"github.com/tjjh89017/stunmesh-go/internal/repo"
-	"github.com/tjjh89017/stunmesh-go/internal/session"
 	"github.com/tjjh89017/stunmesh-go/internal/store"
+	"github.com/tjjh89017/stunmesh-go/internal/stun"
 	"golang.zx2c4.com/wireguard/wgctrl"
 )
 
@@ -40,7 +40,7 @@ func setup() (*daemon.Daemon, error) {
 		return nil, err
 	}
 	cloudflareStore := provideStore(api, configConfig)
-	resolver := session.NewResolver(configConfig)
+	resolver := stun.NewResolver(configConfig)
 	endpoint := crypto.NewEndpoint()
 	publishController := ctrl.NewPublishController(devices, peers, cloudflareStore, resolver, endpoint)
 	establishController := ctrl.NewEstablishController(client, devices, peers, cloudflareStore, endpoint)

@@ -13,8 +13,8 @@ import (
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
 	"github.com/tjjh89017/stunmesh-go/internal/queue"
 	"github.com/tjjh89017/stunmesh-go/internal/repo"
-	"github.com/tjjh89017/stunmesh-go/internal/session"
 	"github.com/tjjh89017/stunmesh-go/internal/store"
+	"github.com/tjjh89017/stunmesh-go/internal/stun"
 	"github.com/tjjh89017/stunmesh-go/plugin"
 	"golang.zx2c4.com/wireguard/wgctrl"
 )
@@ -29,7 +29,7 @@ func setup() (*daemon.Daemon, error) {
 		provideRefreshQueue,
 		wire.Bind(new(ctrl.RefreshQueue), new(*queue.Queue[entity.PeerId])),
 		repo.DefaultSet,
-		session.DefaultSet,
+		stun.DefaultSet,
 		crypto.DefaultSet,
 		ctrl.DefaultSet,
 		daemon.New,
