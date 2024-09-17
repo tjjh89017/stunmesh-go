@@ -122,11 +122,12 @@ func createStunBindingPacket(srcPort, dstPort uint16) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	_ = msg.NewTransactionID()
 
 	packetLength := uint16(BindingPacketHeaderSize + len(msg.Raw))
 	checksum := uint16(0)
 
-	buf := make([]byte, packetLength)
+	buf := make([]byte, BindingPacketHeaderSize)
 	binary.BigEndian.PutUint16(buf[0:], srcPort)
 	binary.BigEndian.PutUint16(buf[2:], dstPort)
 	binary.BigEndian.PutUint16(buf[4:], packetLength)
