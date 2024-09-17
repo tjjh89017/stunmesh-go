@@ -58,10 +58,12 @@ jobs:
     strategy:
       matrix:
         os: [linux, darwin]
-        arch: [amd64, arm64, mipsle]
+        arch: [amd64, arm64, arm, mipsle]
         exclude:
           - os: darwin
             arch: mipsle
+          - os: darwin
+            arch: arm
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
