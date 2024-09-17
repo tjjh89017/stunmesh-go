@@ -58,6 +58,8 @@ func (s *Stun) Start(ctx context.Context) {
 				select {
 				case <-ctx.Done():
 					return
+				case <-time.After(time.Duration(StunTimeout + 5) * time.Second):
+					return
 				default:
 					buf := make([]byte, PacketSize)
 					n, _, _, err := s.conn.ReadFrom(buf)
@@ -65,6 +67,7 @@ func (s *Stun) Start(ctx context.Context) {
 						continue
 					}
 					s.packetChan <- buf[:n]
+					return
 				}
 			}
 		}()
