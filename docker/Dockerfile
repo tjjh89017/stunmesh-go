@@ -1,4 +1,4 @@
-FROM golang:1.22 as builder
+FROM golang:1.22 AS builder
 
 COPY . /work
 WORKDIR /work
@@ -8,6 +8,6 @@ RUN go build -v -o stunmesh
 FROM scratch
 
 WORKDIR /
-copy --from=builder /work/stunmesh .
+COPY --from=builder /work/stunmesh .
 
 CMD ["/stunmesh"]
