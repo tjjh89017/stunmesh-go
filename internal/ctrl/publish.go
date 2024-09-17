@@ -37,6 +37,7 @@ func (c *PublishController) Execute(ctx context.Context) {
 		if err != nil {
 			log.Panic(err)
 		}
+		log.Printf("%s outside address:%s:%d", device.Name(), host, port)
 
 		peers, err := c.peers.ListByDevice(ctx, device.Name())
 		if err != nil {
