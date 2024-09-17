@@ -44,7 +44,9 @@ func (c *EstablishController) Execute(ctx context.Context, peerId entity.PeerId)
 
 	endpointData, err := c.store.Get(ctx, peer.RemoteId())
 	if err != nil {
-		log.Panic(err)
+		// Failed to get, maybe endpoint didn't upload the record yet, skip.
+		log.Print(err)
+		return
 	}
 
 	res, err := c.decryptor.Decrypt(ctx, &EndpointDecryptRequest{
