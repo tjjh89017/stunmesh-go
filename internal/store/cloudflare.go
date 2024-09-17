@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"log"
 	"sync"
 
 	"github.com/cloudflare/cloudflare-go"
@@ -35,6 +36,7 @@ func NewCloudflareStore(api CloudflareApi, zoneName string) *CloudflareStore {
 }
 
 func (s *CloudflareStore) Get(ctx context.Context, key string) (string, error) {
+	log.Printf("Get IP info from %s", key)
 	records, err := s.associatedRecords(ctx, key)
 	if err != nil {
 		return "", err
@@ -49,6 +51,7 @@ func (s *CloudflareStore) Get(ctx context.Context, key string) (string, error) {
 }
 
 func (s *CloudflareStore) Set(ctx context.Context, key string, value string) error {
+	log.Printf("Store IP info to %s", key)
 	records, err := s.associatedRecords(ctx, key)
 	if err != nil {
 		return err
