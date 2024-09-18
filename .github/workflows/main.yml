@@ -72,6 +72,7 @@ jobs:
       - name: Build
         run: go build -v -o stunmesh-${{ matrix.os }}-${{ matrix.arch }} .
         env:
+          CGO_ENABLED: 0
           GOARCH: ${{ matrix.arch }}
           GOOS: ${{ matrix.os }}
       - uses: actions/upload-artifact@v4
