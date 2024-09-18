@@ -2,17 +2,16 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"log"
+
+	"github.com/rs/zerolog"
 )
 
 func main() {
-	fmt.Println("Stunmesh Go")
 	ctx := context.Background()
 
 	daemon, err := setup()
 	if err != nil {
-		log.Panic(err)
+		zerolog.DefaultContextLogger.Panic().Err(err).Msg("failed to setup daemon")
 	}
 
 	daemon.Run(ctx)

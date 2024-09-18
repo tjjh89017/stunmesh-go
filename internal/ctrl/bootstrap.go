@@ -2,8 +2,8 @@ package ctrl
 
 import (
 	"context"
-	"log"
 
+	"github.com/rs/zerolog"
 	"github.com/tjjh89017/stunmesh-go/internal/config"
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
 	"golang.zx2c4.com/wireguard/wgctrl"
@@ -14,21 +14,23 @@ type BootstrapController struct {
 	config  *config.Config
 	devices DeviceRepository
 	peers   PeerRepository
+	logger  zerolog.Logger
 }
 
-func NewBootstrapController(wg *wgctrl.Client, config *config.Config, devices DeviceRepository, peers PeerRepository) *BootstrapController {
+func NewBootstrapController(wg *wgctrl.Client, config *config.Config, devices DeviceRepository, peers PeerRepository, logger *zerolog.Logger) *BootstrapController {
 	return &BootstrapController{
 		wg:      wg,
 		config:  config,
 		devices: devices,
 		peers:   peers,
+		logger:  logger.With().Str("controller", "bootstrap").Logger(),
 	}
 }
 
 func (ctrl *BootstrapController) Execute(ctx context.Context) {
 	device, err := ctrl.wg.Device(ctrl.config.WireGuard)
 	if err != nil {
-		log.Panic(err)
+		ctrl.logger.Error().Err(err).Msg("failed to get device")
 		return
 	}
 

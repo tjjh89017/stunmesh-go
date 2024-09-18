@@ -11,6 +11,7 @@ import (
 	"github.com/tjjh89017/stunmesh-go/internal/ctrl"
 	"github.com/tjjh89017/stunmesh-go/internal/daemon"
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
+	"github.com/tjjh89017/stunmesh-go/internal/logger"
 	"github.com/tjjh89017/stunmesh-go/internal/queue"
 	"github.com/tjjh89017/stunmesh-go/internal/repo"
 	"github.com/tjjh89017/stunmesh-go/internal/store"
@@ -28,6 +29,7 @@ func setup() (*daemon.Daemon, error) {
 		wire.Bind(new(plugin.Store), new(*store.CloudflareStore)),
 		provideRefreshQueue,
 		wire.Bind(new(ctrl.RefreshQueue), new(*queue.Queue[entity.PeerId])),
+		logger.DefaultSet,
 		repo.DefaultSet,
 		stun.DefaultSet,
 		crypto.DefaultSet,

@@ -3,10 +3,10 @@ package store
 import (
 	"context"
 	"errors"
-	"log"
 	"sync"
 
 	"github.com/cloudflare/cloudflare-go"
+	"github.com/rs/zerolog"
 	"github.com/tjjh89017/stunmesh-go/plugin"
 )
 
@@ -36,7 +36,9 @@ func NewCloudflareStore(api CloudflareApi, zoneName string) *CloudflareStore {
 }
 
 func (s *CloudflareStore) Get(ctx context.Context, key string) (string, error) {
-	log.Printf("Get IP info from %s", key)
+	logger := zerolog.Ctx(ctx)
+
+	logger.Info().Str("key", key).Msg("get IP info from Cloudflare")
 	records, err := s.associatedRecords(ctx, key)
 	if err != nil {
 		return "", err
@@ -51,7 +53,9 @@ func (s *CloudflareStore) Get(ctx context.Context, key string) (string, error) {
 }
 
 func (s *CloudflareStore) Set(ctx context.Context, key string, value string) error {
-	log.Printf("Store IP info to %s", key)
+	logger := zerolog.Ctx(ctx)
+
+	logger.Info().Str("key", key).Str("value", value).Msg("store IP info to Cloudflare")
 	records, err := s.associatedRecords(ctx, key)
 	if err != nil {
 		return err

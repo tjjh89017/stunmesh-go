@@ -4,12 +4,12 @@ package stun
 import (
 	"context"
 	"encoding/binary"
-	"log"
 	"net"
 	"sync"
 	"time"
 
 	"github.com/pion/stun"
+	"github.com/rs/zerolog"
 	"golang.org/x/net/bpf"
 	"golang.org/x/net/ipv4"
 )
@@ -23,13 +23,13 @@ type Stun struct {
 	packetChan chan []byte
 }
 
-func New(port uint16) (*Stun, error) {
+func New(ctx context.Context, port uint16) (*Stun, error) {
 	c, err := net.ListenPacket("ip4:17", "0.0.0.0")
 	if err != nil {
 		return nil, err
 	}
 
-	filter, err := stunBpfFilter(port)
+	filter, err := stunBpfFilter(ctx, port)
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +75,9 @@ func (s *Stun) Start(ctx context.Context) {
 }
 
 func (s *Stun) Connect(ctx context.Context, stunAddr string) (string, int, error) {
-	log.Printf("connecting to STUN server: %s\n", stunAddr)
+	logger := zerolog.Ctx(ctx)
+
+	logger.Info().Msgf("connecting to STUN server: %s", stunAddr)
 	addr, err := net.ResolveUDPAddr("udp4", stunAddr)
 	if err != nil {
 		return "", 0, err
@@ -96,7 +98,7 @@ func (s *Stun) Connect(ctx context.Context, stunAddr string) (string, int, error
 		return "", 0, err
 	}
 
-	replyAddr := Parse(reply)
+	replyAddr := Parse(ctx, reply)
 
 	return replyAddr.IP.String(), replyAddr.Port, nil
 }
@@ -139,7 +141,7 @@ func createStunBindingPacket(srcPort, dstPort uint16) ([]byte, error) {
 	return append(buf, msg.Raw...), nil
 }
 
-func stunBpfFilter(port uint16) ([]bpf.RawInstruction, error) {
+func stunBpfFilter(ctx context.Context, port uint16) ([]bpf.RawInstruction, error) {
 	// if possible make some magic here to determine STUN packet
 	const (
 		ipOff              = 0
@@ -181,8 +183,12 @@ func stunBpfFilter(port uint16) ([]bpf.RawInstruction, error) {
 			Val: 0,
 		},
 	})
+
+	logger := zerolog.Ctx(ctx)
 	if e != nil {
-		log.Panic(e)
+		logger.Error().Err(e).Msg("failed to assemble BPF filter")
+		return nil, e
 	}
-	return r, e
+
+	return r, nil
 }
