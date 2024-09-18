@@ -3,29 +3,34 @@ package stun
 import (
 	"context"
 
+	"github.com/rs/zerolog"
 	"github.com/tjjh89017/stunmesh-go/internal/config"
 )
 
 type Resolver struct {
 	config *config.Config
+	logger zerolog.Logger
 }
 
-func NewResolver(config *config.Config) *Resolver {
+func NewResolver(config *config.Config, logger *zerolog.Logger) *Resolver {
 	return &Resolver{
 		config: config,
+		logger: logger.With().Str("component", "stun").Logger(),
 	}
 }
 
 func (r *Resolver) Resolve(ctx context.Context, port uint16) (_ string, _ int, err error) {
-	stun, err := New(port)
+	stunCtx := r.logger.WithContext(ctx)
+
+	stun, err := New(stunCtx, port)
 	if err != nil {
 		return "", 0, err
 	}
 
-	stun.Start(ctx)
+	stun.Start(stunCtx)
 	defer func() {
 		err = stun.Stop()
 	}()
 
-	return stun.Connect(ctx, r.config.Stun.Address)
+	return stun.Connect(stunCtx, r.config.Stun.Address)
 }

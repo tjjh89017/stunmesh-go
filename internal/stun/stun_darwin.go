@@ -7,7 +7,7 @@ import "context"
 type Stun struct {
 }
 
-func New(port uint16) (*Stun, error) {
+func New(ctx context.Context, port uint16) (*Stun, error) {
 	return &Stun{}, nil
 }
 

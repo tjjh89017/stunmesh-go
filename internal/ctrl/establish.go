@@ -2,9 +2,9 @@ package ctrl
 
 import (
 	"context"
-	"log"
 	"net"
 
+	"github.com/rs/zerolog"
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
 	"github.com/tjjh89017/stunmesh-go/plugin"
 	"golang.zx2c4.com/wireguard/wgctrl"
@@ -17,35 +17,39 @@ type EstablishController struct {
 	peers     PeerRepository
 	store     plugin.Store
 	decryptor EndpointDecryptor
+	logger    zerolog.Logger
 }
 
-func NewEstablishController(ctrl *wgctrl.Client, devices DeviceRepository, peers PeerRepository, store plugin.Store, decryptor EndpointDecryptor) *EstablishController {
+func NewEstablishController(ctrl *wgctrl.Client, devices DeviceRepository, peers PeerRepository, store plugin.Store, decryptor EndpointDecryptor, logger *zerolog.Logger) *EstablishController {
 	return &EstablishController{
 		wgCtrl:    ctrl,
 		devices:   devices,
 		peers:     peers,
 		store:     store,
 		decryptor: decryptor,
+		logger:    logger.With().Str("controller", "establish").Logger(),
 	}
 }
 
 func (c *EstablishController) Execute(ctx context.Context, peerId entity.PeerId) {
 	peer, err := c.peers.Find(ctx, peerId)
 	if err != nil {
-		log.Print(err)
+		c.logger.Error().Err(err).Msg("failed to find peer")
 		return
 	}
 
 	device, err := c.devices.Find(ctx, entity.DeviceId(peer.DeviceName()))
 	if err != nil {
-		log.Print(err)
+		c.logger.Error().Err(err).Msg("failed to find device")
 		return
 	}
 
-	endpointData, err := c.store.Get(ctx, peer.RemoteId())
+	logger := c.logger.With().Str("peer", peer.LocalId()).Str("device", string(device.Name())).Logger()
+
+	storeCtx := logger.WithContext(ctx)
+	endpointData, err := c.store.Get(storeCtx, peer.RemoteId())
 	if err != nil {
-		// Failed to get, maybe endpoint didn't upload the record yet, skip.
-		log.Print(err)
+		logger.Warn().Err(err).Msg("endpoint is unavailable or not ready")
 		return
 	}
 
@@ -55,7 +59,8 @@ func (c *EstablishController) Execute(ctx context.Context, peerId entity.PeerId)
 		Data:          endpointData,
 	})
 	if err != nil {
-		log.Panic(err)
+		logger.Error().Err(err).Msg("failed to decrypt endpoint")
+		return
 	}
 
 	err = c.wgCtrl.ConfigureDevice(peer.DeviceName(), wgtypes.Config{
@@ -72,6 +77,7 @@ func (c *EstablishController) Execute(ctx context.Context, peerId entity.PeerId)
 	})
 
 	if err != nil {
-		log.Panic(err)
+		logger.Error().Err(err).Msg("failed to configure device")
+		return
 	}
 }

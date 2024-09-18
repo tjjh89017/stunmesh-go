@@ -31,7 +31,10 @@ var envs = map[string][]string{
 type Config struct {
 	WireGuard       string        `mapstructure:"wg"`
 	RefreshInterval time.Duration `mapstructure:"refresh_interval"`
-	Stun            struct {
+	Log             struct {
+		Level string `mapstructure:"level"`
+	} `mapstructure:"log"`
+	Stun struct {
 		Address string `mapstructure:"address"`
 	} `mapstructure:"stun"`
 	Cloudflare struct {

@@ -1,10 +1,11 @@
 package stun
 
 import (
+	"context"
 	"errors"
-	"log"
 
 	"github.com/pion/stun"
+	"github.com/rs/zerolog"
 )
 
 var (
@@ -18,7 +19,9 @@ var (
 	StunTimeout = 5
 )
 
-func Parse(msg *stun.Message) *stun.XORMappedAddress {
+func Parse(ctx context.Context, msg *stun.Message) *stun.XORMappedAddress {
+	logger := zerolog.Ctx(ctx)
+
 	mappedAddr := &stun.MappedAddress{}
 	xorAddr := &stun.XORMappedAddress{}
 	otherAddr := &stun.OtherAddress{}
@@ -36,11 +39,7 @@ func Parse(msg *stun.Message) *stun.XORMappedAddress {
 	if software.GetFrom(msg) != nil {
 		software = nil
 	}
-	log.Printf("%v\n", msg)
-	log.Printf("\tMAPPED-ADDRESS:     %v\n", mappedAddr)
-	log.Printf("\tXOR-MAPPED-ADDRESS: %v\n", xorAddr)
-	log.Printf("\tOTHER-ADDRESS:      %v\n", otherAddr)
-	log.Printf("\tSOFTWARE:           %v\n", software)
 
+	logger.Debug().Any("MAPPED-ADDRESS", mappedAddr).Any("XOR-MAPPED-ADDRESS", xorAddr).Any("OTHER-ADDRESS", otherAddr).Any("SOFTWARE", software).Msgf("%v", msg)
 	return xorAddr
 }

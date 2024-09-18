@@ -13,6 +13,7 @@ import (
 	"github.com/tjjh89017/stunmesh-go/internal/ctrl"
 	"github.com/tjjh89017/stunmesh-go/internal/daemon"
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
+	"github.com/tjjh89017/stunmesh-go/internal/logger"
 	"github.com/tjjh89017/stunmesh-go/internal/queue"
 	"github.com/tjjh89017/stunmesh-go/internal/repo"
 	"github.com/tjjh89017/stunmesh-go/internal/store"
@@ -34,18 +35,19 @@ func setup() (*daemon.Daemon, error) {
 	}
 	devices := repo.NewDevices()
 	peers := repo.NewPeers()
-	bootstrapController := ctrl.NewBootstrapController(client, configConfig, devices, peers)
+	zerologLogger := logger.NewLogger(configConfig)
+	bootstrapController := ctrl.NewBootstrapController(client, configConfig, devices, peers, zerologLogger)
 	api, err := provideCloudflareApi(configConfig)
 	if err != nil {
 		return nil, err
 	}
 	cloudflareStore := provideStore(api, configConfig)
-	resolver := stun.NewResolver(configConfig)
+	resolver := stun.NewResolver(configConfig, zerologLogger)
 	endpoint := crypto.NewEndpoint()
-	publishController := ctrl.NewPublishController(devices, peers, cloudflareStore, resolver, endpoint)
-	establishController := ctrl.NewEstablishController(client, devices, peers, cloudflareStore, endpoint)
-	refreshController := ctrl.NewRefreshController(peers, queue)
-	daemonDaemon := daemon.New(configConfig, queue, bootstrapController, publishController, establishController, refreshController)
+	publishController := ctrl.NewPublishController(devices, peers, cloudflareStore, resolver, endpoint, zerologLogger)
+	establishController := ctrl.NewEstablishController(client, devices, peers, cloudflareStore, endpoint, zerologLogger)
+	refreshController := ctrl.NewRefreshController(peers, queue, zerologLogger)
+	daemonDaemon := daemon.New(configConfig, queue, bootstrapController, publishController, establishController, refreshController, zerologLogger)
 	return daemonDaemon, nil
 }
 

@@ -2,25 +2,28 @@ package ctrl
 
 import (
 	"context"
-	"log"
+
+	"github.com/rs/zerolog"
 )
 
 type RefreshController struct {
-	peers PeerRepository
-	queue RefreshQueue
+	peers  PeerRepository
+	queue  RefreshQueue
+	logger zerolog.Logger
 }
 
-func NewRefreshController(peers PeerRepository, queue RefreshQueue) *RefreshController {
+func NewRefreshController(peers PeerRepository, queue RefreshQueue, logger *zerolog.Logger) *RefreshController {
 	return &RefreshController{
-		peers: peers,
-		queue: queue,
+		peers:  peers,
+		queue:  queue,
+		logger: logger.With().Str("controller", "refresh").Logger(),
 	}
 }
 
 func (c *RefreshController) Execute(ctx context.Context) {
 	peers, err := c.peers.List(ctx)
 	if err != nil {
-		log.Print(err)
+		c.logger.Error().Err(err).Msg("failed to list peers")
 		return
 	}
 

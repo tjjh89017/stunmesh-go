@@ -2,12 +2,12 @@ package daemon
 
 import (
 	"context"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/rs/zerolog"
 	"github.com/tjjh89017/stunmesh-go/internal/config"
 	"github.com/tjjh89017/stunmesh-go/internal/ctrl"
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
@@ -21,9 +21,17 @@ type Daemon struct {
 	publishCtrl   *ctrl.PublishController
 	establishCtrl *ctrl.EstablishController
 	refreshCtrl   *ctrl.RefreshController
+	logger        zerolog.Logger
 }
 
-func New(config *config.Config, queue *queue.Queue[entity.PeerId], boot *ctrl.BootstrapController, publish *ctrl.PublishController, establish *ctrl.EstablishController, refresh *ctrl.RefreshController) *Daemon {
+func New(
+	config *config.Config,
+	queue *queue.Queue[entity.PeerId],
+	boot *ctrl.BootstrapController,
+	publish *ctrl.PublishController,
+	establish *ctrl.EstablishController,
+	refresh *ctrl.RefreshController,
+	logger *zerolog.Logger) *Daemon {
 	return &Daemon{
 		config:        config,
 		queue:         queue,
@@ -31,6 +39,7 @@ func New(config *config.Config, queue *queue.Queue[entity.PeerId], boot *ctrl.Bo
 		publishCtrl:   publish,
 		establishCtrl: establish,
 		refreshCtrl:   refresh,
+		logger:        logger.With().Str("component", "daemon").Logger(),
 	}
 }
 
@@ -41,7 +50,7 @@ func (d *Daemon) Run(ctx context.Context) {
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
 
 	defer func() {
-		log.Println("Shutting down")
+		d.logger.Info().Msg("shutting down")
 		signal.Stop(signalChan)
 		close(signalChan)
 		cancel()
@@ -50,7 +59,7 @@ func (d *Daemon) Run(ctx context.Context) {
 	d.bootCtrl.Execute(daemonCtx)
 	go d.refreshCtrl.Execute(daemonCtx)
 	go d.publishCtrl.Execute(daemonCtx)
-	log.Printf("Daemon started with refresh interval %s", d.config.RefreshInterval)
+	d.logger.Info().Msgf("daemon started with refresh interval %s", d.config.RefreshInterval)
 
 	ticker := time.NewTicker(d.config.RefreshInterval)
 
@@ -61,11 +70,11 @@ func (d *Daemon) Run(ctx context.Context) {
 		case <-signalChan:
 			return
 		case peerId := <-d.queue.Dequeue():
-			log.Printf("Processing peer %s", peerId)
+			d.logger.Info().Str("peer", peerId.String()).Msg("processing peer")
 
 			go d.establishCtrl.Execute(daemonCtx, peerId)
 		case <-ticker.C:
-			log.Println("Refreshing peers")
+			d.logger.Info().Msg("refreshing peers")
 
 			go d.publishCtrl.Execute(daemonCtx)
 			go d.refreshCtrl.Execute(daemonCtx)
