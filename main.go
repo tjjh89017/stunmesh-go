@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-
-	"github.com/rs/zerolog"
 )
 
 func main() {
@@ -11,7 +9,7 @@ func main() {
 
 	daemon, err := setup()
 	if err != nil {
-		zerolog.DefaultContextLogger.Panic().Err(err).Msg("failed to setup daemon")
+		panic(err)
 	}
 
 	daemon.Run(ctx)

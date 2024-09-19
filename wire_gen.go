@@ -54,6 +54,10 @@ func setup() (*daemon.Daemon, error) {
 // wire.go:
 
 func provideCloudflareApi(config2 *config.Config) (*cloudflare.API, error) {
+	if config2.Cloudflare.ApiToken != "" {
+		return cloudflare.NewWithAPIToken(config2.Cloudflare.ApiToken)
+	}
+
 	return cloudflare.New(config2.Cloudflare.ApiKey, config2.Cloudflare.ApiEmail)
 }
 

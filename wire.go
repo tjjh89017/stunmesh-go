@@ -41,6 +41,10 @@ func setup() (*daemon.Daemon, error) {
 }
 
 func provideCloudflareApi(config *config.Config) (*cloudflare.API, error) {
+	if config.Cloudflare.ApiToken != "" {
+		return cloudflare.NewWithAPIToken(config.Cloudflare.ApiToken)
+	}
+
 	return cloudflare.New(config.Cloudflare.ApiKey, config.Cloudflare.ApiEmail)
 }
 

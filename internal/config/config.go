@@ -25,6 +25,7 @@ var envs = map[string][]string{
 	"wg":                   {"WG", "WIREGUARD"},
 	"cloudflare.api_key":   {"CF_API_KEY", "CLOUDFLARE_API_KEY"},
 	"cloudflare.api_email": {"CF_API_EMAIL", "CLOUDFLARE_API_EMAIL"},
+	"cloudflare.api_token": {"CF_API_TOKEN", "CLOUDFLARE_API_TOKEN"},
 	"cloudflare.zone_name": {"CF_ZONE_NAME", "CLOUDFLARE_ZONE_NAME"},
 }
 
@@ -40,6 +41,7 @@ type Config struct {
 	Cloudflare struct {
 		ApiKey   string `mapstructure:"api_key"`
 		ApiEmail string `mapstructure:"api_email"`
+		ApiToken string `mapstructure:"api_token"`
 		ZoneName string `mapstructure:"zone_name"`
 	} `mapstructure:"cloudflare"`
 }

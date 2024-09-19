@@ -64,6 +64,7 @@ func (c *PublishController) Execute(ctx context.Context) {
 				continue
 			}
 
+			logger.Info().Msg("store endpoint")
 			storeCtx := logger.WithContext(ctx)
 			err = c.store.Set(storeCtx, peer.LocalId(), res.Data)
 			if err != nil {
