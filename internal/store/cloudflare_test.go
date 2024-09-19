@@ -24,50 +24,55 @@ func newMockCloudflareApi() *mockCloudflareApi {
 	}
 }
 
-func (m *mockCloudflareApi) DNSRecords(ctx context.Context, zoneId string, rr cloudflare.DNSRecord) ([]cloudflare.DNSRecord, error) {
+func (m *mockCloudflareApi) ListDNSRecords(ctx context.Context, rc *cloudflare.ResourceContainer, params cloudflare.ListDNSRecordsParams) ([]cloudflare.DNSRecord, *cloudflare.ResultInfo, error) {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
 
 	matchedRecords := []cloudflare.DNSRecord{}
 
 	for _, record := range m.records {
-		isNameMatched := record.Name == rr.Name
-		isTypeMatched := record.Type == rr.Type
+		isNameMatched := record.Name == params.Name
+		isTypeMatched := record.Type == params.Type
 
 		if isNameMatched && isTypeMatched {
 			matchedRecords = append(matchedRecords, record)
 		}
 	}
 
-	return matchedRecords, nil
+	return matchedRecords, &cloudflare.ResultInfo{Count: len(matchedRecords)}, nil
 }
 
-func (m *mockCloudflareApi) CreateDNSRecord(ctx context.Context, zoneId string, rr cloudflare.DNSRecord) (*cloudflare.DNSRecordResponse, error) {
+func (m *mockCloudflareApi) CreateDNSRecord(ctx context.Context, rc *cloudflare.ResourceContainer, params cloudflare.CreateDNSRecordParams) (cloudflare.DNSRecord, error) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
 	m.lastId++
-	rr.ID = fmt.Sprintf("mock-record-id-%d", m.lastId)
+	record := cloudflare.DNSRecord{
+		ID:      fmt.Sprintf("mock-record-id-%d", m.lastId),
+		Type:    params.Type,
+		Content: params.Content,
+		Name:    params.Name,
+	}
 
-	m.records = append(m.records, rr)
-	return &cloudflare.DNSRecordResponse{}, nil
+	m.records = append(m.records, record)
+	return record, nil
 }
 
-func (m *mockCloudflareApi) UpdateDNSRecord(ctx context.Context, zoneId, recordId string, rr cloudflare.DNSRecord) error {
+func (m *mockCloudflareApi) UpdateDNSRecord(ctx context.Context, rc *cloudflare.ResourceContainer, params cloudflare.UpdateDNSRecordParams) (cloudflare.DNSRecord, error) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
 	for i, record := range m.records {
-		if record.ID == recordId {
-			m.records[i].Content = rr.Content
-			return nil
+		if record.ID == params.ID {
+			m.records[i].Content = params.Content
+			return m.records[i], nil
 		}
 	}
 
-	return fmt.Errorf("record with id %s not found", recordId)
+	return cloudflare.DNSRecord{}, fmt.Errorf("record with id %s not found", params.ID)
 }
 
-func (m *mockCloudflareApi) DeleteDNSRecord(ctx context.Context, zoneId, recordId string) error {
+func (m *mockCloudflareApi) DeleteDNSRecord(ctx context.Context, rc *cloudflare.ResourceContainer, recordId string) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
@@ -116,7 +121,7 @@ func Test_CloudflareStore_ExistsDuplicate(t *testing.T) {
 	ctx := context.Background()
 
 	for i := 0; i < 3; i++ {
-		_, err := mockApi.CreateDNSRecord(ctx, "mock-zone-id", cloudflare.DNSRecord{
+		_, err := mockApi.CreateDNSRecord(ctx, cloudflare.ZoneIdentifier("mock-zone-id"), cloudflare.CreateDNSRecordParams{
 			Type:    "TXT",
 			Content: fmt.Sprintf("value-%d", i),
 			Name:    "key.example.com",

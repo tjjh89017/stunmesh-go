@@ -15,10 +15,10 @@ var (
 )
 
 type CloudflareApi interface {
-	DNSRecords(ctx context.Context, zoneId string, rr cloudflare.DNSRecord) ([]cloudflare.DNSRecord, error)
-	CreateDNSRecord(ctx context.Context, zoneId string, rr cloudflare.DNSRecord) (*cloudflare.DNSRecordResponse, error)
-	UpdateDNSRecord(ctx context.Context, zoneId, recordId string, rr cloudflare.DNSRecord) error
-	DeleteDNSRecord(ctx context.Context, zoneId, recordId string) error
+	ListDNSRecords(ctx context.Context, rc *cloudflare.ResourceContainer, params cloudflare.ListDNSRecordsParams) ([]cloudflare.DNSRecord, *cloudflare.ResultInfo, error)
+	CreateDNSRecord(ctx context.Context, rc *cloudflare.ResourceContainer, params cloudflare.CreateDNSRecordParams) (cloudflare.DNSRecord, error)
+	UpdateDNSRecord(ctx context.Context, rc *cloudflare.ResourceContainer, params cloudflare.UpdateDNSRecordParams) (cloudflare.DNSRecord, error)
+	DeleteDNSRecord(ctx context.Context, rc *cloudflare.ResourceContainer, recordId string) error
 	ZoneIDByName(zoneName string) (string, error)
 }
 
@@ -27,7 +27,7 @@ var _ plugin.Store = &CloudflareStore{}
 type CloudflareStore struct {
 	mutex    sync.RWMutex
 	api      CloudflareApi
-	zoneId   string
+	zoneId   *cloudflare.ResourceContainer
 	zoneName string
 }
 
@@ -39,12 +39,12 @@ func (s *CloudflareStore) Get(ctx context.Context, key string) (string, error) {
 	logger := zerolog.Ctx(ctx)
 
 	logger.Info().Str("key", key).Msg("get IP info from Cloudflare")
-	records, err := s.associatedRecords(ctx, key)
+	records, info, err := s.associatedRecords(ctx, key)
 	if err != nil {
 		return "", err
 	}
 
-	isFound := len(records) > 0
+	isFound := info.Count > 0
 	if !isFound {
 		return "", ErrEndpointDataNotFound
 	}
@@ -56,7 +56,7 @@ func (s *CloudflareStore) Set(ctx context.Context, key string, value string) err
 	logger := zerolog.Ctx(ctx)
 
 	logger.Info().Str("key", key).Str("value", value).Msg("store IP info to Cloudflare")
-	records, err := s.associatedRecords(ctx, key)
+	records, info, err := s.associatedRecords(ctx, key)
 	if err != nil {
 		return err
 	}
@@ -66,19 +66,21 @@ func (s *CloudflareStore) Set(ctx context.Context, key string, value string) err
 		return err
 	}
 
-	record := cloudflare.DNSRecord{
-		Type:    "TXT",
-		Name:    key + "." + s.zoneName,
-		Content: value,
-	}
+	name := key + "." + s.zoneName
 
-	isFound := len(records) > 0
+	isFound := info.Count > 0
 	if !isFound {
-		_, err := s.api.CreateDNSRecord(ctx, zoneId, record)
+		_, err := s.api.CreateDNSRecord(ctx, zoneId, cloudflare.CreateDNSRecordParams{
+			Type:    "TXT",
+			Name:    name,
+			Content: value,
+			Comment: "Created by Stunmesh",
+		})
+
 		return err
 	}
 
-	isDuplicate := len(records) > 1
+	isDuplicate := info.Count > 1
 	if isDuplicate {
 		for _, x := range records[1:] {
 			if err := s.api.DeleteDNSRecord(ctx, zoneId, x.ID); err != nil {
@@ -87,30 +89,38 @@ func (s *CloudflareStore) Set(ctx context.Context, key string, value string) err
 		}
 	}
 
-	return s.api.UpdateDNSRecord(ctx, zoneId, records[0].ID, record)
+	_, err = s.api.UpdateDNSRecord(ctx, zoneId, cloudflare.UpdateDNSRecordParams{
+		ID:      records[0].ID,
+		Content: value,
+	})
+
+	return err
 }
 
-func (s *CloudflareStore) ZoneId() (string, error) {
+func (s *CloudflareStore) ZoneId() (*cloudflare.ResourceContainer, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	if s.zoneId == "" {
+	if s.zoneId == nil {
 		zone, err := s.api.ZoneIDByName(s.zoneName)
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 
-		s.zoneId = zone
+		s.zoneId = cloudflare.ZoneIdentifier(zone)
 	}
 
 	return s.zoneId, nil
 }
 
-func (s *CloudflareStore) associatedRecords(ctx context.Context, key string) ([]cloudflare.DNSRecord, error) {
+func (s *CloudflareStore) associatedRecords(ctx context.Context, key string) ([]cloudflare.DNSRecord, *cloudflare.ResultInfo, error) {
 	zoneId, err := s.ZoneId()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return s.api.DNSRecords(ctx, zoneId, cloudflare.DNSRecord{Type: "TXT", Name: key + "." + s.zoneName})
+	return s.api.ListDNSRecords(ctx, zoneId, cloudflare.ListDNSRecordsParams{
+		Name: key + "." + s.zoneName,
+		Type: "TXT",
+	})
 }
