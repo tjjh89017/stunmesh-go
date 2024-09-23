@@ -27,6 +27,7 @@ var envs = map[string][]string{
 	"cloudflare.api_email": {"CF_API_EMAIL", "CLOUDFLARE_API_EMAIL"},
 	"cloudflare.api_token": {"CF_API_TOKEN", "CLOUDFLARE_API_TOKEN"},
 	"cloudflare.zone_name": {"CF_ZONE_NAME", "CLOUDFLARE_ZONE_NAME"},
+	"refresh_interval":     {"REFRESH_INTERVAL"},
 }
 
 type Config struct {
