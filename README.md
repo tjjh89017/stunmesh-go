@@ -45,6 +45,9 @@ Put the configuration below paths:
 wg = "wg03"
 refresh_interval = "10m"
 
+[interfaces.wg02]
+  name = "wg02" # No config available, placeholder to load config
+
 [stun]
 address = "stun.l.google.com:19302"
 
@@ -55,6 +58,17 @@ zone_name = "<Your Domain>"
 ```
 
 > The environment variables is higher priority than the configuration file.
+
+### Environment Variables
+
+| Name               | Description                                |
+|--------------------|--------------------------------------------|
+| `WG`               | Wireguard interface name                   |
+| `CF_API_KEY`       | Cloudflare API Key                         |
+| `CF_API_EMAIL`     | Cloudflare API Email                       |
+| `CF_ZONE_NAME`     | Cloudflare Zone Name                       |
+| `CF_API_TOKEN`     | Cloudflare API Token                       |
+| `REFRESH_INTERVAL` | Refresh interval for Cloudflare TXT record |
 
 ## Extra Usage
 You could use OSPF on Wireguard interface to create full mesh site-to-site VPN with dynamic routing.<br />
