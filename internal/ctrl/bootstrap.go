@@ -28,10 +28,24 @@ func NewBootstrapController(wg *wgctrl.Client, config *config.Config, devices De
 }
 
 func (ctrl *BootstrapController) Execute(ctx context.Context) {
-	device, err := ctrl.wg.Device(ctrl.config.WireGuard)
+	for deviceName := range ctrl.config.Interfaces {
+		if err := ctrl.registerDevice(ctx, deviceName); err != nil {
+			ctrl.logger.Error().Err(err).Str("device", deviceName).Msg("failed to register device")
+			continue
+		}
+	}
+
+	if ctrl.config.WireGuard != "" {
+		if err := ctrl.registerDevice(ctx, ctrl.config.WireGuard); err != nil {
+			ctrl.logger.Error().Err(err).Str("device", ctrl.config.WireGuard).Msg("failed to register device")
+		}
+	}
+}
+
+func (ctrl *BootstrapController) registerDevice(ctx context.Context, deviceName string) error {
+	device, err := ctrl.wg.Device(deviceName)
 	if err != nil {
-		ctrl.logger.Error().Err(err).Msg("failed to get device")
-		return
+		return err
 	}
 
 	deviceEntity := entity.NewDevice(
@@ -49,6 +63,8 @@ func (ctrl *BootstrapController) Execute(ctx context.Context) {
 			p.PublicKey,
 		)
 
-		ctrl.peers.Save(context.Background(), peer)
+		ctrl.peers.Save(ctx, peer)
 	}
+
+	return nil
 }
