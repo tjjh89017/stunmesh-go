@@ -30,7 +30,9 @@ var envs = map[string][]string{
 }
 
 type Config struct {
-	WireGuard       string        `mapstructure:"wg"`
+	WireGuard  string `mapstructure:"wg"`
+	Interfaces map[string]struct {
+	} `mapstructure:"interfaces"`
 	RefreshInterval time.Duration `mapstructure:"refresh_interval"`
 	Log             struct {
 		Level string `mapstructure:"level"`
