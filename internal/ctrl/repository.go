@@ -1,3 +1,5 @@
+//go:generate mockgen -destination=./mock/mock_repository.go -package=mock_ctrl . DeviceRepository,PeerRepository
+
 package ctrl
 
 import (
