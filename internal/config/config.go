@@ -30,23 +30,32 @@ var envs = map[string][]string{
 	"refresh_interval":     {"REFRESH_INTERVAL"},
 }
 
+type Interface struct {
+}
+type Interfaces map[string]Interface
+
+type Logger struct {
+	Level string `mapstructure:"level"`
+}
+
+type Stun struct {
+	Address string `mapstructure:"address"`
+}
+
+type Cloudflare struct {
+	ApiKey   string `mapstructure:"api_key"`
+	ApiEmail string `mapstructure:"api_email"`
+	ApiToken string `mapstructure:"api_token"`
+	ZoneName string `mapstructure:"zone_name"`
+}
+
 type Config struct {
-	WireGuard  string `mapstructure:"wg"`
-	Interfaces map[string]struct {
-	} `mapstructure:"interfaces"`
+	WireGuard       string        `mapstructure:"wg"`
+	Interfaces      Interfaces    `mapstructure:"interfaces"`
 	RefreshInterval time.Duration `mapstructure:"refresh_interval"`
-	Log             struct {
-		Level string `mapstructure:"level"`
-	} `mapstructure:"log"`
-	Stun struct {
-		Address string `mapstructure:"address"`
-	} `mapstructure:"stun"`
-	Cloudflare struct {
-		ApiKey   string `mapstructure:"api_key"`
-		ApiEmail string `mapstructure:"api_email"`
-		ApiToken string `mapstructure:"api_token"`
-		ZoneName string `mapstructure:"zone_name"`
-	} `mapstructure:"cloudflare"`
+	Log             Logger        `mapstructure:"log"`
+	Stun            Stun          `mapstructure:"stun"`
+	Cloudflare      Cloudflare    `mapstructure:"cloudflare"`
 }
 
 func Load() (*Config, error) {

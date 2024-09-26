@@ -6,18 +6,17 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/tjjh89017/stunmesh-go/internal/config"
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
-	"golang.zx2c4.com/wireguard/wgctrl"
 )
 
 type BootstrapController struct {
-	wg      *wgctrl.Client
+	wg      WireGuardClient
 	config  *config.Config
 	devices DeviceRepository
 	peers   PeerRepository
 	logger  zerolog.Logger
 }
 
-func NewBootstrapController(wg *wgctrl.Client, config *config.Config, devices DeviceRepository, peers PeerRepository, logger *zerolog.Logger) *BootstrapController {
+func NewBootstrapController(wg WireGuardClient, config *config.Config, devices DeviceRepository, peers PeerRepository, logger *zerolog.Logger) *BootstrapController {
 	return &BootstrapController{
 		wg:      wg,
 		config:  config,

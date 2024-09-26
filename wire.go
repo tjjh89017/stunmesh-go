@@ -24,6 +24,7 @@ func setup() (*daemon.Daemon, error) {
 	wire.Build(
 		config.Load,
 		wgctrl.New,
+		wire.Bind(new(ctrl.WireGuardClient), new(*wgctrl.Client)),
 		provideCloudflareApi,
 		provideStore,
 		wire.Bind(new(plugin.Store), new(*store.CloudflareStore)),
