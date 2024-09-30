@@ -6,9 +6,16 @@ import (
 
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
 	"github.com/tjjh89017/stunmesh-go/internal/repo"
+	mock "github.com/tjjh89017/stunmesh-go/internal/repo/mock"
+	"go.uber.org/mock/gomock"
 )
 
 func Test_PeerRepository_Find(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+
+	mockWgClient := mock.NewMockWireGuardClient(mockCtrl)
+
 	peerId := entity.NewPeerId([]byte{}, []byte{})
 
 	peer := entity.NewPeer(
@@ -17,7 +24,7 @@ func Test_PeerRepository_Find(t *testing.T) {
 		[32]byte{},
 	)
 
-	peers := repo.NewPeers()
+	peers := repo.NewPeers(mockWgClient)
 	peers.Save(context.TODO(), peer)
 
 	tests := []struct {
@@ -51,6 +58,11 @@ func Test_PeerRepository_Find(t *testing.T) {
 }
 
 func Test_PeerRepository_List(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+
+	mockWgClient := mock.NewMockWireGuardClient(mockCtrl)
+
 	tests := []struct {
 		name  string
 		peers []*entity.Peer
@@ -90,7 +102,7 @@ func Test_PeerRepository_List(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			peers := repo.NewPeers()
+			peers := repo.NewPeers(mockWgClient)
 			for _, peer := range tt.peers {
 				peers.Save(context.TODO(), peer)
 			}
@@ -112,6 +124,11 @@ func Test_PeerRepository_List(t *testing.T) {
 }
 
 func Test_PeerListByDevice(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+
+	mockWgClient := mock.NewMockWireGuardClient(mockCtrl)
+
 	tests := []struct {
 		name       string
 		deviceName entity.DeviceId
@@ -159,7 +176,7 @@ func Test_PeerListByDevice(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			peers := repo.NewPeers()
+			peers := repo.NewPeers(mockWgClient)
 			for _, peer := range tt.peers {
 				peers.Save(context.TODO(), peer)
 			}

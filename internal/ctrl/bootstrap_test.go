@@ -2,15 +2,55 @@ package ctrl_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/rs/zerolog"
 	"github.com/tjjh89017/stunmesh-go/internal/config"
 	"github.com/tjjh89017/stunmesh-go/internal/ctrl"
 	mock "github.com/tjjh89017/stunmesh-go/internal/ctrl/mock"
+	"github.com/tjjh89017/stunmesh-go/internal/entity"
+	mockEntity "github.com/tjjh89017/stunmesh-go/internal/entity/mock"
 	gomock "go.uber.org/mock/gomock"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
+
+func TestBootstrap_WithError(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+
+	mockWgClient := mock.NewMockWireGuardClient(mockCtrl)
+	mockDevices := mock.NewMockDeviceRepository(mockCtrl)
+	mockPeers := mock.NewMockPeerRepository(mockCtrl)
+	logger := zerolog.Nop()
+	cfg := &config.Config{
+		Interfaces: map[string]config.Interface{
+			"wg0": {
+				Peers: map[string]config.Peer{
+					"test_peer1": {
+						PublicKey: "XgPRso34lnrSAx8nJtdj1/zlF7CoNj7B64LPElYdOGs=",
+					},
+				},
+			},
+		},
+	}
+	deviceConfig := config.NewDeviceConfig(cfg)
+	mockPeerSearcher := mockEntity.NewMockPeerSearcher(mockCtrl)
+	peerFilterService := entity.NewFilterPeerService(mockPeerSearcher, deviceConfig)
+
+	mockWgClient.EXPECT().Device("wg0").Return(nil, errors.New("device not found"))
+
+	bootstrap := ctrl.NewBootstrapController(
+		mockWgClient,
+		cfg,
+		mockDevices,
+		mockPeers,
+		&logger,
+		peerFilterService,
+	)
+
+	bootstrap.Execute(context.TODO())
+}
 
 func TestBootstrap_WithMultipleInterfaces(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
@@ -20,27 +60,30 @@ func TestBootstrap_WithMultipleInterfaces(t *testing.T) {
 	mockDevices := mock.NewMockDeviceRepository(mockCtrl)
 	mockPeers := mock.NewMockPeerRepository(mockCtrl)
 	logger := zerolog.Nop()
-	config := &config.Config{
+	cfg := &config.Config{
 		Interfaces: map[string]config.Interface{
-			"wg0": config.Interface{
+			"wg0": {
 				Peers: map[string]config.Peer{
-					"test_peer1": config.Peer{
+					"test_peer1": {
 						PublicKey: "XgPRso34lnrSAx8nJtdj1/zlF7CoNj7B64LPElYdOGs=",
 					},
 				},
 			},
-			"wg1": config.Interface{
+			"wg1": {
 				Peers: map[string]config.Peer{
-					"test_peer2": config.Peer{
+					"test_peer2": {
 						PublicKey: "FQ9/2l8t4xmQQbs6SB03+Lh2VijJX74rxRUOv7YT03k=",
 					},
-					"test_peer3": config.Peer{
+					"test_peer3": {
 						PublicKey: "Cud5HogJJLCppoUuHnWrSvEJuI49D01sQcfiD3Y9RRU=",
 					},
 				},
 			},
 		},
 	}
+	mockPeerSearcher := mockEntity.NewMockPeerSearcher(mockCtrl)
+	deviceConfig := config.NewDeviceConfig(cfg)
+	peerFilterService := entity.NewFilterPeerService(mockPeerSearcher, deviceConfig)
 
 	mockDevice0 := &wgtypes.Device{
 		Name:       "wg0",
@@ -72,12 +115,37 @@ func TestBootstrap_WithMultipleInterfaces(t *testing.T) {
 	mockDevices.EXPECT().Save(gomock.Any(), gomock.Any()).Times(2)
 	mockPeers.EXPECT().Save(gomock.Any(), gomock.Any()).Times(3)
 
+	mockDevice0Peers := []*entity.Peer{
+		entity.NewPeer(
+			entity.NewPeerId(mockDevice0.PublicKey[:], mockDevice0.Peers[0].PublicKey[:]),
+			mockDevice0.Name,
+			mockDevice0.Peers[0].PublicKey,
+		),
+	}
+
+	mockDevice1Peers := []*entity.Peer{
+		entity.NewPeer(
+			entity.NewPeerId(mockDevice1.PublicKey[:], mockDevice1.Peers[0].PublicKey[:]),
+			mockDevice1.Name,
+			mockDevice1.Peers[0].PublicKey,
+		),
+		entity.NewPeer(
+			entity.NewPeerId(mockDevice1.PublicKey[:], mockDevice1.Peers[1].PublicKey[:]),
+			mockDevice1.Name,
+			mockDevice1.Peers[1].PublicKey,
+		),
+	}
+
+	mockPeerSearcher.EXPECT().SearchByDevice(gomock.Any(), entity.DeviceId("wg0")).Return(mockDevice0Peers, nil)
+	mockPeerSearcher.EXPECT().SearchByDevice(gomock.Any(), entity.DeviceId("wg1")).Return(mockDevice1Peers, nil)
+
 	bootstrap := ctrl.NewBootstrapController(
 		mockWgClient,
-		config,
+		cfg,
 		mockDevices,
 		mockPeers,
 		&logger,
+		peerFilterService,
 	)
 
 	bootstrap.Execute(context.TODO())
