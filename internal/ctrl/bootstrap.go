@@ -47,17 +47,11 @@ func (ctrl *BootstrapController) registerDevice(ctx context.Context, deviceName 
 		return err
 	}
 
-	deviceEntity := entity.NewDevice(
-		entity.DeviceId(device.Name),
-		device.ListenPort,
-		device.PrivateKey[:],
-	)
-
-	ctrl.devices.Save(ctx, deviceEntity)
-
+	peerCount := 0
 	for _, p := range device.Peers {
 		base64PublicKey := base64.StdEncoding.EncodeToString(p.PublicKey[:])
 		if name, ok := containsPeer(peers, base64PublicKey); ok {
+			peerCount += 1
 			ctrl.logger.Info().Str("device", deviceName).Str("peer", name).Str("publicKey", base64PublicKey).Msg("Register Peer")
 			peer := entity.NewPeer(
 				entity.NewPeerId(device.PublicKey[:], p.PublicKey[:]),
@@ -67,6 +61,17 @@ func (ctrl *BootstrapController) registerDevice(ctx context.Context, deviceName 
 
 			ctrl.peers.Save(ctx, peer)
 		}
+	}
+
+	if peerCount > 0 {
+		ctrl.logger.Info().Str("device", deviceName).Msg("Register Device")
+		deviceEntity := entity.NewDevice(
+			entity.DeviceId(device.Name),
+			device.ListenPort,
+			device.PrivateKey[:],
+		)
+
+		ctrl.devices.Save(ctx, deviceEntity)
 	}
 
 	return nil
