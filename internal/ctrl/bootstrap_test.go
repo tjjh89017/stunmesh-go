@@ -2,7 +2,6 @@ package ctrl_test
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/rs/zerolog"
@@ -12,69 +11,6 @@ import (
 	gomock "go.uber.org/mock/gomock"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
-
-func TestBootstrap_WithError(t *testing.T) {
-	mockCtrl := gomock.NewController(t)
-	defer mockCtrl.Finish()
-
-	mockWgClient := mock.NewMockWireGuardClient(mockCtrl)
-	mockDevices := mock.NewMockDeviceRepository(mockCtrl)
-	mockPeers := mock.NewMockPeerRepository(mockCtrl)
-	logger := zerolog.Nop()
-	config := &config.Config{
-		WireGuard: "wg0",
-	}
-
-	mockWgClient.EXPECT().Device("wg0").Return(nil, errors.New("device not found"))
-
-	bootstrap := ctrl.NewBootstrapController(
-		mockWgClient,
-		config,
-		mockDevices,
-		mockPeers,
-		&logger,
-	)
-
-	bootstrap.Execute(context.TODO())
-}
-
-func TestBootstrap_WithSingleInterface(t *testing.T) {
-	mockCtrl := gomock.NewController(t)
-	defer mockCtrl.Finish()
-
-	mockWgClient := mock.NewMockWireGuardClient(mockCtrl)
-	mockDevices := mock.NewMockDeviceRepository(mockCtrl)
-	mockPeers := mock.NewMockPeerRepository(mockCtrl)
-	logger := zerolog.Nop()
-	config := &config.Config{
-		WireGuard: "wg0",
-	}
-
-	mockDevice := &wgtypes.Device{
-		Name:       "wg0",
-		ListenPort: 51820,
-		PrivateKey: [32]byte{},
-		Peers: []wgtypes.Peer{
-			{
-				PublicKey: [32]byte{},
-			},
-		},
-	}
-
-	mockWgClient.EXPECT().Device("wg0").Return(mockDevice, nil)
-	mockDevices.EXPECT().Save(gomock.Any(), gomock.Any())
-	mockPeers.EXPECT().Save(gomock.Any(), gomock.Any())
-
-	bootstrap := ctrl.NewBootstrapController(
-		mockWgClient,
-		config,
-		mockDevices,
-		mockPeers,
-		&logger,
-	)
-
-	bootstrap.Execute(context.TODO())
-}
 
 func TestBootstrap_WithMultipleInterfaces(t *testing.T) {
 	mockCtrl := gomock.NewController(t)

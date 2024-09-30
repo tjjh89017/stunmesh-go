@@ -34,12 +34,6 @@ func (ctrl *BootstrapController) Execute(ctx context.Context) {
 			continue
 		}
 	}
-
-	if ctrl.config.WireGuard != "" {
-		if err := ctrl.registerDevice(ctx, ctrl.config.WireGuard, nil); err != nil {
-			ctrl.logger.Error().Err(err).Str("device", ctrl.config.WireGuard).Msg("failed to register device")
-		}
-	}
 }
 
 func (ctrl *BootstrapController) registerDevice(ctx context.Context, deviceName string, peers map[string]config.Peer) error {

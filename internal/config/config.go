@@ -22,7 +22,6 @@ var (
 )
 
 var envs = map[string][]string{
-	"wg":                   {"WG", "WIREGUARD"},
 	"cloudflare.api_key":   {"CF_API_KEY", "CLOUDFLARE_API_KEY"},
 	"cloudflare.api_email": {"CF_API_EMAIL", "CLOUDFLARE_API_EMAIL"},
 	"cloudflare.api_token": {"CF_API_TOKEN", "CLOUDFLARE_API_TOKEN"},
@@ -56,7 +55,6 @@ type Cloudflare struct {
 }
 
 type Config struct {
-	WireGuard       string        `mapstructure:"wg"`
 	Interfaces      Interfaces    `mapstructure:"interfaces"`
 	RefreshInterval time.Duration `mapstructure:"refresh_interval"`
 	Log             Logger        `mapstructure:"log"`
