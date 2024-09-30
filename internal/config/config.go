@@ -10,6 +10,7 @@ import (
 const Name = "config"
 
 var Paths []string = []string{
+	"$STUNMESH_CONFIG_DIR",
 	"/etc/stunmesh",
 	"$HOME/.stunmesh",
 	".",
