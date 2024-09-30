@@ -37,24 +37,31 @@ You should use crontab to trigger stunmesh-go periodically to update Cloudflare 
 
 Put the configuration below paths:
 
-* `/etc/stunmesh/config.toml`
-* `~/.stunmesh/config.toml`
-* `./config.toml`
+* `/etc/stunmesh/config.yaml`
+* `~/.stunmesh/config.yaml`
+* `./config.yaml`
 
-```toml
-wg = "wg03"
-refresh_interval = "10m"
-
-[interfaces.wg02]
-  name = "wg02" # No config available, placeholder to load config
-
-[stun]
-address = "stun.l.google.com:19302"
-
-[cloudflare]
-api_key = "<Your API Key>"
-api_email = "<Your email>"
-zone_name = "<Your Domain>"
+```yaml
+---
+refresh_interval: "5m"
+log:
+  level: "debug"
+interfaces:
+  wg0:
+    peers:
+      "<PEER_NAME>":
+        public_key: "<PUBLIC_KEY_IN_BASE64>"
+  wg1:
+    peers:
+      "<PEER_NAME>":
+        public_key: "<PUBLIC_KEY_IN_BASE64>"
+      "<PEER_NAME>":
+        public_key: "<PUBLIC_KEY_IN_BASE64>"
+stun:
+  address: "stun.l.google.com:19302"
+cloudflare:
+  api_token: "<API_TOKEN>"
+  zone_name: "<ZONE_NAME>"
 ```
 
 > The environment variables is higher priority than the configuration file.
