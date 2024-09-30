@@ -9,14 +9,17 @@ import (
 )
 
 var _ ctrl.PeerRepository = &Peers{}
+var _ entity.PeerSearcher = &Peers{}
 
 type Peers struct {
+	wgCtrl   WireGuardClient
 	mutex    sync.RWMutex
 	entities map[entity.PeerId]*entity.Peer
 }
 
-func NewPeers() *Peers {
+func NewPeers(wgCtrl WireGuardClient) *Peers {
 	return &Peers{
+		wgCtrl:   wgCtrl,
 		entities: make(map[entity.PeerId]*entity.Peer),
 	}
 }
@@ -42,6 +45,25 @@ func (r *Peers) ListByDevice(ctx context.Context, deviceName entity.DeviceId) ([
 		if peer.DeviceName() == string(deviceName) {
 			peers = append(peers, peer)
 		}
+	}
+
+	return peers, nil
+}
+
+// NOTE: will replace the above ListByDevice
+func (r *Peers) SearchByDevice(ctx context.Context, deviceName entity.DeviceId) ([]*entity.Peer, error) {
+	device, err := r.wgCtrl.Device(string(deviceName))
+	if err != nil {
+		return nil, err
+	}
+
+	peers := make([]*entity.Peer, len(device.Peers))
+	for i, peer := range device.Peers {
+		peers[i] = entity.NewPeer(
+			entity.NewPeerId(device.PublicKey[:], peer.PublicKey[:]),
+			device.Name,
+			peer.PublicKey,
+		)
 	}
 
 	return peers, nil

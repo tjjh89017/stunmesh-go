@@ -4,7 +4,15 @@ import (
 	"errors"
 	"time"
 
+	"github.com/google/wire"
 	"github.com/spf13/viper"
+	"github.com/tjjh89017/stunmesh-go/internal/entity"
+)
+
+var DefaultSet = wire.NewSet(
+	Load,
+	NewDeviceConfig,
+	wire.Bind(new(entity.PeerAllower), new(*DeviceConfig)),
 )
 
 const Name = "config"
@@ -29,16 +37,6 @@ var envs = map[string][]string{
 	"cloudflare.zone_name": {"CF_ZONE_NAME", "CLOUDFLARE_ZONE_NAME"},
 	"refresh_interval":     {"REFRESH_INTERVAL"},
 }
-
-type Peer struct {
-	Description string `mapstructure:"description"`
-	PublicKey   string `mapstructure:"public_key"`
-}
-
-type Interface struct {
-	Peers map[string]Peer `mapstructure:"peers"`
-}
-type Interfaces map[string]Interface
 
 type Logger struct {
 	Level string `mapstructure:"level"`

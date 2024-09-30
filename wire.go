@@ -22,19 +22,21 @@ import (
 
 func setup() (*daemon.Daemon, error) {
 	wire.Build(
-		config.Load,
 		wgctrl.New,
 		wire.Bind(new(ctrl.WireGuardClient), new(*wgctrl.Client)),
+		wire.Bind(new(repo.WireGuardClient), new(*wgctrl.Client)),
 		provideCloudflareApi,
 		provideStore,
 		wire.Bind(new(plugin.Store), new(*store.CloudflareStore)),
 		provideRefreshQueue,
 		wire.Bind(new(ctrl.RefreshQueue), new(*queue.Queue[entity.PeerId])),
+		config.DefaultSet,
 		logger.DefaultSet,
 		repo.DefaultSet,
 		stun.DefaultSet,
 		crypto.DefaultSet,
 		ctrl.DefaultSet,
+		entity.DefaultSet,
 		daemon.New,
 	)
 

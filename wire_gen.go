@@ -34,9 +34,11 @@ func setup() (*daemon.Daemon, error) {
 		return nil, err
 	}
 	devices := repo.NewDevices()
-	peers := repo.NewPeers()
+	peers := repo.NewPeers(client)
 	zerologLogger := logger.NewLogger(configConfig)
-	bootstrapController := ctrl.NewBootstrapController(client, configConfig, devices, peers, zerologLogger)
+	deviceConfig := config.NewDeviceConfig(configConfig)
+	filterPeerService := entity.NewFilterPeerService(peers, deviceConfig)
+	bootstrapController := ctrl.NewBootstrapController(client, configConfig, devices, peers, zerologLogger, filterPeerService)
 	api, err := provideCloudflareApi(configConfig)
 	if err != nil {
 		return nil, err
