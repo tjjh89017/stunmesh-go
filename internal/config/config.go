@@ -30,7 +30,13 @@ var envs = map[string][]string{
 	"refresh_interval":     {"REFRESH_INTERVAL"},
 }
 
+type Peer struct {
+	Description string `mapstructure:"description"`
+	PublicKey   string `mapstructure:"public_key"`
+}
+
 type Interface struct {
+	Peers map[string]Peer `mapstructure:"peers"`
 }
 type Interfaces map[string]Interface
 
