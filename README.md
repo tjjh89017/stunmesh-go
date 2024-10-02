@@ -1,4 +1,7 @@
 # stunmesh-go
+
+:warning: This README is out of date. We will update this shortly.
+
 STUNMESH is a Wireguard helper tool to get through Full-Cone NAT.
 
 Inspired by manuels' [wireguard-p2p](https://github.com/manuels/wireguard-p2p) project
