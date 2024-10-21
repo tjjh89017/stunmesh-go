@@ -3,7 +3,7 @@ module github.com/tjjh89017/stunmesh-go
 go 1.22
 
 require (
-	github.com/cloudflare/cloudflare-go v0.104.0
+	github.com/cloudflare/cloudflare-go v0.107.0
 	github.com/google/wire v0.6.0
 	github.com/pion/stun v0.6.1
 	github.com/rs/zerolog v1.33.0
@@ -45,7 +45,7 @@ require (
 	golang.org/x/sync v0.8.0 // indirect
 	golang.org/x/sys v0.26.0 // indirect
 	golang.org/x/text v0.19.0 // indirect
-	golang.org/x/time v0.6.0 // indirect
+	golang.org/x/time v0.7.0 // indirect
 	golang.zx2c4.com/wireguard v0.0.0-20230325221338-052af4a8072b // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
