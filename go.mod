@@ -3,7 +3,7 @@ module github.com/tjjh89017/stunmesh-go
 go 1.22
 
 require (
-	github.com/cloudflare/cloudflare-go v0.111.0
+	github.com/cloudflare/cloudflare-go v0.112.0
 	github.com/google/wire v0.6.0
 	github.com/pion/stun v0.6.1
 	github.com/rs/zerolog v1.33.0
@@ -16,7 +16,7 @@ require (
 
 require (
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
-	github.com/goccy/go-json v0.10.3 // indirect
+	github.com/goccy/go-json v0.10.4 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
