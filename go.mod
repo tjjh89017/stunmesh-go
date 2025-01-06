@@ -3,7 +3,7 @@ module github.com/tjjh89017/stunmesh-go
 go 1.22
 
 require (
-	github.com/cloudflare/cloudflare-go v0.112.0
+	github.com/cloudflare/cloudflare-go v0.113.0
 	github.com/google/wire v0.6.0
 	github.com/pion/stun v0.6.1
 	github.com/rs/zerolog v1.33.0
