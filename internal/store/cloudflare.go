@@ -5,7 +5,7 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/cloudflare/cloudflare-go"
+	cloudflare "github.com/cloudflare/cloudflare-go"
 	"github.com/rs/zerolog"
 	"github.com/tjjh89017/stunmesh-go/plugin"
 )
