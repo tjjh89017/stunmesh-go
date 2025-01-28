@@ -6,7 +6,7 @@ on:
       - main
 
 env:
-  GO_VERSION: "1.22"
+  GO_VERSION: "stable"
   CGO_ENABLED: "0"
   APP: "stunmesh"
 
