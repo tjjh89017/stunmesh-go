@@ -1,13 +1,13 @@
 
-APP=stunmesh-go
+APP?=stunmesh-go
 
-.PHONY build
+.PHONY: build
 build: clean
 	go build -v -o ${APP}
 
-.PHONY clean
+.PHONY: clean
 clean:
 	go clean
 
-.PHONY all
+.PHONY: all
 all: build
