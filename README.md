@@ -46,7 +46,7 @@ Put the configuration below paths:
 
 ```yaml
 ---
-refresh_interval: "5m"
+refresh_interval: "1m"
 log:
   level: "debug"
 interfaces:
