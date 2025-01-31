@@ -1,16 +1,16 @@
 # stunmesh-go
 
-:warning: This README is out of date. We will update this shortly.
-
 STUNMESH is a Wireguard helper tool to get through Full-Cone NAT.
 
 Inspired by manuels' [wireguard-p2p](https://github.com/manuels/wireguard-p2p) project
 
-Tested with UBNT ER-X v2.0.8-hotfix.1 and Wireguard v1.0.20210424
+Tested with
+- VyOS 1.5-rolling-202501180006 (built-in Wireguard kernel module)
+- Ubuntu with Wireguard in Kernel module
+- MacOS Wireguard-go 0.0.20230223, Wireguard-tools 1.0.20210914
 
-:warning: This PoC code is dirty and need refactor.
+## Implementation
 
-## Implement
 Use raw socket and cBPF filter to send and receive STUN 5389's packet to get public ip and port with same port of wireguard interface.<br />
 Encrypt public info with Curve25519 sealedbox and save it into Cloudflare DNS TXT record.<br />
 stunmesh-go will create and update a record with domain `<sha1 in hex>.<your_domain>`.<br />
@@ -18,23 +18,19 @@ Once getting info from internet, it will setup peer endpoint with wireguard tool
 
 stunmesh-go assume you only have one peer per wireguard interface.
 
-Still need refactor to get plugin support
+:warning: Still need refactor to get plugin support
 
 ## Build
 
-### Build for UBNT ER-X
-```
-./build-for-erx.sh
-```
-
-### Build for Linux in native environment
-```
-go build .
+```bash
+make all
 ```
 
 ## Usage
-Please edit `start.sh` and execute it with root privileges.<br />
-You should use crontab to trigger stunmesh-go periodically to update Cloudflare TXT record and receive remote peer's public info. <br />
+
+```
+sudo ./stunmesh-go
+```
 
 ### Configuration
 
@@ -67,18 +63,243 @@ cloudflare:
   zone_name: "<ZONE_NAME>"
 ```
 
-> The environment variables is higher priority than the configuration file.
+## Example Usage
 
-### Environment Variables
+These are the strict examples to show you how to use STUNMESH-go in your environment. You can mix the setup in your envrionments.
 
-| Name               | Description                                |
-|--------------------|--------------------------------------------|
-| `WG`               | Wireguard interface name                   |
-| `CF_API_KEY`       | Cloudflare API Key                         |
-| `CF_API_EMAIL`     | Cloudflare API Email                       |
-| `CF_ZONE_NAME`     | Cloudflare Zone Name                       |
-| `CF_API_TOKEN`     | Cloudflare API Token                       |
-| `REFRESH_INTERVAL` | Refresh interval for Cloudflare TXT record |
+For example, you can use VyOS router with Mac with STUNMESH-go to connect Wireguard tunnel with only Mobile networks or Public IPs.
+
+### Example 1
+
+Suppose you have two VyOS routers with LTE modem on them.
+
+Hardware in Site A:
+1. VyOS_A with LTE modem and SIM card.
+2. Other devices under the subnet.
+
+Hardware in Site B:
+1. VyOS_B with LTE modem and SIM card.
+2. Other devices under the subnet.
+
+#### Steps in Site A
+
+1. Configure VyOS_A with LTE connections.
+2. Configure VyOS_A with the following commands.
+3. Wait for it connected. (Mostly, it will require 2 times of refresh_interval)
+
+VyOS Commands
+```bash
+mkdir -p /config/user-data/stunmesh
+cat <<EOF > /config/user-data/stunmesh/config.yaml
+refresh_interval: "1m"
+log:
+  level: "debug"
+interfaces:
+  wg0:
+    peers:
+      "VYOS_B":
+        public_key: "<VYOS_B_PUBLIC_KEY>"
+stun:
+  address: "stun.l.google.com:19302"
+cloudflare:
+  api_token: "<API_TOKEN>"
+  zone_name: "<ZONE_NAME>"
+EOF
+
+configure
+set container name stunmesh allow-host-networks
+set container name stunmesh capability 'net-admin'
+set container name stunmesh capability 'net-raw'
+set container name stunmesh capability 'net-bind-service'
+set container name stunmesh capability 'sys-admin'
+set container name stunmesh image 'tjjh89017/stunmesh'
+set container name stunmesh uid '0'
+set container name stunmesh volume certs destination '/etc/ssl/certs'
+set container name stunmesh volume certs mode 'ro'
+set container name stunmesh volume certs source '/etc/ssl/certs'
+set container name stunmesh volume config destination '/etc/stunmesh'
+set container name stunmesh volume config mode 'ro'
+set container name stunmesh volume config source '/config/user-data/stunmesh'
+set interfaces wireguard wg0 address '192.168.10.1/24'
+set interfaces wireguard wg0 port '<YOUR_WIREGUARD_PORT>'
+set interfaces wireguard wg0 ip adjust-mss '1380'
+set interfaces wireguard wg0 ipv6 adjust-mss '1360'
+set interfaces wireguard wg0 mtu '1420'
+set interfaces wireguard wg0 peer VYOS_B allowed-ips '192.168.10.2/24'
+set interfaces wireguard wg0 peer VYOS_B persistent-keepalive '15'
+set interfaces wireguard wg0 peer VYOS_B public-key <VYOS_B_PUBLIC_KEY>
+set interfaces wireguard wg0 private-key <VYOS_A_PRIVATE_KEY>
+
+# You will need to setup firewall rules to allow ingress traffic to '<YOUR_WIREGUARD_PORT>'
+# Please check the VyOS docs to use nft style firewall or Zone Based Firewall
+commit
+save
+```
+
+#### Steps in Site B
+
+1. Configure VyOS_B with LTE connections.
+2. Configure VyOS_B with the following commands.
+3. Wait for it connected. (Mostly, it will require 2 times of refresh_interval)
+
+VyOS Commands
+```bash
+mkdir -p /config/user-data/stunmesh
+cat <<EOF > /config/user-data/stunmesh/config.yaml
+refresh_interval: "1m"
+log:
+  level: "debug"
+interfaces:
+  wg0:
+    peers:
+      "VYOS_A":
+        public_key: "<VYOS_A_PUBLIC_KEY>"
+stun:
+  address: "stun.l.google.com:19302"
+cloudflare:
+  api_token: "<API_TOKEN>"
+  zone_name: "<ZONE_NAME>"
+EOF
+
+configure
+set container name stunmesh allow-host-networks
+set container name stunmesh capability 'net-admin'
+set container name stunmesh capability 'net-raw'
+set container name stunmesh capability 'net-bind-service'
+set container name stunmesh capability 'sys-admin'
+set container name stunmesh image 'tjjh89017/stunmesh'
+set container name stunmesh uid '0'
+set container name stunmesh volume certs destination '/etc/ssl/certs'
+set container name stunmesh volume certs mode 'ro'
+set container name stunmesh volume certs source '/etc/ssl/certs'
+set container name stunmesh volume config destination '/etc/stunmesh'
+set container name stunmesh volume config mode 'ro'
+set container name stunmesh volume config source '/config/user-data/stunmesh'
+set interfaces wireguard wg0 address '192.168.10.2/24'
+set interfaces wireguard wg0 port '<YOUR_WIREGUARD_PORT>'
+set interfaces wireguard wg0 ip adjust-mss '1380'
+set interfaces wireguard wg0 ipv6 adjust-mss '1360'
+set interfaces wireguard wg0 mtu '1420'
+set interfaces wireguard wg0 peer VYOS_A allowed-ips '192.168.10.2/24'
+set interfaces wireguard wg0 peer VYOS_A persistent-keepalive '15'
+set interfaces wireguard wg0 peer VYOS_A public-key <VYOS_A_PUBLIC_KEY>
+set interfaces wireguard wg0 private-key <VYOS_B_PRIVATE_KEY>
+
+# You will need to setup firewall rules to allow ingress traffic to '<YOUR_WIREGUARD_PORT>'
+# Please check the VyOS docs to use nft style firewall or Zone Based Firewall
+commit
+save
+```
+
+#### Verify the Wireguard connections is established
+
+Ping each other with Wireguard interface's IP to test the connection
+
+#### Extra Configuration
+
+You may need to configure some static route or dynamic route to connect two subnets with different sites.
+
+### Example 2
+
+Suppose you have two LTE/5G routers and two downlink MacOS or Linux computers. Here we use the following setup to demo.
+
+Hardware in Site A:
+1. Netgear M5 5G router (with Asia Pacific Telecom, Now Far EasTone Telecom)
+2. MacOS Intel-based `Intel Mac`
+
+Hardware in Site B:
+1. iPhone 15 Pro (with Chunghwa Telecom 4G LTE SIM)
+2. Macbook Air M3 `Mac M3`
+
+#### Steps in Site A
+
+1. Connect your `Intel Mac` with Netgear M5 to get the internet.
+2. Install wireguard-go and wireguard-tools in your Mac.
+3. Download STUNMESH-go for your Mac's architecture to `/tmp/stunmesh-go`.
+4. Prepare your wireguard configuration as below
+5. Prepare `config.yaml` as below, please fill your `utunX` interface from the result of `wg-quick`
+6. Run wireguard tunnel with `wg-quick up /tmp/wg0.conf`
+7. Run STUNMESH-go in `/tmp/`, `cd /tmp; sudo ./stunmesh-go`
+8. Wait for it connected. (Mostly, it will require 2 times of `refresh_interval`)
+
+Wiregaurd Config `/tmp/wg0.conf`
+```
+[Interface]
+PrivateKey = <INTEL_MAC_PRIVATE_KEY>
+Address = 192.168.10.1/24
+
+[Peer]
+PublicKey = <MAC_M3_PUBLIC_KEY>
+AllowedIPs = 192.168.10.0/24
+PersistentKeepalive = 25
+```
+
+STUNMESH-go `/tmp/config.yaml`
+
+```yaml
+---
+refresh_interval: "1m"
+log:
+  level: "debug"
+interfaces:
+  "<utunX>":
+    peers:
+      "MAC_M3":
+        public_key: "<MAC_M3_PUBLIC_KEY>"
+stun:
+  address: "stun.l.google.com:19302"
+cloudflare:
+  api_token: "<API_TOKEN>"
+  zone_name: "<ZONE_NAME>"
+```
+
+#### Steps in Site B
+
+1. Connect your `Mac M3` with your iPhone15 to get the internet.
+2. Install wireguard-go and wireguard-tools in your Mac.
+3. Download STUNMESH-go for your Mac's architecture to `/tmp/stunmesh-go`.
+4. Prepare your wireguard configuration as below
+5. Prepare `config.yaml` as below, please fill your `utunX` interface from the result of `wg-quick`
+6. Run wireguard tunnel with `wg-quick up /tmp/wg0.conf`
+7. Run STUNMESH-go in `/tmp/`, `cd /tmp; sudo ./stunmesh-go`
+8. Wait for it connected. (Mostly, it will require 2 times of `refresh_interval`)
+
+Wiregaurd Config `/tmp/wg0.conf`
+```
+[Interface]
+PrivateKey = <MAC_M3_PRIVATE_KEY>
+Address = 192.168.10.2/24
+
+[Peer]
+PublicKey = <INTEL_MAC_PUBLIC_KEY>
+AllowedIPs = 192.168.10.0/24
+PersistentKeepalive = 25
+```
+
+STUNMESH-go `/tmp/config.yaml`
+
+```yaml
+---
+refresh_interval: "1m"
+log:
+  level: "debug"
+interfaces:
+  "<utunX>":
+    peers:
+      "INTEL_MAC":
+        public_key: "<INTE_MAC_PUBLIC_KEY>"
+stun:
+  address: "stun.l.google.com:19302"
+cloudflare:
+  api_token: "<API_TOKEN>"
+  zone_name: "<ZONE_NAME>"
+```
+
+#### Verify the Wireguard connections is established
+
+Ping each other to check or you can use `wg` to show the info.
+
+
 
 ## Extra Usage
 You could use OSPF on Wireguard interface to create full mesh site-to-site VPN with dynamic routing.<br />
@@ -170,32 +391,11 @@ protocols {
 }
 ```
 
-in stunmesh-go start.sh
-```
-#!/bin/bash
-
-export CF_API_KEY=<Your API Key>
-export CF_API_EMAIL=<Your email>
-export CF_ZONE_NAME=<Your Domain>
-
-wgs=("wg02" "wg03")
-
-for wg in ${wgs[@]}
-do
-        echo $wg
-        export WG=$wg
-        /tmp/stunmesh-go
-        sleep 10
-        /tmp/stunmesh-go
-done
-```
-
 ## Future work / Roadmap
 
-- daemon and one shot command
+- one shot command
 - auto execute when routing engine notify change
 - plugin based storage
-- config file via JSON or other format
 
 ## License
 This program is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation; either version 2 of the License, or (at your option) any later version.
