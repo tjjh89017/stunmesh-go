@@ -57,8 +57,16 @@ func (d *Daemon) Run(ctx context.Context) {
 	}()
 
 	d.bootCtrl.Execute(daemonCtx)
-	go d.refreshCtrl.Execute(daemonCtx)
-	go d.publishCtrl.Execute(daemonCtx)
+
+	go func() {
+		// burst 3 time at startup
+		for range 3 {
+			go d.refreshCtrl.Execute(daemonCtx)
+			go d.publishCtrl.Execute(daemonCtx)
+			time.Sleep(time.Second * 15)
+		}
+	}()
+
 	d.logger.Info().Msgf("daemon started with refresh interval %s", d.config.RefreshInterval)
 
 	ticker := time.NewTicker(d.config.RefreshInterval)
