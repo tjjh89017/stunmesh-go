@@ -32,6 +32,12 @@ make all
 sudo ./stunmesh-go
 ```
 
+Or use STUNMESH-go in the container
+
+```
+docker pull tjjh89017/stunmesh
+```
+
 ### Configuration
 
 Put the configuration below paths:
