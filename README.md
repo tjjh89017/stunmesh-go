@@ -16,8 +16,6 @@ Encrypt public info with Curve25519 sealedbox and save it into Cloudflare DNS TX
 stunmesh-go will create and update a record with domain `<sha1 in hex>.<your_domain>`.<br />
 Once getting info from internet, it will setup peer endpoint with wireguard tools.<br />
 
-stunmesh-go assume you only have one peer per wireguard interface.
-
 :warning: Still need refactor to get plugin support
 
 ## Build
