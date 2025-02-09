@@ -8,29 +8,25 @@ import (
 
 	"github.com/cloudflare/cloudflare-go"
 	"github.com/tjjh89017/stunmesh-go/internal/store"
+	"github.com/tjjh89017/stunmesh-go/internal/store/store_mock"
+	"go.uber.org/mock/gomock"
 )
 
-var _ store.CloudflareApi = &mockCloudflareApi{}
-
-type mockCloudflareApi struct {
+type mockCloudflareStore struct {
 	mutex   sync.RWMutex
 	lastId  int
 	records []cloudflare.DNSRecord
 }
 
-func newMockCloudflareApi() *mockCloudflareApi {
-	return &mockCloudflareApi{
-		records: []cloudflare.DNSRecord{},
-	}
-}
+var mockData mockCloudflareStore
 
-func (m *mockCloudflareApi) ListDNSRecords(ctx context.Context, rc *cloudflare.ResourceContainer, params cloudflare.ListDNSRecordsParams) ([]cloudflare.DNSRecord, *cloudflare.ResultInfo, error) {
-	m.mutex.RLock()
-	defer m.mutex.RUnlock()
+func listDNSRecords(ctx context.Context, rc *cloudflare.ResourceContainer, params cloudflare.ListDNSRecordsParams) ([]cloudflare.DNSRecord, *cloudflare.ResultInfo, error) {
+	mockData.mutex.RLock()
+	defer mockData.mutex.RUnlock()
 
 	matchedRecords := []cloudflare.DNSRecord{}
 
-	for _, record := range m.records {
+	for _, record := range mockData.records {
 		isNameMatched := record.Name == params.Name
 		isTypeMatched := record.Type == params.Type
 
@@ -42,43 +38,43 @@ func (m *mockCloudflareApi) ListDNSRecords(ctx context.Context, rc *cloudflare.R
 	return matchedRecords, &cloudflare.ResultInfo{Count: len(matchedRecords)}, nil
 }
 
-func (m *mockCloudflareApi) CreateDNSRecord(ctx context.Context, rc *cloudflare.ResourceContainer, params cloudflare.CreateDNSRecordParams) (cloudflare.DNSRecord, error) {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
+func createDNSRecord(ctx context.Context, rc *cloudflare.ResourceContainer, params cloudflare.CreateDNSRecordParams) (cloudflare.DNSRecord, error) {
+	mockData.mutex.Lock()
+	defer mockData.mutex.Unlock()
 
-	m.lastId++
+	mockData.lastId++
 	record := cloudflare.DNSRecord{
-		ID:      fmt.Sprintf("mock-record-id-%d", m.lastId),
+		ID:      fmt.Sprintf("mock-record-id-%d", mockData.lastId),
 		Type:    params.Type,
 		Content: params.Content,
 		Name:    params.Name,
 	}
 
-	m.records = append(m.records, record)
+	mockData.records = append(mockData.records, record)
 	return record, nil
 }
 
-func (m *mockCloudflareApi) UpdateDNSRecord(ctx context.Context, rc *cloudflare.ResourceContainer, params cloudflare.UpdateDNSRecordParams) (cloudflare.DNSRecord, error) {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
+func updateDNSRecord(ctx context.Context, rc *cloudflare.ResourceContainer, params cloudflare.UpdateDNSRecordParams) (cloudflare.DNSRecord, error) {
+	mockData.mutex.Lock()
+	defer mockData.mutex.Unlock()
 
-	for i, record := range m.records {
+	for i, record := range mockData.records {
 		if record.ID == params.ID {
-			m.records[i].Content = params.Content
-			return m.records[i], nil
+			mockData.records[i].Content = params.Content
+			return mockData.records[i], nil
 		}
 	}
 
 	return cloudflare.DNSRecord{}, fmt.Errorf("record with id %s not found", params.ID)
 }
 
-func (m *mockCloudflareApi) DeleteDNSRecord(ctx context.Context, rc *cloudflare.ResourceContainer, recordId string) error {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
+func deleteDNSRecord(ctx context.Context, rc *cloudflare.ResourceContainer, recordId string) error {
+	mockData.mutex.Lock()
+	defer mockData.mutex.Unlock()
 
-	for i, record := range m.records {
+	for i, record := range mockData.records {
 		if record.ID == recordId {
-			m.records = append(m.records[:i], m.records[i+1:]...)
+			mockData.records = append(mockData.records[:i], mockData.records[i+1:]...)
 			return nil
 		}
 	}
@@ -86,19 +82,45 @@ func (m *mockCloudflareApi) DeleteDNSRecord(ctx context.Context, rc *cloudflare.
 	return fmt.Errorf("record with id %s not found", recordId)
 }
 
-func (m *mockCloudflareApi) ZoneIDByName(zoneName string) (string, error) {
+func zoneIDByName(zoneName string) (string, error) {
 	return "mock-zone-id", nil
+}
+
+func setup(t *testing.T) (context.Context, *store_mock.MockCloudflareApi) {
+	t.Helper()
+
+	// init mock
+	ctrl := gomock.NewController(t)
+	mock := store_mock.NewMockCloudflareApi(ctrl)
+
+	// setup common mock expectation
+	mock.EXPECT().ZoneIDByName(gomock.Any()).DoAndReturn(zoneIDByName).AnyTimes()
+
+	// init data
+	mockData.mutex.Lock()
+	defer mockData.mutex.Unlock()
+
+	mockData.lastId = 0
+	mockData.records = []cloudflare.DNSRecord{}
+	return context.Background(), mock
 }
 
 func Test_CloudflareStore(t *testing.T) {
 	t.Parallel()
 
-	mockApi := newMockCloudflareApi()
-	store := store.NewCloudflareStore(mockApi, "example.com")
-	ctx := context.Background()
+	ctx, mockApi := setup(t)
 
-	key := "key"
-	value := "value"
+	// mock expect for Set() operation
+	mockApi.EXPECT().ListDNSRecords(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(listDNSRecords)
+	mockApi.EXPECT().CreateDNSRecord(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(createDNSRecord)
+
+	// mock expect for Get() operation
+	mockApi.EXPECT().ListDNSRecords(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(listDNSRecords)
+
+	store := store.NewCloudflareStore(mockApi, "example.com")
+
+	const key = "key"
+	const value = "value"
 
 	err := store.Set(ctx, key, value)
 	if err != nil {
@@ -116,12 +138,21 @@ func Test_CloudflareStore(t *testing.T) {
 }
 
 func Test_CloudflareStore_ExistsDuplicate(t *testing.T) {
-	mockApi := newMockCloudflareApi()
-	store := store.NewCloudflareStore(mockApi, "example.com")
-	ctx := context.Background()
+	const existedRecordCnt = 3
 
-	for i := 0; i < 3; i++ {
-		_, err := mockApi.CreateDNSRecord(ctx, cloudflare.ZoneIdentifier("mock-zone-id"), cloudflare.CreateDNSRecordParams{
+	ctx, mockApi := setup(t)
+
+	// mock expect for Set() operation
+	mockApi.EXPECT().ListDNSRecords(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(listDNSRecords)
+	mockApi.EXPECT().DeleteDNSRecord(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(deleteDNSRecord).Times(existedRecordCnt - 1)
+	mockApi.EXPECT().UpdateDNSRecord(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(updateDNSRecord)
+
+	// mock expect for Get() operation
+	mockApi.EXPECT().ListDNSRecords(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(listDNSRecords)
+
+	store := store.NewCloudflareStore(mockApi, "example.com")
+	for i := 0; i < existedRecordCnt; i++ {
+		_, err := createDNSRecord(ctx, cloudflare.ZoneIdentifier("mock-zone-id"), cloudflare.CreateDNSRecordParams{
 			Type:    "TXT",
 			Content: fmt.Sprintf("value-%d", i),
 			Name:    "key.example.com",
@@ -132,8 +163,8 @@ func Test_CloudflareStore_ExistsDuplicate(t *testing.T) {
 		}
 	}
 
-	key := "key"
-	value := "value"
+	const key = "key"
+	const value = "value"
 
 	err := store.Set(ctx, key, value)
 	if err != nil {
