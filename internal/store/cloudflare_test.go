@@ -180,3 +180,38 @@ func Test_CloudflareStore_ExistsDuplicate(t *testing.T) {
 		t.Fatalf("expected value %s, got %s", value, gotValue)
 	}
 }
+
+func Test_CloudflareStore_SetTheSameRecord(t *testing.T) {
+	ctx, mockApi := setup(t)
+
+	// mock expect for Set() operation
+	mockApi.EXPECT().ListDNSRecords(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(listDNSRecords).Times(2)
+	mockApi.EXPECT().CreateDNSRecord(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(createDNSRecord)
+
+	// mock expect for Get() operation
+	mockApi.EXPECT().ListDNSRecords(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(listDNSRecords)
+
+	store := store.NewCloudflareStore(mockApi, "example.com")
+
+	const key = "key"
+	const value = "value"
+
+	err := store.Set(ctx, key, value)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err2 := store.Set(ctx, key, value)
+	if err2 != nil {
+		t.Fatal(err2)
+	}
+
+	gotValue, err := store.Get(ctx, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if gotValue != value {
+		t.Fatalf("expected value %s, got %s", value, gotValue)
+	}
+}
