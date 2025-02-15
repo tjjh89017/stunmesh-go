@@ -89,6 +89,11 @@ func (s *CloudflareStore) Set(ctx context.Context, key string, value string) err
 		}
 	}
 
+	// skip update the same record
+	if value == records[0].Content {
+		return nil
+	}
+
 	_, err = s.api.UpdateDNSRecord(ctx, zoneId, cloudflare.UpdateDNSRecordParams{
 		ID:      records[0].ID,
 		Content: value,
