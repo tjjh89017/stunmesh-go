@@ -91,6 +91,7 @@ func (s *CloudflareStore) Set(ctx context.Context, key string, value string) err
 
 	// skip update the same record
 	if value == records[0].Content {
+		logger.Info().Str("key", key).Str("value", value).Msg("the same record exists, skip the update.")
 		return nil
 	}
 
