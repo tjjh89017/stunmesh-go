@@ -22,6 +22,7 @@ func Test_PeerRepository_Find(t *testing.T) {
 		peerId,
 		"wg0",
 		[32]byte{},
+		"cloudflare",
 	)
 
 	peers := repo.NewPeers(mockWgClient)
@@ -78,6 +79,7 @@ func Test_PeerRepository_List(t *testing.T) {
 					entity.NewPeerId([]byte{}, []byte{}),
 					"wg0",
 					[32]byte{},
+					"cloudflare",
 				),
 			},
 		},
@@ -88,11 +90,13 @@ func Test_PeerRepository_List(t *testing.T) {
 					entity.NewPeerId([]byte{}, []byte{}),
 					"wg0",
 					[32]byte{},
+					"cloudflare",
 				),
 				entity.NewPeer(
 					entity.NewPeerId([]byte{1}, []byte{1}),
 					"wg1",
 					[32]byte{},
+					"exec",
 				),
 			},
 		},
@@ -149,6 +153,7 @@ func Test_PeerListByDevice(t *testing.T) {
 					entity.NewPeerId([]byte{}, []byte{}),
 					"wg0",
 					[32]byte{},
+					"cloudflare",
 				),
 			},
 			expected: 1,
@@ -161,11 +166,13 @@ func Test_PeerListByDevice(t *testing.T) {
 					entity.NewPeerId([]byte{}, []byte{}),
 					"wg0",
 					[32]byte{},
+					"cloudflare",
 				),
 				entity.NewPeer(
 					entity.NewPeerId([]byte{1}, []byte{1}),
 					"wg1",
 					[32]byte{},
+					"exec",
 				),
 			},
 			expected: 1,

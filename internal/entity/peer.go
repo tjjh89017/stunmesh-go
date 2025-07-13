@@ -10,13 +10,15 @@ type Peer struct {
 	id         PeerId
 	deviceName string
 	publicKey  [32]byte
+	plugin     string
 }
 
-func NewPeer(id PeerId, deviceName string, publicKey [32]byte) *Peer {
+func NewPeer(id PeerId, deviceName string, publicKey [32]byte, plugin string) *Peer {
 	return &Peer{
 		id:         id,
 		deviceName: deviceName,
 		publicKey:  publicKey,
+		plugin:     plugin,
 	}
 }
 
@@ -38,4 +40,8 @@ func (p *Peer) DeviceName() string {
 
 func (p *Peer) PublicKey() [32]byte {
 	return p.publicKey
+}
+
+func (p *Peer) Plugin() string {
+	return p.plugin
 }

@@ -7,7 +7,7 @@
 package main
 
 import (
-	"github.com/cloudflare/cloudflare-go"
+	"context"
 	"github.com/tjjh89017/stunmesh-go/internal/config"
 	"github.com/tjjh89017/stunmesh-go/internal/crypto"
 	"github.com/tjjh89017/stunmesh-go/internal/ctrl"
@@ -16,8 +16,8 @@ import (
 	"github.com/tjjh89017/stunmesh-go/internal/logger"
 	"github.com/tjjh89017/stunmesh-go/internal/queue"
 	"github.com/tjjh89017/stunmesh-go/internal/repo"
-	"github.com/tjjh89017/stunmesh-go/internal/store"
 	"github.com/tjjh89017/stunmesh-go/internal/stun"
+	"github.com/tjjh89017/stunmesh-go/plugin"
 	"golang.zx2c4.com/wireguard/wgctrl"
 )
 
@@ -39,15 +39,14 @@ func setup() (*daemon.Daemon, error) {
 	deviceConfig := config.NewDeviceConfig(configConfig)
 	filterPeerService := entity.NewFilterPeerService(peers, deviceConfig)
 	bootstrapController := ctrl.NewBootstrapController(client, configConfig, devices, peers, zerologLogger, filterPeerService)
-	api, err := provideCloudflareApi(configConfig)
+	manager, err := providePluginManager(configConfig)
 	if err != nil {
 		return nil, err
 	}
-	cloudflareStore := provideStore(api, configConfig)
 	resolver := stun.NewResolver(configConfig, zerologLogger)
 	endpoint := crypto.NewEndpoint()
-	publishController := ctrl.NewPublishController(devices, peers, cloudflareStore, resolver, endpoint, zerologLogger)
-	establishController := ctrl.NewEstablishController(client, devices, peers, cloudflareStore, endpoint, zerologLogger)
+	publishController := ctrl.NewPublishController(devices, peers, manager, resolver, endpoint, zerologLogger)
+	establishController := ctrl.NewEstablishController(client, devices, peers, manager, endpoint, zerologLogger)
 	refreshController := ctrl.NewRefreshController(peers, queue, zerologLogger)
 	daemonDaemon := daemon.New(configConfig, queue, bootstrapController, publishController, establishController, refreshController, zerologLogger)
 	return daemonDaemon, nil
@@ -55,16 +54,23 @@ func setup() (*daemon.Daemon, error) {
 
 // wire.go:
 
-func provideCloudflareApi(config2 *config.Config) (*cloudflare.API, error) {
-	if config2.Cloudflare.ApiToken != "" {
-		return cloudflare.NewWithAPIToken(config2.Cloudflare.ApiToken)
+func providePluginManager(config2 *config.Config) (*plugin.Manager, error) {
+	manager := plugin.NewManager()
+	ctx := context.Background()
+
+	pluginsMap := make(map[string]plugin.PluginDefinition)
+	for name, def := range config2.Plugins {
+		pluginsMap[name] = plugin.PluginDefinition{
+			Type:   def.Type,
+			Config: plugin.PluginConfig(def.Config),
+		}
 	}
 
-	return cloudflare.New(config2.Cloudflare.ApiKey, config2.Cloudflare.ApiEmail)
-}
+	if err := manager.LoadPlugins(ctx, pluginsMap); err != nil {
+		return nil, err
+	}
 
-func provideStore(cfApi *cloudflare.API, config2 *config.Config) *store.CloudflareStore {
-	return store.NewCloudflareStore(cfApi, config2.Cloudflare.ZoneName)
+	return manager, nil
 }
 
 func provideRefreshQueue() *queue.Queue[entity.PeerId] {

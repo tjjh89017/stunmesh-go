@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/base64"
 
-	"github.com/rs/zerolog"
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
 )
 
 type Peer struct {
 	Description string `mapstructure:"description"`
 	PublicKey   string `mapstructure:"public_key"`
+	Plugin      string `mapstructure:"plugin"`
 }
 
 type Interface struct {
@@ -18,7 +18,7 @@ type Interface struct {
 }
 type Interfaces map[string]Interface
 
-var _ entity.PeerAllower = &DeviceConfig{}
+var _ entity.ConfigPeerProvider = &DeviceConfig{}
 
 type DeviceConfig struct {
 	interfaces Interfaces
@@ -30,26 +30,27 @@ func NewDeviceConfig(config *Config) *DeviceConfig {
 	}
 }
 
-func (c *DeviceConfig) Allow(ctx context.Context, deviceName string, publicKey []byte, peerId entity.PeerId) bool {
-	logger := zerolog.Ctx(ctx)
-
+func (c *DeviceConfig) GetConfigPeers(ctx context.Context, deviceName string, localPublicKey []byte) ([]*entity.Peer, error) {
 	device, ok := c.interfaces[deviceName]
 	if !ok {
-		return false
+		return []*entity.Peer{}, nil
 	}
 
-	for _, peer := range device.Peers {
-		peerPublicKey, err := base64.StdEncoding.DecodeString(peer.PublicKey)
+	peers := make([]*entity.Peer, 0, len(device.Peers))
+	for _, configPeer := range device.Peers {
+		peerPublicKey, err := base64.StdEncoding.DecodeString(configPeer.PublicKey)
 		if err != nil {
-			logger.Error().Err(err).Str("device", deviceName).Str("public_key", peer.PublicKey).Msg("failed to decode public key")
 			continue
 		}
 
-		currentPeerId := entity.NewPeerId(publicKey, peerPublicKey)
-		if peerId == currentPeerId {
-			return true
-		}
+		var publicKeyArray [32]byte
+		copy(publicKeyArray[:], peerPublicKey)
+
+		peerId := entity.NewPeerId(localPublicKey, peerPublicKey)
+		peer := entity.NewPeer(peerId, deviceName, publicKeyArray, configPeer.Plugin)
+		peers = append(peers, peer)
 	}
 
-	return false
+	return peers, nil
 }
+
