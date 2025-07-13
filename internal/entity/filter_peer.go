@@ -1,40 +1,49 @@
-//go:generate mockgen -destination=./mock/mock_peer.go -package=mock_entity . PeerSearcher,PeerAllower
+//go:generate mockgen -destination=./mock/mock_peer.go -package=mock_entity . ConfigPeerProvider,DevicePeerChecker
 package entity
 
 import "context"
 
-type PeerSearcher interface {
-	SearchByDevice(context.Context, DeviceId) ([]*Peer, error)
+type ConfigPeerProvider interface {
+	GetConfigPeers(ctx context.Context, deviceName string, localPublicKey []byte) ([]*Peer, error)
 }
 
-type PeerAllower interface {
-	Allow(ctx context.Context, deviceName string, publicKey []byte, peerId PeerId) bool
+type DevicePeerChecker interface {
+	GetDevicePeerMap(ctx context.Context, deviceName string) (map[string]bool, error)
 }
 
 type FilterPeerService struct {
-	searcher PeerSearcher
-	allower  PeerAllower
+	configProvider ConfigPeerProvider
+	deviceChecker  DevicePeerChecker
 }
 
-func NewFilterPeerService(searcher PeerSearcher, allower PeerAllower) *FilterPeerService {
+func NewFilterPeerService(deviceChecker DevicePeerChecker, configProvider ConfigPeerProvider) *FilterPeerService {
 	return &FilterPeerService{
-		searcher: searcher,
-		allower:  allower,
+		configProvider: configProvider,
+		deviceChecker:  deviceChecker,
 	}
 }
 
 func (svc *FilterPeerService) Execute(ctx context.Context, deviceName DeviceId, publicKey []byte) ([]*Peer, error) {
-	peers, err := svc.searcher.SearchByDevice(ctx, deviceName)
+	// Get all peers from config for this device
+	configPeers, err := svc.configProvider.GetConfigPeers(ctx, string(deviceName), publicKey)
 	if err != nil {
 		return nil, err
 	}
 
-	allowedPeers := make([]*Peer, 0, len(peers))
-	for _, peer := range peers {
-		if svc.allower.Allow(ctx, string(deviceName), publicKey, peer.Id()) {
-			allowedPeers = append(allowedPeers, peer)
+	// Get map of peers that exist in the actual WireGuard device
+	devicePeerMap, err := svc.deviceChecker.GetDevicePeerMap(ctx, string(deviceName))
+	if err != nil {
+		return nil, err
+	}
+
+	// Filter config peers that exist in the device
+	existingPeers := make([]*Peer, 0, len(configPeers))
+	for _, peer := range configPeers {
+		publicKey := peer.PublicKey()
+		if devicePeerMap[string(publicKey[:])] {
+			existingPeers = append(existingPeers, peer)
 		}
 	}
 
-	return allowedPeers, nil
+	return existingPeers, nil
 }

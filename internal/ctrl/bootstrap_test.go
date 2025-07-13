@@ -29,14 +29,15 @@ func TestBootstrap_WithError(t *testing.T) {
 				Peers: map[string]config.Peer{
 					"test_peer1": {
 						PublicKey: "XgPRso34lnrSAx8nJtdj1/zlF7CoNj7B64LPElYdOGs=",
+						Plugin:    "cloudflare",
 					},
 				},
 			},
 		},
 	}
 	deviceConfig := config.NewDeviceConfig(cfg)
-	mockPeerSearcher := mockEntity.NewMockPeerSearcher(mockCtrl)
-	peerFilterService := entity.NewFilterPeerService(mockPeerSearcher, deviceConfig)
+	mockDevicePeerChecker := mockEntity.NewMockDevicePeerChecker(mockCtrl)
+	peerFilterService := entity.NewFilterPeerService(mockDevicePeerChecker, deviceConfig)
 
 	mockWgClient.EXPECT().Device("wg0").Return(nil, errors.New("device not found"))
 
@@ -66,6 +67,7 @@ func TestBootstrap_WithMultipleInterfaces(t *testing.T) {
 				Peers: map[string]config.Peer{
 					"test_peer1": {
 						PublicKey: "XgPRso34lnrSAx8nJtdj1/zlF7CoNj7B64LPElYdOGs=",
+						Plugin:    "cloudflare",
 					},
 				},
 			},
@@ -73,17 +75,19 @@ func TestBootstrap_WithMultipleInterfaces(t *testing.T) {
 				Peers: map[string]config.Peer{
 					"test_peer2": {
 						PublicKey: "FQ9/2l8t4xmQQbs6SB03+Lh2VijJX74rxRUOv7YT03k=",
+						Plugin:    "exec",
 					},
 					"test_peer3": {
 						PublicKey: "Cud5HogJJLCppoUuHnWrSvEJuI49D01sQcfiD3Y9RRU=",
+						Plugin:    "cloudflare",
 					},
 				},
 			},
 		},
 	}
-	mockPeerSearcher := mockEntity.NewMockPeerSearcher(mockCtrl)
+	mockDevicePeerChecker := mockEntity.NewMockDevicePeerChecker(mockCtrl)
 	deviceConfig := config.NewDeviceConfig(cfg)
-	peerFilterService := entity.NewFilterPeerService(mockPeerSearcher, deviceConfig)
+	peerFilterService := entity.NewFilterPeerService(mockDevicePeerChecker, deviceConfig)
 
 	mockDevice0 := &wgtypes.Device{
 		Name:       "wg0",
@@ -115,29 +119,16 @@ func TestBootstrap_WithMultipleInterfaces(t *testing.T) {
 	mockDevices.EXPECT().Save(gomock.Any(), gomock.Any()).Times(2)
 	mockPeers.EXPECT().Save(gomock.Any(), gomock.Any()).Times(3)
 
-	mockDevice0Peers := []*entity.Peer{
-		entity.NewPeer(
-			entity.NewPeerId(mockDevice0.PublicKey[:], mockDevice0.Peers[0].PublicKey[:]),
-			mockDevice0.Name,
-			mockDevice0.Peers[0].PublicKey,
-		),
+	// Mock device peer map expectations - the new approach uses GetDevicePeerMap
+	wg0PeerMap := map[string]bool{
+		string(mockDevice0.Peers[0].PublicKey[:]): true,
 	}
-
-	mockDevice1Peers := []*entity.Peer{
-		entity.NewPeer(
-			entity.NewPeerId(mockDevice1.PublicKey[:], mockDevice1.Peers[0].PublicKey[:]),
-			mockDevice1.Name,
-			mockDevice1.Peers[0].PublicKey,
-		),
-		entity.NewPeer(
-			entity.NewPeerId(mockDevice1.PublicKey[:], mockDevice1.Peers[1].PublicKey[:]),
-			mockDevice1.Name,
-			mockDevice1.Peers[1].PublicKey,
-		),
+	wg1PeerMap := map[string]bool{
+		string(mockDevice1.Peers[0].PublicKey[:]): true,
+		string(mockDevice1.Peers[1].PublicKey[:]): true,
 	}
-
-	mockPeerSearcher.EXPECT().SearchByDevice(gomock.Any(), entity.DeviceId("wg0")).Return(mockDevice0Peers, nil)
-	mockPeerSearcher.EXPECT().SearchByDevice(gomock.Any(), entity.DeviceId("wg1")).Return(mockDevice1Peers, nil)
+	mockDevicePeerChecker.EXPECT().GetDevicePeerMap(gomock.Any(), "wg0").Return(wg0PeerMap, nil)
+	mockDevicePeerChecker.EXPECT().GetDevicePeerMap(gomock.Any(), "wg1").Return(wg1PeerMap, nil)
 
 	bootstrap := ctrl.NewBootstrapController(
 		mockWgClient,

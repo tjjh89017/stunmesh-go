@@ -12,22 +12,22 @@ import (
 )
 
 type EstablishController struct {
-	wgCtrl    *wgctrl.Client
-	devices   DeviceRepository
-	peers     PeerRepository
-	store     plugin.Store
-	decryptor EndpointDecryptor
-	logger    zerolog.Logger
+	wgCtrl        *wgctrl.Client
+	devices       DeviceRepository
+	peers         PeerRepository
+	pluginManager *plugin.Manager
+	decryptor     EndpointDecryptor
+	logger        zerolog.Logger
 }
 
-func NewEstablishController(ctrl *wgctrl.Client, devices DeviceRepository, peers PeerRepository, store plugin.Store, decryptor EndpointDecryptor, logger *zerolog.Logger) *EstablishController {
+func NewEstablishController(ctrl *wgctrl.Client, devices DeviceRepository, peers PeerRepository, pluginManager *plugin.Manager, decryptor EndpointDecryptor, logger *zerolog.Logger) *EstablishController {
 	return &EstablishController{
-		wgCtrl:    ctrl,
-		devices:   devices,
-		peers:     peers,
-		store:     store,
-		decryptor: decryptor,
-		logger:    logger.With().Str("controller", "establish").Logger(),
+		wgCtrl:        ctrl,
+		devices:       devices,
+		peers:         peers,
+		pluginManager: pluginManager,
+		decryptor:     decryptor,
+		logger:        logger.With().Str("controller", "establish").Logger(),
 	}
 }
 
@@ -46,8 +46,14 @@ func (c *EstablishController) Execute(ctx context.Context, peerId entity.PeerId)
 
 	logger := c.logger.With().Str("peer", peer.LocalId()).Str("device", string(device.Name())).Logger()
 
+	store, err := c.pluginManager.GetPlugin(peer.Plugin())
+	if err != nil {
+		logger.Error().Err(err).Str("plugin", peer.Plugin()).Msg("failed to get plugin")
+		return
+	}
+
 	storeCtx := logger.WithContext(ctx)
-	endpointData, err := c.store.Get(storeCtx, peer.RemoteId())
+	endpointData, err := store.Get(storeCtx, peer.RemoteId())
 	if err != nil {
 		logger.Warn().Err(err).Msg("endpoint is unavailable or not ready")
 		return

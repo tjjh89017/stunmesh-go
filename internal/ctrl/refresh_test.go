@@ -24,6 +24,7 @@ func TestRefresh_Execute(t *testing.T) {
 			entity.NewPeerId([]byte{0x01}, []byte{0x02}),
 			"wg0",
 			[32]byte{},
+			"cloudflare",
 		),
 	}
 

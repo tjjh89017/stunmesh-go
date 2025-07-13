@@ -8,22 +8,22 @@ import (
 )
 
 type PublishController struct {
-	devices   DeviceRepository
-	peers     PeerRepository
-	store     plugin.Store
-	resolver  StunResolver
-	encryptor EndpointEncryptor
-	logger    zerolog.Logger
+	devices       DeviceRepository
+	peers         PeerRepository
+	pluginManager *plugin.Manager
+	resolver      StunResolver
+	encryptor     EndpointEncryptor
+	logger        zerolog.Logger
 }
 
-func NewPublishController(devices DeviceRepository, peers PeerRepository, store plugin.Store, resolver StunResolver, encryptor EndpointEncryptor, logger *zerolog.Logger) *PublishController {
+func NewPublishController(devices DeviceRepository, peers PeerRepository, pluginManager *plugin.Manager, resolver StunResolver, encryptor EndpointEncryptor, logger *zerolog.Logger) *PublishController {
 	return &PublishController{
-		devices:   devices,
-		peers:     peers,
-		store:     store,
-		resolver:  resolver,
-		encryptor: encryptor,
-		logger:    logger.With().Str("controller", "publish").Logger(),
+		devices:       devices,
+		peers:         peers,
+		pluginManager: pluginManager,
+		resolver:      resolver,
+		encryptor:     encryptor,
+		logger:        logger.With().Str("controller", "publish").Logger(),
 	}
 }
 
@@ -64,9 +64,15 @@ func (c *PublishController) Execute(ctx context.Context) {
 				continue
 			}
 
-			logger.Info().Msg("store endpoint")
+			store, err := c.pluginManager.GetPlugin(peer.Plugin())
+			if err != nil {
+				logger.Error().Err(err).Str("plugin", peer.Plugin()).Msg("failed to get plugin")
+				continue
+			}
+
+			logger.Info().Str("plugin", peer.Plugin()).Msg("store endpoint")
 			storeCtx := logger.WithContext(ctx)
-			err = c.store.Set(storeCtx, peer.LocalId(), res.Data)
+			err = store.Set(storeCtx, peer.LocalId(), res.Data)
 			if err != nil {
 				logger.Error().Err(err).Msg("failed to store endpoint")
 				continue

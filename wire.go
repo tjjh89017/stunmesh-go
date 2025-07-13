@@ -4,7 +4,8 @@
 package main
 
 import (
-	"github.com/cloudflare/cloudflare-go"
+	"context"
+
 	"github.com/google/wire"
 	"github.com/tjjh89017/stunmesh-go/internal/config"
 	"github.com/tjjh89017/stunmesh-go/internal/crypto"
@@ -14,7 +15,6 @@ import (
 	"github.com/tjjh89017/stunmesh-go/internal/logger"
 	"github.com/tjjh89017/stunmesh-go/internal/queue"
 	"github.com/tjjh89017/stunmesh-go/internal/repo"
-	"github.com/tjjh89017/stunmesh-go/internal/store"
 	"github.com/tjjh89017/stunmesh-go/internal/stun"
 	"github.com/tjjh89017/stunmesh-go/plugin"
 	"golang.zx2c4.com/wireguard/wgctrl"
@@ -25,9 +25,9 @@ func setup() (*daemon.Daemon, error) {
 		wgctrl.New,
 		wire.Bind(new(ctrl.WireGuardClient), new(*wgctrl.Client)),
 		wire.Bind(new(repo.WireGuardClient), new(*wgctrl.Client)),
-		provideCloudflareApi,
-		provideStore,
-		wire.Bind(new(plugin.Store), new(*store.CloudflareStore)),
+		wire.Bind(new(entity.ConfigPeerProvider), new(*config.DeviceConfig)),
+		wire.Bind(new(entity.DevicePeerChecker), new(*repo.Peers)),
+		providePluginManager,
 		provideRefreshQueue,
 		wire.Bind(new(ctrl.RefreshQueue), new(*queue.Queue[entity.PeerId])),
 		config.DefaultSet,
@@ -43,16 +43,24 @@ func setup() (*daemon.Daemon, error) {
 	return nil, nil
 }
 
-func provideCloudflareApi(config *config.Config) (*cloudflare.API, error) {
-	if config.Cloudflare.ApiToken != "" {
-		return cloudflare.NewWithAPIToken(config.Cloudflare.ApiToken)
+func providePluginManager(config *config.Config) (*plugin.Manager, error) {
+	manager := plugin.NewManager()
+	ctx := context.Background()
+	
+	// Convert config.PluginDefinition to plugin.PluginDefinition
+	pluginsMap := make(map[string]plugin.PluginDefinition)
+	for name, def := range config.Plugins {
+		pluginsMap[name] = plugin.PluginDefinition{
+			Type:   def.Type,
+			Config: plugin.PluginConfig(def.Config),
+		}
 	}
-
-	return cloudflare.New(config.Cloudflare.ApiKey, config.Cloudflare.ApiEmail)
-}
-
-func provideStore(cfApi *cloudflare.API, config *config.Config) *store.CloudflareStore {
-	return store.NewCloudflareStore(cfApi, config.Cloudflare.ZoneName)
+	
+	if err := manager.LoadPlugins(ctx, pluginsMap); err != nil {
+		return nil, err
+	}
+	
+	return manager, nil
 }
 
 func provideRefreshQueue() *queue.Queue[entity.PeerId] {

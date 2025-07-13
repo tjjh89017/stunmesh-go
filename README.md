@@ -12,11 +12,11 @@ Tested with
 ## Implementation
 
 Use raw socket and cBPF filter to send and receive STUN 5389's packet to get public ip and port with same port of wireguard interface.<br />
-Encrypt public info with Curve25519 sealedbox and save it into Cloudflare DNS TXT record.<br />
-stunmesh-go will create and update a record with domain `<sha1 in hex>.<your_domain>`.<br />
+Encrypt public info with Curve25519 sealedbox and save it using configured storage plugins.<br />
+stunmesh-go will create and update records with domain `<sha1 in hex>.<subdomain>.<your_domain>` (or `<sha1 in hex>.<your_domain>` if no subdomain configured).<br />
 Once getting info from internet, it will setup peer endpoint with wireguard tools.<br />
 
-:warning: Still need refactor to get plugin support
+✅ **Plugin system supported** - Multiple storage backends with flexible configuration
 
 ## Build
 
@@ -54,17 +54,250 @@ interfaces:
     peers:
       "<PEER_NAME>":
         public_key: "<PUBLIC_KEY_IN_BASE64>"
+        plugin: cloudflare1
   wg1:
     peers:
       "<PEER_NAME>":
         public_key: "<PUBLIC_KEY_IN_BASE64>"
+        plugin: cloudflare2
       "<PEER_NAME>":
         public_key: "<PUBLIC_KEY_IN_BASE64>"
+        plugin: exec_plugin1
 stun:
   address: "stun.l.google.com:19302"
-cloudflare:
-  api_token: "<API_TOKEN>"
-  zone_name: "<ZONE_NAME>"
+plugins:
+  cloudflare1:
+    type: cloudflare
+    zone_name: "example.com"
+    subdomain: "wg"
+    api_token: "${CLOUDFLARE_API_TOKEN}"
+  cloudflare2:
+    type: cloudflare
+    zone_name: "example.com"
+    api_token: "${CLOUDFLARE2_API_TOKEN}"
+  exec_plugin1:
+    type: exec
+    command: "python3"
+    args: ["/path/to/script.py", "--config", "/path/to/config"]
+```
+
+### Plugin System
+
+stunmesh-go now supports a flexible plugin system that allows you to:
+
+- **Multiple storage backends**: Use different storage solutions for different peers
+- **Named plugin instances**: Configure multiple instances of the same plugin type
+- **Per-peer plugin assignment**: Each peer can use a different plugin instance
+
+#### Supported Plugin Types
+
+**Cloudflare DNS Plugin (`type: cloudflare`)**
+- Stores peer information in Cloudflare DNS TXT records
+- Configuration:
+  - `zone_name`: Your domain name managed by Cloudflare
+  - `subdomain`: Subdomain prefix for DNS records (optional, defaults to empty)
+  - `api_token`: Cloudflare API token with DNS edit permissions
+
+**Exec Plugin (`type: exec`)**
+- Executes external scripts/programs for storage operations
+- Configuration:
+  - `command`: Command to execute
+  - `args`: Command line arguments (optional)
+- Protocol: JSON over stdin/stdout
+
+#### Exec Plugin Protocol
+
+The exec plugin communicates with external programs using JSON over stdin/stdout. Your program should:
+
+1. Read JSON request from stdin
+2. Process the request (GET or SET operation)
+3. Write JSON response to stdout
+4. Exit with code 0 for success, non-zero for error
+
+**Request Format:**
+```json
+{
+  "operation": "get|set",
+  "key": "peer_identifier_string",
+  "value": "encrypted_data_for_set_operation"
+}
+```
+
+**Response Format:**
+```json
+{
+  "success": true,
+  "value": "encrypted_data_for_get_operation",
+  "error": "error_message_if_failed"
+}
+```
+
+#### Exec Plugin Examples
+
+**Python Example (`/usr/local/bin/stunmesh-storage.py`):**
+```python
+#!/usr/bin/env python3
+import json
+import sys
+import os
+
+# Simple file-based storage
+STORAGE_DIR = "/var/lib/stunmesh"
+
+def ensure_storage_dir():
+    os.makedirs(STORAGE_DIR, exist_ok=True)
+
+def get_value(key):
+    file_path = os.path.join(STORAGE_DIR, f"{key}.txt")
+    try:
+        with open(file_path, 'r') as f:
+            return f.read().strip()
+    except FileNotFoundError:
+        return None
+
+def set_value(key, value):
+    ensure_storage_dir()
+    file_path = os.path.join(STORAGE_DIR, f"{key}.txt")
+    with open(file_path, 'w') as f:
+        f.write(value)
+
+def main():
+    try:
+        # Read JSON request from stdin
+        request = json.load(sys.stdin)
+        
+        operation = request.get("operation")
+        key = request.get("key")
+        
+        if operation == "get":
+            value = get_value(key)
+            if value is not None:
+                response = {"success": True, "value": value}
+            else:
+                response = {"success": False, "error": "Key not found"}
+                
+        elif operation == "set":
+            value = request.get("value")
+            set_value(key, value)
+            response = {"success": True}
+            
+        else:
+            response = {"success": False, "error": "Unknown operation"}
+            
+        # Write JSON response to stdout
+        json.dump(response, sys.stdout)
+        
+    except Exception as e:
+        response = {"success": False, "error": str(e)}
+        json.dump(response, sys.stdout)
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
+```
+
+**Bash Example (`/usr/local/bin/stunmesh-storage.sh`):**
+```bash
+#!/bin/bash
+
+STORAGE_DIR="/var/lib/stunmesh"
+mkdir -p "$STORAGE_DIR"
+
+# Read JSON from stdin
+INPUT=$(cat)
+
+# Parse JSON using jq
+OPERATION=$(echo "$INPUT" | jq -r '.operation')
+KEY=$(echo "$INPUT" | jq -r '.key')
+
+case "$OPERATION" in
+    "get")
+        FILE_PATH="$STORAGE_DIR/${KEY}.txt"
+        if [ -f "$FILE_PATH" ]; then
+            VALUE=$(cat "$FILE_PATH")
+            echo "{\"success\": true, \"value\": \"$VALUE\"}"
+        else
+            echo "{\"success\": false, \"error\": \"Key not found\"}"
+        fi
+        ;;
+    "set")
+        VALUE=$(echo "$INPUT" | jq -r '.value')
+        FILE_PATH="$STORAGE_DIR/${KEY}.txt"
+        echo "$VALUE" > "$FILE_PATH"
+        echo "{\"success\": true}"
+        ;;
+    *)
+        echo "{\"success\": false, \"error\": \"Unknown operation\"}"
+        exit 1
+        ;;
+esac
+```
+
+**Redis Example (`/usr/local/bin/stunmesh-redis.py`):**
+```python
+#!/usr/bin/env python3
+import json
+import sys
+import redis
+
+# Redis connection
+r = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+
+def main():
+    try:
+        request = json.load(sys.stdin)
+        
+        operation = request.get("operation")
+        key = f"stunmesh:{request.get('key')}"
+        
+        if operation == "get":
+            value = r.get(key)
+            if value is not None:
+                response = {"success": True, "value": value}
+            else:
+                response = {"success": False, "error": "Key not found"}
+                
+        elif operation == "set":
+            value = request.get("value")
+            r.set(key, value)
+            # Optional: Set expiration (e.g., 24 hours)
+            r.expire(key, 86400)
+            response = {"success": True}
+            
+        else:
+            response = {"success": False, "error": "Unknown operation"}
+            
+        json.dump(response, sys.stdout)
+        
+    except Exception as e:
+        response = {"success": False, "error": str(e)}
+        json.dump(response, sys.stdout)
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
+```
+
+**Configuration Examples:**
+```yaml
+plugins:
+  file_storage:
+    type: exec
+    command: "/usr/local/bin/stunmesh-storage.py"
+    
+  bash_storage:
+    type: exec
+    command: "/usr/local/bin/stunmesh-storage.sh"
+    
+  redis_storage:
+    type: exec
+    command: "python3"
+    args: ["/usr/local/bin/stunmesh-redis.py"]
+    
+  remote_api:
+    type: exec
+    command: "curl"
+    args: ["-s", "-X", "POST", "https://api.example.com/stunmesh"]
 ```
 
 ## Example Usage
@@ -103,11 +336,14 @@ interfaces:
     peers:
       "VYOS_B":
         public_key: "<VYOS_B_PUBLIC_KEY>"
+        plugin: cloudflare_main
 stun:
   address: "stun.l.google.com:19302"
-cloudflare:
-  api_token: "<API_TOKEN>"
-  zone_name: "<ZONE_NAME>"
+plugins:
+  cloudflare_main:
+    type: cloudflare
+    zone_name: "<ZONE_NAME>"
+    api_token: "<API_TOKEN>"
 EOF
 
 configure
@@ -158,11 +394,14 @@ interfaces:
     peers:
       "VYOS_A":
         public_key: "<VYOS_A_PUBLIC_KEY>"
+        plugin: cloudflare_main
 stun:
   address: "stun.l.google.com:19302"
-cloudflare:
-  api_token: "<API_TOKEN>"
-  zone_name: "<ZONE_NAME>"
+plugins:
+  cloudflare_main:
+    type: cloudflare
+    zone_name: "<ZONE_NAME>"
+    api_token: "<API_TOKEN>"
 EOF
 
 configure
@@ -250,11 +489,14 @@ interfaces:
     peers:
       "MAC_M3":
         public_key: "<MAC_M3_PUBLIC_KEY>"
+        plugin: cloudflare_main
 stun:
   address: "stun.l.google.com:19302"
-cloudflare:
-  api_token: "<API_TOKEN>"
-  zone_name: "<ZONE_NAME>"
+plugins:
+  cloudflare_main:
+    type: cloudflare
+    zone_name: "<ZONE_NAME>"
+    api_token: "<API_TOKEN>"
 ```
 
 #### Steps in Site B
@@ -292,11 +534,14 @@ interfaces:
     peers:
       "INTEL_MAC":
         public_key: "<INTE_MAC_PUBLIC_KEY>"
+        plugin: cloudflare_main
 stun:
   address: "stun.l.google.com:19302"
-cloudflare:
-  api_token: "<API_TOKEN>"
-  zone_name: "<ZONE_NAME>"
+plugins:
+  cloudflare_main:
+    type: cloudflare
+    zone_name: "<ZONE_NAME>"
+    api_token: "<API_TOKEN>"
 ```
 
 #### Verify the Wireguard connections is established
