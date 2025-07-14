@@ -3,8 +3,7 @@ FROM golang:latest AS builder
 WORKDIR /work
 COPY . .
 
-ENV CGO_ENABLED=0
-RUN go build -v -o stunmesh-go
+RUN make
 
 FROM scratch
 
