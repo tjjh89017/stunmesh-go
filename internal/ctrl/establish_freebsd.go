@@ -11,7 +11,7 @@ import (
 )
 
 func (c *EstablishController) ConfigureDevice(ctx context.Context, peer *entity.Peer, res *EndpointDecryptResponse) error {
-	c.logger.Debug().Str("peer", peer.LocalId()).Msg("configuring device for peer")
+	c.logger.Debug().Str("peer", peer.LocalId()).Str("remote", res.Host+":"+string(res.Port)).Msg("configuring device for peer")
 
 	var publicKeyArray [32]byte = peer.PublicKey()
 	publicKey := base64.StdEncoding.EncodeToString(publicKeyArray[:])
