@@ -33,9 +33,8 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
       - name: Build
-        run: go build -v -o ${{ env.APP}}-${{ matrix.os }}-${{ matrix.arch }}-${{ steps.tag.outputs.TAG }} .
+        run: make APP=${{ env.APP}}-${{ matrix.os }}-${{ matrix.arch }}-${{ steps.tag.outputs.TAG }}
         env:
-          CGO_ENABLED: 0
           GOARCH: ${{ matrix.arch }}
           GOOS: ${{ matrix.os }}
       - name: Release
