@@ -15,6 +15,7 @@ func (c *EstablishController) ConfigureDevice(ctx context.Context, peer *entity.
 
 	var publicKeyArray [32]byte = peer.PublicKey()
 	publicKey := base64.StdEncoding.EncodeToString(publicKeyArray[:])
-	_, err := exec.Command("wg", "set", peer.DeviceName(), "peer", publicKey, "endpoint", res.Host+":"+string(res.Port)).Output()
+	r, err := exec.Command("wg", "set", peer.DeviceName(), "peer", publicKey, "endpoint", res.Host+":"+string(res.Port)).Output()
+	c.logger.Debug().Str("output", string(r)).Msg("wg set command executed")
 	return err
 }
