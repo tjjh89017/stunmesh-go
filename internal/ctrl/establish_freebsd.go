@@ -52,5 +52,7 @@ func (c *EstablishController) ConfigureDevice(ctx context.Context, peer *entity.
 			},
 		},
 	})
+
+	c.logger.Debug().Str("peer", peer.LocalId()).Str("device", peer.DeviceName()).Msg("device configured for peer")
 	return err
 }
