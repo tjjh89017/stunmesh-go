@@ -42,6 +42,35 @@ jobs:
         with:
           files: ${{ env.APP }}-${{ matrix.os }}-${{ matrix.arch }}-${{ steps.tag.outputs.TAG }}
 
+  release-freebsd:
+    name: Build FreeBSD
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [freebsd]
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - name: tag
+        id: tag
+        run: echo "TAG=$(git describe --tags --dirty)" >> "$GITHUB_OUTPUT"
+      - name: Prepare FreeBSD
+        uses: vmactions/freebsd-vm@v1.2.1
+        with:
+          arch: ${{ matrix.arch }}
+          sync: sshfs 
+          prepare: |
+            pkg install -y gmake go
+      - name: Build
+        shell: freebsd {0}
+        run: |
+          cd $GITHUB_WORKSPACE
+          gmake APP=${{ env.APP }}-${{ matrix.os }}-${{ matrix.arch }}-${{ steps.tag.outputs.TAG }}
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.APP }}-${{ matrix.os }}-${{ matrix.arch }}-${{ steps.tag.outputs.TAG }}
+
   docker:
     name: Build Docker container
     runs-on: ubuntu-latest
