@@ -7,7 +7,6 @@ on:
 
 env:
   GO_VERSION: "stable"
-  CGO_ENABLED: "0"
   APP: "stunmesh"
 
 jobs:
