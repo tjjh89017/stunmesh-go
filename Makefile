@@ -1,9 +1,19 @@
 
 APP?=stunmesh-go
 
+# Platforms that require CGO_ENABLED=1
+CGO_REQUIRED_PLATFORMS := FreeBSD OpenBSD
+
+# Set CGO_ENABLED based on OS
+ifeq ($(shell uname -s),$(filter $(shell uname -s),$(CGO_REQUIRED_PLATFORMS)))
+    CGO_ENABLED=1
+else
+    CGO_ENABLED=0
+endif
+
 .PHONY: build
 build: clean
-	go build -v -o ${APP}
+	CGO_ENABLED=$(CGO_ENABLED) go build -v -o ${APP}
 
 .PHONY: clean
 clean:
