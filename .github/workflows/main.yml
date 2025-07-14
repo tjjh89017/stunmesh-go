@@ -98,7 +98,7 @@ jobs:
         uses: vmactions/freebsd-vm@v1.2.1
         with:
           arch: ${{ matrix.arch }}
-          sync: nfs
+          sync: sshfs 
           prepare: |
             pkg install -y gmake go
       - name: Build
