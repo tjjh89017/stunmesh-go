@@ -3,6 +3,7 @@ package ctrl
 import (
 	"context"
 	"net"
+	"strconv"
 
 	"github.com/rs/zerolog"
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
@@ -69,11 +70,22 @@ func (c *EstablishController) Execute(ctx context.Context, peerId entity.PeerId)
 		return
 	}
 
-	err = c.wgCtrl.ConfigureDevice(peer.DeviceName(), wgtypes.Config{
+	err = c.ConfigureDevice(ctx, peer, res)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to configure device")
+		return
+	}
+}
+
+func (c *EstablishController) ConfigureDevice(ctx context.Context, peer *entity.Peer, res *EndpointDecryptResponse) error {
+	remoteEndpoint := res.Host + ":" + strconv.FormatInt(int64(res.Port), 10)
+	c.logger.Debug().Str("peer", peer.LocalId()).Str("remote", remoteEndpoint).Msg("configuring device for peer")
+
+	err := c.wgCtrl.ConfigureDevice(peer.DeviceName(), wgtypes.Config{
 		Peers: []wgtypes.PeerConfig{
 			{
 				PublicKey:  peer.PublicKey(),
-				UpdateOnly: true,
+				UpdateOnly: UpdateOnly,
 				Endpoint: &net.UDPAddr{
 					IP:   net.ParseIP(res.Host),
 					Port: res.Port,
@@ -81,9 +93,10 @@ func (c *EstablishController) Execute(ctx context.Context, peerId entity.PeerId)
 			},
 		},
 	})
-
 	if err != nil {
-		logger.Error().Err(err).Msg("failed to configure device")
-		return
+		c.logger.Error().Err(err).Str("peer", peer.LocalId()).Str("device", peer.DeviceName()).Msg("failed to configure device for peer")
+		return err
 	}
+	c.logger.Debug().Str("peer", peer.LocalId()).Str("device", peer.DeviceName()).Msg("device configured for peer")
+	return nil
 }
