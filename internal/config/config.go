@@ -27,7 +27,6 @@ var (
 	ErrUnmarshalConfig = errors.New("failed to unmarshal config")
 )
 
-
 type Logger struct {
 	Level string `mapstructure:"level"`
 }
@@ -44,11 +43,11 @@ type PluginDefinition struct {
 }
 
 type Config struct {
-	Interfaces      Interfaces                   `mapstructure:"interfaces"`
+	Interfaces      Interfaces                  `mapstructure:"interfaces"`
 	Plugins         map[string]PluginDefinition `mapstructure:"plugins"`
 	RefreshInterval time.Duration               `mapstructure:"refresh_interval"`
-	Log             Logger                       `mapstructure:"log"`
-	Stun            Stun                         `mapstructure:"stun"`
+	Log             Logger                      `mapstructure:"log"`
+	Stun            Stun                        `mapstructure:"stun"`
 }
 
 func Load() (*Config, error) {
@@ -60,7 +59,6 @@ func Load() (*Config, error) {
 
 	viper.SetDefault("refresh_interval", time.Duration(10)*time.Minute)
 	viper.SetDefault("stun.addr", "stun.l.google.com:19302")
-
 
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {

@@ -53,4 +53,3 @@ func (c *DeviceConfig) GetConfigPeers(ctx context.Context, deviceName string, lo
 
 	return peers, nil
 }
-

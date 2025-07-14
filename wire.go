@@ -46,7 +46,7 @@ func setup() (*daemon.Daemon, error) {
 func providePluginManager(config *config.Config) (*plugin.Manager, error) {
 	manager := plugin.NewManager()
 	ctx := context.Background()
-	
+
 	// Convert config.PluginDefinition to plugin.PluginDefinition
 	pluginsMap := make(map[string]plugin.PluginDefinition)
 	for name, def := range config.Plugins {
@@ -55,11 +55,11 @@ func providePluginManager(config *config.Config) (*plugin.Manager, error) {
 			Config: plugin.PluginConfig(def.Config),
 		}
 	}
-	
+
 	if err := manager.LoadPlugins(ctx, pluginsMap); err != nil {
 		return nil, err
 	}
-	
+
 	return manager, nil
 }
 

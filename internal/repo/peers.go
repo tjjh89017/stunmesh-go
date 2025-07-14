@@ -50,7 +50,6 @@ func (r *Peers) ListByDevice(ctx context.Context, deviceName entity.DeviceId) ([
 	return peers, nil
 }
 
-
 func (r *Peers) Find(ctx context.Context, id entity.PeerId) (*entity.Peer, error) {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
