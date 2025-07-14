@@ -73,10 +73,39 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
       - name: Build
-        run: make APP=${{ env.APP}}-${{ matrix.os }}-${{ matrix.arch }}
+        run: make APP=${{ env.APP }}-${{ matrix.os }}-${{ matrix.arch }}
         env:
           GOARCH: ${{ matrix.arch }}
           GOOS: ${{ matrix.os }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP }}-${{ matrix.os }}-${{ matrix.arch }}
+          path: ${{ env.APP }}-${{ matrix.os }}-${{ matrix.arch }}
+
+  build-freebsd:
+    name: Build FreeBSD
+    runs-on: ubuntu-latest
+    needs:
+      - lint
+      - test
+    strategy:
+      matrix:
+        os: [freebsd]
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare FreeBSD
+        uses: vmactions/freebsd-vm@v1.2.1
+        with:
+          arch: ${{ matrix.arch }}
+          sync: nfs
+          prepare: |
+            pkg install -y gmake go
+      - name: Build
+        shell: freebsd {0}
+        run: |
+          cd $GITHUB_WORKSPACE
+          gmake APP=${{ env.APP }}-${{ matrix.os }}-${{ matrix.arch }}
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ env.APP }}-${{ matrix.os }}-${{ matrix.arch }}
