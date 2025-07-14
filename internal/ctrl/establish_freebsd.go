@@ -13,7 +13,7 @@ import (
 func (c *EstablishController) ConfigureDevice(ctx context.Context, peer *entity.Peer, res *EndpointDecryptResponse) error {
 	c.logger.Debug().Str("peer", peer.LocalId()).Msg("configuring device for peer")
 
-	publicKey := base64.StdEncoding.EncodeToString(peer.PublicKey()[:])
+	publicKey := base64.StdEncoding.EncodeToString((&[32]byte(peer.PublicKey()))[:])
 	_, err := exec.Command("wg", "set", peer.DeviceName(), "peer", publicKey, "endpoint", res.Host+":"+string(res.Port)).Output()
 	return err
 }
