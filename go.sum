@@ -50,8 +50,8 @@ github.com/mikioh/ipaddr v0.0.0-20190404000644-d465c8ab6721 h1:RlZweED6sbSArvlE9
 github.com/mikioh/ipaddr v0.0.0-20190404000644-d465c8ab6721/go.mod h1:Ickgr2WtCLZ2MDGd4Gr0geeCH5HybhRJbonOgQpvSxc=
 github.com/mitchellh/mapstructure v1.5.0 h1:jeMsZIYE/09sWLaz43PL7Gy6RuMjD2eJVyuac5Z2hdY=
 github.com/mitchellh/mapstructure v1.5.0/go.mod h1:bFUtVrKA4DC2yAKiSyO/QUcy7e+RRV2QTWOzhPopBRo=
-github.com/packetcap/go-pcap v0.0.0-20250128134747-e4098f8faef2 h1:yESodjSSmfhuIdhW/wh7l0r6hWV9DMAyTZROxWPND10=
-github.com/packetcap/go-pcap v0.0.0-20250128134747-e4098f8faef2/go.mod h1:zIAoVKeWP0mz4zXY50UYQt6NLg2uwKRswMDcGEqOms4=
+github.com/packetcap/go-pcap v0.0.0-20250417081904-081143ce5ce4 h1:g1nlqkHdJ5+VgO8MmoKMjEwgNK4B+4Gb5oe2C0ZOPd8=
+github.com/packetcap/go-pcap v0.0.0-20250417081904-081143ce5ce4/go.mod h1:1jryUz9E2ndKwZBNHzVhLMzS3WHO0fOKydYi9XWWu9w=
 github.com/pelletier/go-toml/v2 v2.2.3 h1:YmeHyLY8mFWbdkNWwpr+qIL2bEqT0o95WSdkNHvL12M=
 github.com/pelletier/go-toml/v2 v2.2.3/go.mod h1:MfCQTFTvCcUyyvvwm1+G6H/jORL20Xlb6rzQu9GuUkc=
 github.com/pion/dtls/v2 v2.2.7/go.mod h1:8WiMkebSHFD0T+dIU+UeBaoV7kDhOW5oDCzZ7WZ/F9s=
