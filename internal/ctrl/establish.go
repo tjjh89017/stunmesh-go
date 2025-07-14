@@ -2,13 +2,11 @@ package ctrl
 
 import (
 	"context"
-	"net"
 
 	"github.com/rs/zerolog"
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
 	"github.com/tjjh89017/stunmesh-go/plugin"
 	"golang.zx2c4.com/wireguard/wgctrl"
-	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 type EstablishController struct {
@@ -69,19 +67,7 @@ func (c *EstablishController) Execute(ctx context.Context, peerId entity.PeerId)
 		return
 	}
 
-	err = c.wgCtrl.ConfigureDevice(peer.DeviceName(), wgtypes.Config{
-		Peers: []wgtypes.PeerConfig{
-			{
-				PublicKey:  peer.PublicKey(),
-				UpdateOnly: true,
-				Endpoint: &net.UDPAddr{
-					IP:   net.ParseIP(res.Host),
-					Port: res.Port,
-				},
-			},
-		},
-	})
-
+	err = c.ConfigureDevice(ctx, peer, res)
 	if err != nil {
 		logger.Error().Err(err).Msg("failed to configure device")
 		return
