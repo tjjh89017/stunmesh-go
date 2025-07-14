@@ -1,3 +1,4 @@
+# require GNU Make
 
 APP?=stunmesh-go
 
