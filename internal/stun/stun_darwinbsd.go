@@ -15,21 +15,16 @@ import (
 	pcap "github.com/packetcap/go-pcap"
 	"github.com/pion/stun"
 	"github.com/rs/zerolog"
+	"golang.org/x/net/bpf"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/route"
 )
 
 const PacketSize = 1600
 
-const (
-	etherOff   = 0
-	ipOff      = etherOff + 14
-	udpOff     = ipOff + 5*4
-	payloadOff = udpOff + 2*4
-)
-
 type Stun struct {
 	port       uint16
+	payloadOff uint32
 	conn       *ipv4.PacketConn
 	handle     *pcap.Handle
 	once       sync.Once
@@ -49,9 +44,31 @@ func New(ctx context.Context, port uint16) (*Stun, error) {
 		return nil, err
 	}
 
-	filter := fmt.Sprintf("udp dst port %d and udp[12:4] == 0x2112A442", port)
-	if err := handle.SetBPFFilter(filter); err != nil {
-		return nil, err
+	//filter := fmt.Sprintf("udp dst port %d and udp[12:4] == 0x2112A442", port)
+	//if err := handle.SetBPFFilter(filter); err != nil {
+	//	return nil, err
+	//}
+	intf, err := net.InterfaceByName(defaultRouteInterface)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get interface by name %s: %w", defaultRouteInterface, err)
+	}
+
+	payloadOff := uint32(0)
+	if intf.Flags&net.FlagLoopback != 0 {
+		// TODO Loopback
+		filter, err := stunLoopbackBpfFilter(ctx, port)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create BPF filter for loopback: %w", err)
+		}
+		if err := handle.SetRawBPFFilter(filter); err != nil {
+			return nil, fmt.Errorf("failed to set raw BPF filter: %w", err)
+		}
+		payloadOff = 0 + 4 + 5*4 + 2*4 // Null header + IPv4 header + UDP header
+	} else {
+		if err := handle.SetBPFFilter(fmt.Sprintf("udp dst port %d and udp[12:4] == 0x2112A442", port)); err != nil {
+			return nil, fmt.Errorf("failed to set BPF filter: %w", err)
+		}
+		payloadOff = 0 + 14 + 5*4 + 2*4 // Ethernet header + IPv4 header + UDP header
 	}
 
 	c, err := net.ListenPacket("ip4:17", "0.0.0.0")
@@ -63,6 +80,7 @@ func New(ctx context.Context, port uint16) (*Stun, error) {
 
 	return &Stun{
 		port:       port,
+		payloadOff: payloadOff,
 		conn:       conn,
 		handle:     handle,
 		packetChan: make(chan *stun.Message),
@@ -99,7 +117,7 @@ func (s *Stun) Start(ctx context.Context) {
 					}
 					// decode STUN
 					m := &stun.Message{
-						Raw: buf[payloadOff:],
+						Raw: buf[s.payloadOff:],
 					}
 					if err := m.Decode(); err != nil {
 						logger.Debug().Msgf("fail to decode stun msg")
@@ -223,4 +241,57 @@ func getDefaultRouteInterface() (string, error) {
 	}
 
 	return "", errors.New("No default route found")
+}
+
+func stunLoopbackBpfFilter(ctx context.Context, port uint16) ([]bpf.RawInstruction, error) {
+	const (
+		nullOff            = 0
+		ipOff              = nullOff + 4
+		udpOff             = ipOff + 5*4
+		payloadOff         = udpOff + 2*4
+		stunMagicCookieOff = payloadOff + 4
+
+		stunMagicCookie = 0x2112A442
+	)
+
+	r, e := bpf.Assemble([]bpf.Instruction{
+		bpf.LoadAbsolute{
+			// A = dst port
+			Off:  udpOff + 2,
+			Size: 2,
+		},
+		bpf.JumpIf{
+			// if A == `port`
+			Cond:      bpf.JumpEqual,
+			Val:       uint32(port),
+			SkipFalse: 3,
+		},
+		bpf.LoadAbsolute{
+			// A = stun magic part
+			Off:  stunMagicCookieOff,
+			Size: 4,
+		},
+		bpf.JumpIf{
+			// if A == stun magic value
+			Cond:      bpf.JumpEqual,
+			Val:       stunMagicCookie,
+			SkipFalse: 1,
+		},
+		// we need
+		bpf.RetConstant{
+			Val: 262144, // Return the length of the packet
+		},
+		// port and stun are not we need
+		bpf.RetConstant{
+			Val: 0, // Return 0 to indicate no match
+		},
+	})
+
+	logger := zerolog.Ctx(ctx)
+	if e != nil {
+		logger.Error().Err(e).Msg("failed to assemble BPF filter")
+		return nil, e
+	}
+
+	return r, nil
 }
