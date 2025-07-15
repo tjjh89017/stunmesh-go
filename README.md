@@ -4,6 +4,14 @@ STUNMESH is a Wireguard helper tool to get through Full-Cone NAT.
 
 Inspired by manuels' [wireguard-p2p](https://github.com/manuels/wireguard-p2p) project
 
+Supported Platform:
+- Linux (amd64, arm, arm64, mips)
+- MacOS* (amd64, arm64)
+- FreeBSD (amd64, arm64)
+
+> [!NOTE]
+> We only support wireguard-go in MacOS, Wireguard App store version is not supported  because of sandbox currently.
+
 Tested with
 - VyOS 2025.07.14-0022-rolling (built-in Wireguard kernel module)
 - Ubuntu with Wireguard in Kernel module
@@ -25,6 +33,9 @@ Once getting info from internet, it will setup peer endpoint with wireguard tool
 ```bash
 make all
 ```
+
+> [!NOTE]
+> For FreeBSD and MacOS, please use GNU Makefile `gmake` to build.
 
 ## Usage
 
@@ -299,7 +310,7 @@ plugins:
   remote_api:
     type: exec
     command: "curl"
-    args: ["-s", "-X", "POST", "https://api.example.com/stunmesh"]
+    args: ["-s", "-X", "POST", "-H", "Content-Type: application/json", "--data-binary", "@-", "https://api.example.com/stunmesh"]
 ```
 
 ## Example Usage
@@ -550,8 +561,6 @@ plugins:
 
 Ping each other to check or you can use `wg` to show the info.
 
-
-
 ## Extra Usage
 You could use OSPF on Wireguard interface to create full mesh site-to-site VPN with dynamic routing.<br />
 Never be bothered to setup static route.<br />
@@ -646,7 +655,6 @@ protocols {
 
 - one shot command
 - auto execute when routing engine notify change
-- plugin based storage
 
 ## License
 This program is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation; either version 2 of the License, or (at your option) any later version.
