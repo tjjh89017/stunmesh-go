@@ -5,9 +5,11 @@ STUNMESH is a Wireguard helper tool to get through Full-Cone NAT.
 Inspired by manuels' [wireguard-p2p](https://github.com/manuels/wireguard-p2p) project
 
 Tested with
-- VyOS 1.5-rolling-202501180006 (built-in Wireguard kernel module)
+- VyOS 2025.07.14-0022-rolling (built-in Wireguard kernel module)
 - Ubuntu with Wireguard in Kernel module
 - MacOS Wireguard-go 0.0.20230223, Wireguard-tools 1.0.20210914
+- FreeBSD 14.3-RELEASE (built-in Wireguard)
+- OPNSense 25.1 (built-in Wireguard)
 
 ## Implementation
 
@@ -16,7 +18,7 @@ Encrypt public info with Curve25519 sealedbox and save it using configured stora
 stunmesh-go will create and update records with domain `<sha1 in hex>.<subdomain>.<your_domain>` (or `<sha1 in hex>.<your_domain>` if no subdomain configured).<br />
 Once getting info from internet, it will setup peer endpoint with wireguard tools.<br />
 
-✅ **Plugin system supported** - Multiple storage backends with flexible configuration
+✅ **Plugin system supported** - Multiple storage backends with flexible configuration - supports exec plugin for custom implementations
 
 ## Build
 
