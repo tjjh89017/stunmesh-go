@@ -1,0 +1,64 @@
+name: 'Build Application'
+description: 'Build the application for specified OS and architecture'
+
+inputs:
+  os:
+    description: 'Target OS (linux, darwin, freebsd)'
+    required: true
+  arch:
+    description: 'Target architecture (amd64, arm64, arm, mipsle)'
+    required: true
+  app-name:
+    description: 'Application name'
+    required: true
+  go-version:
+    description: 'Go version to use'
+    required: true
+    default: 'stable'
+  tag:
+    description: 'Tag to append to binary name'
+    required: false
+    default: ''
+
+outputs:
+  binary-name:
+    description: 'Name of the built binary'
+    value: ${{ steps.build-info.outputs.binary-name }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set build info
+      id: build-info
+      shell: bash
+      run: |
+        if [ -n "${{ inputs.tag }}" ]; then
+          BINARY_NAME="${{ inputs.app-name }}-${{ inputs.os }}-${{ inputs.arch }}-${{ inputs.tag }}"
+        else
+          BINARY_NAME="${{ inputs.app-name }}-${{ inputs.os }}-${{ inputs.arch }}"
+        fi
+        echo "binary-name=$BINARY_NAME" >> "$GITHUB_OUTPUT"
+    
+    - uses: actions/setup-go@v5
+      with:
+        go-version: ${{ inputs.go-version }}
+    
+    - name: Build (Linux/Darwin)
+      if: inputs.os != 'freebsd'
+      shell: bash
+      run: make APP=${{ steps.build-info.outputs.binary-name }}
+      env:
+        GOARCH: ${{ inputs.arch }}
+        GOOS: ${{ inputs.os }}
+    
+    - name: Build (FreeBSD)
+      if: inputs.os == 'freebsd'
+      uses: vmactions/freebsd-vm@v1.2.1
+      with:
+        arch: ${{ inputs.arch }}
+        sync: sshfs
+        prepare: |
+          pkg install -y gmake go
+        run: |
+          cd $GITHUB_WORKSPACE
+          gmake APP=${{ steps.build-info.outputs.binary-name }}

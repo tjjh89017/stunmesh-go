@@ -1,0 +1,21 @@
+name: 'Lint Code'
+description: 'Run golangci-lint on the codebase'
+
+inputs:
+  go-version:
+    description: 'Go version to use'
+    required: true
+    default: 'stable'
+
+runs:
+  using: 'composite'
+  steps:
+    - uses: actions/setup-go@v5
+      with:
+        go-version: ${{ inputs.go-version }}
+        cache: false
+    
+    - name: golangci-lint
+      uses: golangci/golangci-lint-action@v6
+      with:
+        version: latest

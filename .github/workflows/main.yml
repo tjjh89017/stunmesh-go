@@ -31,25 +31,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - name: Lint
+        uses: ./.github/actions/lint
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache: false
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
 
   test:
     name: Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - name: Test
+        uses: ./.github/actions/test
         with:
           go-version: ${{ env.GO_VERSION }}
-      - name: Test
-        run: go test -cover -v ./...
 
   build:
     name: Build
@@ -68,18 +63,18 @@ jobs:
             arch: arm
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
       - name: Build
-        run: make APP=${{ env.APP }}-${{ matrix.os }}-${{ matrix.arch }}
-        env:
-          GOARCH: ${{ matrix.arch }}
-          GOOS: ${{ matrix.os }}
+        uses: ./.github/actions/build
+        id: build
+        with:
+          os: ${{ matrix.os }}
+          arch: ${{ matrix.arch }}
+          app-name: ${{ env.APP }}
+          go-version: ${{ env.GO_VERSION }}
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.APP }}-${{ matrix.os }}-${{ matrix.arch }}
-          path: ${{ env.APP }}-${{ matrix.os }}-${{ matrix.arch }}
+          name: ${{ steps.build.outputs.binary-name }}
+          path: ${{ steps.build.outputs.binary-name }}
 
   build-freebsd:
     name: Build FreeBSD
@@ -93,22 +88,18 @@ jobs:
         arch: [amd64, arm64]
     steps:
       - uses: actions/checkout@v4
-      - name: Prepare FreeBSD
-        uses: vmactions/freebsd-vm@v1.2.1
-        with:
-          arch: ${{ matrix.arch }}
-          sync: sshfs 
-          prepare: |
-            pkg install -y gmake go
       - name: Build
-        shell: freebsd {0}
-        run: |
-          cd $GITHUB_WORKSPACE
-          gmake APP=${{ env.APP }}-${{ matrix.os }}-${{ matrix.arch }}
+        uses: ./.github/actions/build
+        id: build
+        with:
+          os: ${{ matrix.os }}
+          arch: ${{ matrix.arch }}
+          app-name: ${{ env.APP }}
+          go-version: ${{ env.GO_VERSION }}
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.APP }}-${{ matrix.os }}-${{ matrix.arch }}
-          path: ${{ env.APP }}-${{ matrix.os }}-${{ matrix.arch }}
+          name: ${{ steps.build.outputs.binary-name }}
+          path: ${{ steps.build.outputs.binary-name }}
 
   docker:
     if: github.event_name != 'pull_request'
@@ -119,19 +110,9 @@ jobs:
       - test
     steps:
       - uses: actions/checkout@v4
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - name: Build and Push Docker
+        uses: ./.github/actions/docker
         with:
-          username: ${{ github.repository_owner }}
-          password: ${{ secrets.DOCKER_TOKEN }}
-      - uses: docker/metadata-action@v5
-        id: meta
-        with:
-          images: ${{ github.repository_owner }}/${{ env.APP }}
-      - uses: docker/build-push-action@v6
-        with:
-          platforms: linux/amd64,linux/arm64,linux/arm
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          app-name: ${{ env.APP }}
+          docker-token: ${{ secrets.DOCKER_TOKEN }}
+          repository-owner: ${{ github.repository_owner }}

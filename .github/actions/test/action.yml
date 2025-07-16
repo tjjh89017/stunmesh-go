@@ -1,0 +1,19 @@
+name: 'Run Tests'
+description: 'Run Go tests with coverage'
+
+inputs:
+  go-version:
+    description: 'Go version to use'
+    required: true
+    default: 'stable'
+
+runs:
+  using: 'composite'
+  steps:
+    - uses: actions/setup-go@v5
+      with:
+        go-version: ${{ inputs.go-version }}
+    
+    - name: Test
+      shell: bash
+      run: go test -cover -v ./...

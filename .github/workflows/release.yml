@@ -9,9 +9,32 @@ env:
   APP: "stunmesh"
 
 jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint
+        uses: ./.github/actions/lint
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test
+        uses: ./.github/actions/test
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
   release:
     name: Release
     runs-on: ubuntu-latest
+    needs:
+      - lint
+      - test
     permissions:
       contents: write
     strategy:
@@ -28,23 +51,27 @@ jobs:
       - name: tag
         id: tag
         run: echo "TAG=$(git describe --tags --dirty)" >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
       - name: Build
-        run: make APP=${{ env.APP}}-${{ matrix.os }}-${{ matrix.arch }}-${{ steps.tag.outputs.TAG }}
-        env:
-          GOARCH: ${{ matrix.arch }}
-          GOOS: ${{ matrix.os }}
+        uses: ./.github/actions/build
+        id: build
+        with:
+          os: ${{ matrix.os }}
+          arch: ${{ matrix.arch }}
+          app-name: ${{ env.APP }}
+          go-version: ${{ env.GO_VERSION }}
+          tag: ${{ steps.tag.outputs.TAG }}
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ env.APP }}-${{ matrix.os }}-${{ matrix.arch }}-${{ steps.tag.outputs.TAG }}
+          files: ${{ steps.build.outputs.binary-name }}
           prerelease: ${{ contains(steps.tag.outputs.TAG, 'RC') || contains(steps.tag.outputs.TAG, 'rc') }}
 
   release-freebsd:
     name: Release FreeBSD
     runs-on: ubuntu-latest
+    needs:
+      - lint
+      - test
     strategy:
       matrix:
         os: [freebsd]
@@ -54,42 +81,32 @@ jobs:
       - name: tag
         id: tag
         run: echo "TAG=$(git describe --tags --dirty)" >> "$GITHUB_OUTPUT"
-      - name: Prepare FreeBSD
-        uses: vmactions/freebsd-vm@v1.2.1
-        with:
-          arch: ${{ matrix.arch }}
-          sync: sshfs 
-          prepare: |
-            pkg install -y gmake go
       - name: Build
-        shell: freebsd {0}
-        run: |
-          cd $GITHUB_WORKSPACE
-          gmake APP=${{ env.APP }}-${{ matrix.os }}-${{ matrix.arch }}-${{ steps.tag.outputs.TAG }}
+        uses: ./.github/actions/build
+        id: build
+        with:
+          os: ${{ matrix.os }}
+          arch: ${{ matrix.arch }}
+          app-name: ${{ env.APP }}
+          go-version: ${{ env.GO_VERSION }}
+          tag: ${{ steps.tag.outputs.TAG }}
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ env.APP }}-${{ matrix.os }}-${{ matrix.arch }}-${{ steps.tag.outputs.TAG }}
+          files: ${{ steps.build.outputs.binary-name }}
           prerelease: ${{ contains(steps.tag.outputs.TAG, 'RC') || contains(steps.tag.outputs.TAG, 'rc') }}
 
   docker:
     name: Build Docker container
     runs-on: ubuntu-latest
+    needs:
+      - lint
+      - test
     steps:
       - uses: actions/checkout@v4
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - name: Build and Push Docker
+        uses: ./.github/actions/docker
         with:
-          username: ${{ github.repository_owner }}
-          password: ${{ secrets.DOCKER_TOKEN }}
-      - uses: docker/metadata-action@v5
-        id: meta
-        with:
-          images: ${{ github.repository_owner }}/${{ env.APP }}
-      - uses: docker/build-push-action@v6
-        with:
-          platforms: linux/amd64,linux/arm64,linux/arm
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          app-name: ${{ env.APP }}
+          docker-token: ${{ secrets.DOCKER_TOKEN }}
+          repository-owner: ${{ github.repository_owner }}
