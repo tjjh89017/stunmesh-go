@@ -40,6 +40,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ env.APP }}-${{ matrix.os }}-${{ matrix.arch }}-${{ steps.tag.outputs.TAG }}
+          prerelease: ${{ contains(steps.tag.outputs.TAG, 'RC') || contains(steps.tag.outputs.TAG, 'rc') }}
 
   release-freebsd:
     name: Release FreeBSD
@@ -69,6 +70,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ env.APP }}-${{ matrix.os }}-${{ matrix.arch }}-${{ steps.tag.outputs.TAG }}
+          prerelease: ${{ contains(steps.tag.outputs.TAG, 'RC') || contains(steps.tag.outputs.TAG, 'rc') }}
 
   docker:
     name: Build Docker container
