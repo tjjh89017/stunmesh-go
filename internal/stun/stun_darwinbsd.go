@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"net"
 	"sync"
 	"time"
@@ -79,13 +78,18 @@ func New(ctx context.Context, port uint16, excludeInterface string) (*Stun, erro
 			logger.Debug().Msgf("set raw BPF filter for loopback interface %s", ifaceName)
 			payloadOff = 0 + 4 + 5*4 + 2*4 // Null header + IPv4 header + UDP header
 		} else {
-			filterStr := fmt.Sprintf("udp dst port %d and udp[12:4] == 0x2112A442", port)
-			if err := handle.SetBPFFilter(filterStr); err != nil {
-				logger.Debug().Msgf("failed to set BPF filter '%s' for interface %s: %v", filterStr, ifaceName, err)
+			filter, err := stunEthernetBpfFilter(ctx, port)
+			if err != nil {
+				logger.Debug().Msgf("failed to create raw BPF filter for interface %s: %v", ifaceName, err)
 				handle.Close()
 				continue
 			}
-			logger.Debug().Msgf("set BPF filter '%s' for interface %s", filterStr, ifaceName)
+			if err := handle.SetRawBPFFilter(filter); err != nil {
+				logger.Debug().Msgf("failed to set raw BPF filter for interface %s: %v", ifaceName, err)
+				handle.Close()
+				continue
+			}
+			logger.Debug().Msgf("set raw BPF filter for interface %s", ifaceName)
 			payloadOff = 0 + 14 + 5*4 + 2*4 // Ethernet header + IPv4 header + UDP header
 		}
 
@@ -307,6 +311,59 @@ func stunLoopbackBpfFilter(ctx context.Context, port uint16) ([]bpf.RawInstructi
 	logger := zerolog.Ctx(ctx)
 	if e != nil {
 		logger.Error().Err(e).Msg("failed to assemble BPF filter")
+		return nil, e
+	}
+
+	return r, nil
+}
+
+func stunEthernetBpfFilter(ctx context.Context, port uint16) ([]bpf.RawInstruction, error) {
+	const (
+		ethernetOff        = 0
+		ipOff              = ethernetOff + 14
+		udpOff             = ipOff + 5*4
+		payloadOff         = udpOff + 2*4
+		stunMagicCookieOff = payloadOff + 4
+
+		stunMagicCookie = 0x2112A442
+	)
+
+	r, e := bpf.Assemble([]bpf.Instruction{
+		bpf.LoadAbsolute{
+			// A = dst port
+			Off:  udpOff + 2,
+			Size: 2,
+		},
+		bpf.JumpIf{
+			// if A == `port`
+			Cond:      bpf.JumpEqual,
+			Val:       uint32(port),
+			SkipFalse: 3,
+		},
+		bpf.LoadAbsolute{
+			// A = stun magic part
+			Off:  stunMagicCookieOff,
+			Size: 4,
+		},
+		bpf.JumpIf{
+			// if A == stun magic value
+			Cond:      bpf.JumpEqual,
+			Val:       stunMagicCookie,
+			SkipFalse: 1,
+		},
+		// we need
+		bpf.RetConstant{
+			Val: 262144, // Return the length of the packet
+		},
+		// port and stun are not we need
+		bpf.RetConstant{
+			Val: 0, // Return 0 to indicate no match
+		},
+	})
+
+	logger := zerolog.Ctx(ctx)
+	if e != nil {
+		logger.Error().Err(e).Msg("failed to assemble ethernet BPF filter")
 		return nil, e
 	}
 
