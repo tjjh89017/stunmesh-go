@@ -38,6 +38,8 @@ type PeerPingState struct {
 
 type PingMonitorController struct {
 	config        *config.Config
+	devices       DeviceRepository
+	peers         PeerRepository
 	publishCtrl   *PublishController
 	establishCtrl *EstablishController
 	refreshCtrl   *RefreshController
@@ -48,6 +50,8 @@ type PingMonitorController struct {
 
 func NewPingMonitorController(
 	config *config.Config,
+	devices DeviceRepository,
+	peers PeerRepository,
 	publishCtrl *PublishController,
 	establishCtrl *EstablishController,
 	refreshCtrl *RefreshController,
@@ -55,12 +59,37 @@ func NewPingMonitorController(
 ) *PingMonitorController {
 	return &PingMonitorController{
 		config:        config,
+		devices:       devices,
+		peers:         peers,
 		publishCtrl:   publishCtrl,
 		establishCtrl: establishCtrl,
 		refreshCtrl:   refreshCtrl,
 		peerStates:    make(map[entity.PeerId]*PeerPingState),
 		logger:        logger.With().Str("controller", "ping_monitor").Logger(),
 	}
+}
+
+func (c *PingMonitorController) Execute(ctx context.Context) {
+	// Get all configured peers from all interfaces
+
+	peers, err := c.peers.List(ctx)
+	if err != nil {
+		c.logger.Error().Err(err).Msg("failed to list peers for ping monitoring")
+		return
+	}
+
+	for _, peer := range peers {
+		// Only monitor peers that have ping enabled
+		if peer.PingConfig().Enabled && peer.PingConfig().Target != "" {
+			c.AddPeer(peer.Id(), peer.PingConfig())
+			c.logger.Info().
+				Str("peer", peer.LocalId()).
+				Str("target", peer.PingConfig().Target).
+				Msg("added peer for ping monitoring")
+		}
+	}
+	// Start ping monitoring
+	go c.Start(ctx)
 }
 
 func (c *PingMonitorController) AddPeer(peerId entity.PeerId, pingConfig entity.PeerPingConfig) {
@@ -235,13 +264,13 @@ func (c *PingMonitorController) handlePingResult(ctx context.Context, state *Pee
 			// Always run publish to update our endpoint, then establish the specific peer
 			go c.publishCtrl.ExecuteForPeer(ctx, state.peerId)
 			go c.establishCtrl.Execute(ctx, state.peerId)
-			
+
 			if state.retryCount < PeerSpecificRetryThreshold {
 				logger.Info().Msg("triggered publish and establish for specific peer (early retry)")
 			} else {
 				logger.Info().Msg("triggered publish and establish for specific peer (late retry)")
 			}
-			
+
 			// Calculate next retry time
 			c.scheduleNextRetry(state, now)
 
@@ -274,25 +303,21 @@ func (c *PingMonitorController) scheduleNextRetry(state *PeerPingState, now time
 	fixedRetries := c.config.PingMonitor.FixedRetries
 
 	if state.retryCount <= fixedRetries {
-		// Use fixed interval for first few retries
-		state.nextRetryTime = now.Add(time.Duration(5) * time.Second)
+		// Use fixed interval for first few retries (fast recovery)
+		state.nextRetryTime = now.Add(time.Duration(2) * time.Second)
 	} else {
-		// Use arithmetic progression after fixed retries
-		// 10s, 15s, 20s, 25s, 30s... (increment by 5s each time)
-		const baseInterval = 10 // seconds
-		const increment = 5     // seconds
-		
-		retryAfterFixed := state.retryCount - fixedRetries
-		intervalSeconds := baseInterval + (retryAfterFixed-1)*increment
-		
-		backoffInterval := time.Duration(intervalSeconds) * time.Second
+		// Use Arithmetic backoff after fixed retries
+		const baseInterval = 5 // seconds
+		const increment = 5    // seconds
 
-		if backoffInterval >= c.config.RefreshInterval {
+		retryAfterfixed := state.retryCount - fixedRetries
+		intervalSeconds := baseInterval + (retryAfterfixed-1)*increment
+		if time.Duration(intervalSeconds)*time.Second >= c.config.RefreshInterval {
 			// Hand over to refresh cycle - no more retries
 			state.handedOverToRefresh = true
 			state.nextRetryTime = time.Time{} // Clear retry time
 		} else {
-			state.nextRetryTime = now.Add(backoffInterval)
+			state.nextRetryTime = now.Add(time.Duration(intervalSeconds) * time.Second)
 		}
 	}
 }

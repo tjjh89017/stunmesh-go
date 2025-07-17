@@ -2,7 +2,6 @@ package daemon
 
 import (
 	"context"
-	"encoding/base64"
 	"os"
 	"os/signal"
 	"syscall"
@@ -63,7 +62,7 @@ func (d *Daemon) Run(ctx context.Context) {
 	d.bootCtrl.Execute(daemonCtx)
 
 	// Initialize ping monitoring for all peers
-	d.initializePingMonitoring(daemonCtx)
+	d.pingMonitor.Execute(daemonCtx)
 
 	go d.refreshCtrl.Execute(daemonCtx)
 	go d.publishCtrl.Execute(daemonCtx)
@@ -135,44 +134,4 @@ func (d *Daemon) processAllPeers(ctx context.Context) {
 			return
 		}
 	}
-}
-
-func (d *Daemon) initializePingMonitoring(ctx context.Context) {
-	// Get all configured peers from all interfaces
-	for _, deviceConfig := range d.config.Interfaces {
-		for peerName, peerConfig := range deviceConfig.Peers {
-			// Only add peers that have ping monitoring enabled
-			if peerConfig.Ping != nil && peerConfig.Ping.Enabled && peerConfig.Ping.Target != "" {
-				// Create a dummy peer ID for ping monitoring
-				// In a real implementation, you'd get this from the actual peer
-				peerPublicKey, err := base64.StdEncoding.DecodeString(peerConfig.PublicKey)
-				if err != nil {
-					d.logger.Warn().Err(err).Str("peer", peerName).Msg("failed to decode peer public key")
-					continue
-				}
-
-				// For now, use a dummy local public key - this should be improved
-				localPublicKey := make([]byte, 32)
-				peerId := entity.NewPeerId(localPublicKey, peerPublicKey)
-
-				// Convert config.PingConfig to entity.PeerPingConfig
-				pingConfig := entity.PeerPingConfig{
-					Enabled:  peerConfig.Ping.Enabled,
-					Target:   peerConfig.Ping.Target,
-					Interval: peerConfig.Ping.Interval,
-					Timeout:  peerConfig.Ping.Timeout,
-				}
-
-				d.pingMonitor.AddPeer(peerId, pingConfig)
-
-				d.logger.Info().
-					Str("peer", peerName).
-					Str("target", peerConfig.Ping.Target).
-					Msg("added peer to ping monitoring")
-			}
-		}
-	}
-
-	// Start ping monitoring
-	go d.pingMonitor.Start(ctx)
 }
