@@ -61,10 +61,10 @@ func (d *Daemon) Run(ctx context.Context) {
 	}()
 
 	d.bootCtrl.Execute(daemonCtx)
-	
+
 	// Initialize ping monitoring for all peers
 	d.initializePingMonitoring(daemonCtx)
-	
+
 	go d.refreshCtrl.Execute(daemonCtx)
 	go d.publishCtrl.Execute(daemonCtx)
 	d.logger.Info().Msgf("daemon started with refresh interval %s", d.config.RefreshInterval)
@@ -92,35 +92,32 @@ func (d *Daemon) Run(ctx context.Context) {
 
 func (d *Daemon) RunOneshot(ctx context.Context) {
 	d.logger.Info().Msg("running in oneshot mode")
-	
+
 	// Bootstrap first
 	d.bootCtrl.Execute(ctx)
-	
-	// Initialize ping monitoring for all peers
-	d.initializePingMonitoring(ctx)
-	
+
 	// Run publish and establish 3 times
 	for i := 1; i <= 3; i++ {
 		d.logger.Info().Msgf("oneshot iteration %d/3", i)
-		
+
 		// Publish peer information
 		d.publishCtrl.Execute(ctx)
-		
+
 		// Wait a bit for publish to complete
 		time.Sleep(2 * time.Second)
-		
+
 		// Refresh to get peer information
 		d.refreshCtrl.Execute(ctx)
-		
+
 		// Process all peers in queue
 		d.processAllPeers(ctx)
-		
+
 		// Wait between iterations
 		if i < 3 {
 			time.Sleep(3 * time.Second)
 		}
 	}
-	
+
 	d.logger.Info().Msg("oneshot mode completed")
 }
 
@@ -153,11 +150,11 @@ func (d *Daemon) initializePingMonitoring(ctx context.Context) {
 					d.logger.Warn().Err(err).Str("peer", peerName).Msg("failed to decode peer public key")
 					continue
 				}
-				
+
 				// For now, use a dummy local public key - this should be improved
 				localPublicKey := make([]byte, 32)
 				peerId := entity.NewPeerId(localPublicKey, peerPublicKey)
-				
+
 				// Convert config.PingConfig to entity.PeerPingConfig
 				pingConfig := entity.PeerPingConfig{
 					Enabled:  peerConfig.Ping.Enabled,
@@ -165,9 +162,9 @@ func (d *Daemon) initializePingMonitoring(ctx context.Context) {
 					Interval: peerConfig.Ping.Interval,
 					Timeout:  peerConfig.Ping.Timeout,
 				}
-				
+
 				d.pingMonitor.AddPeer(peerId, pingConfig)
-				
+
 				d.logger.Info().
 					Str("peer", peerName).
 					Str("target", peerConfig.Ping.Target).
@@ -175,7 +172,7 @@ func (d *Daemon) initializePingMonitoring(ctx context.Context) {
 			}
 		}
 	}
-	
+
 	// Start ping monitoring
 	go d.pingMonitor.Start(ctx)
 }
