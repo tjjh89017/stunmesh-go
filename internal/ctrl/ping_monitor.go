@@ -27,7 +27,6 @@ type PeerPingState struct {
 	isHealthy    bool
 	failureCount int
 	lastPingTime time.Time
-	pingSeq      uint16 // ICMP sequence number
 	icmpId       uint16 // ICMP ID for this peer
 
 	// Publish/Establish retry tracking (separate from ping)
@@ -140,7 +139,6 @@ func (c *PingMonitorController) AddPeer(peerId entity.PeerId, pingConfig entity.
 		retryCount:          0,
 		backoffMultiplier:   1,
 		handedOverToRefresh: false,
-		pingSeq:             0, // Start from 0, will be incremented before use
 		icmpId:              icmpId,
 	}
 
@@ -193,18 +191,10 @@ func (c *PingMonitorController) pingTarget(ctx context.Context, state *PeerPingS
 	default:
 	}
 
-	// Increment sequence number for this ping, handling overflow
-	state.mu.Lock()
-	if state.pingSeq == 65535 {
-		state.pingSeq = 1 // Reset to 1 on overflow (avoid 0)
-	} else {
-		state.pingSeq++
-	}
-	seq := state.pingSeq
+	// Get immutable values (no lock needed)
 	icmpId := state.icmpId
 	target := state.target
 	timeout := state.timeout
-	state.mu.Unlock()
 
 	// Create ICMP connection
 	conn, err := icmp.ListenPacket("ip4:icmp", "0.0.0.0")
@@ -225,13 +215,13 @@ func (c *PingMonitorController) pingTarget(ctx context.Context, state *PeerPingS
 		return false
 	}
 
-	// Create ICMP message
+	// Create ICMP message with fixed sequence 0
 	message := &icmp.Message{
 		Type: ipv4.ICMPTypeEcho,
 		Code: 0,
 		Body: &icmp.Echo{
 			ID:   int(icmpId),
-			Seq:  int(seq),
+			Seq:  0, // Fixed sequence number
 			Data: []byte("stunmesh-ping"),
 		},
 	}
@@ -255,7 +245,7 @@ func (c *PingMonitorController) pingTarget(ctx context.Context, state *PeerPingS
 		return false
 	}
 
-	// Wait for reply
+	// Wait for reply and validate ICMP ID
 	reply := make([]byte, 1500)
 	_, _, err = conn.ReadFrom(reply)
 	if err != nil {
@@ -263,7 +253,39 @@ func (c *PingMonitorController) pingTarget(ctx context.Context, state *PeerPingS
 		return false
 	}
 
-	return true
+	// Parse and validate the reply
+	return c.validateReply(reply, icmpId, target)
+}
+
+func (c *PingMonitorController) validateReply(reply []byte, expectedId uint16, target string) bool {
+	// Parse the reply to verify it's our packet
+	replyMsg, err := icmp.ParseMessage(int(ipv4.ICMPTypeEchoReply), reply[20:])
+	if err != nil {
+		c.logger.Debug().Err(err).Str("target", target).Msg("failed to parse ICMP reply")
+		return false
+	}
+
+	// Check if it's an echo reply and verify ID
+	if replyEcho, ok := replyMsg.Body.(*icmp.Echo); ok {
+		if replyEcho.ID == int(expectedId) {
+			c.logger.Debug().
+				Str("target", target).
+				Uint16("icmp_id", expectedId).
+				Int("seq", replyEcho.Seq).
+				Msg("valid ping reply received")
+			return true
+		} else {
+			c.logger.Debug().
+				Str("target", target).
+				Uint16("expected_id", expectedId).
+				Int("got_id", replyEcho.ID).
+				Msg("ping reply ID mismatch")
+		}
+	} else {
+		c.logger.Debug().Str("target", target).Msg("received non-echo ICMP reply")
+	}
+
+	return false
 }
 
 func (c *PingMonitorController) handlePingResult(ctx context.Context, state *PeerPingState, success bool) {
