@@ -22,13 +22,15 @@ const (
 type PeerPingState struct {
 	peerId       entity.PeerId
 	target       string
+	targetIP     *net.IPAddr // Resolved target IP address
 	interval     time.Duration
 	timeout      time.Duration
 	isHealthy    bool
 	failureCount int
 	lastPingTime time.Time
-	pingSeq      uint16 // ICMP sequence number
-	icmpId       uint16 // ICMP ID for this peer
+	
+	// Ping identification
+	icmpId uint16 // ICMP ID for this peer
 
 	// Publish/Establish retry tracking (separate from ping)
 	lastRetryTime       time.Time
@@ -130,9 +132,17 @@ func (c *PingMonitorController) AddPeer(peerId entity.PeerId, pingConfig entity.
 	// Generate unique ICMP ID for this peer
 	icmpId := c.generateUniqueIcmpId()
 
+	// Resolve target IP address
+	targetIP, err := net.ResolveIPAddr("ip4", pingConfig.Target)
+	if err != nil {
+		c.logger.Warn().Err(err).Str("target", pingConfig.Target).Msg("failed to resolve target IP")
+		return
+	}
+
 	c.peerStates[peerId] = &PeerPingState{
 		peerId:              peerId,
 		target:              pingConfig.Target,
+		targetIP:            targetIP,
 		interval:            interval,
 		timeout:             timeout,
 		isHealthy:           true, // Assume healthy initially
@@ -140,7 +150,6 @@ func (c *PingMonitorController) AddPeer(peerId entity.PeerId, pingConfig entity.
 		retryCount:          0,
 		backoffMultiplier:   1,
 		handedOverToRefresh: false,
-		pingSeq:             0, // Start from 0, will be incremented before use
 		icmpId:              icmpId,
 	}
 
@@ -168,7 +177,24 @@ func (c *PingMonitorController) Start(ctx context.Context) {
 }
 
 func (c *PingMonitorController) monitorPeer(ctx context.Context, state *PeerPingState) {
-	ticker := time.NewTicker(state.interval) // Always use configured interval
+	// Create ICMP connection for this peer
+	conn, err := icmp.ListenPacket("ip4:icmp", "0.0.0.0")
+	if err != nil {
+		c.logger.Error().Err(err).Str("peer", state.peerId.String()).Msg("failed to create ICMP connection")
+		return
+	}
+	defer conn.Close()
+
+	// Start sender and reader goroutines
+	go c.senderLoop(ctx, state, conn)
+	go c.readerLoop(ctx, state, conn)
+
+	// Wait for context cancellation
+	<-ctx.Done()
+}
+
+func (c *PingMonitorController) senderLoop(ctx context.Context, state *PeerPingState, conn *icmp.PacketConn) {
+	ticker := time.NewTicker(state.interval)
 	defer ticker.Stop()
 
 	for {
@@ -176,62 +202,24 @@ func (c *PingMonitorController) monitorPeer(ctx context.Context, state *PeerPing
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			// Launch ping asynchronously to avoid blocking the ticker
-			go func() {
-				success := c.pingTarget(ctx, state)
-				c.handlePingResult(ctx, state, success)
-			}()
+			c.sendPing(ctx, state, conn)
 		}
 	}
 }
 
-func (c *PingMonitorController) pingTarget(ctx context.Context, state *PeerPingState) bool {
-	// Check if context is already cancelled
-	select {
-	case <-ctx.Done():
-		return false
-	default:
-	}
-
-	// Increment sequence number for this ping, handling overflow
-	state.mu.Lock()
-	if state.pingSeq == 65535 {
-		state.pingSeq = 1 // Reset to 1 on overflow (avoid 0)
-	} else {
-		state.pingSeq++
-	}
-	seq := state.pingSeq
+func (c *PingMonitorController) sendPing(ctx context.Context, state *PeerPingState, conn *icmp.PacketConn) {
+	// Get state values (no need for mutex since these don't change)
 	icmpId := state.icmpId
 	target := state.target
-	timeout := state.timeout
-	state.mu.Unlock()
+	targetIP := state.targetIP
 
-	// Create ICMP connection
-	conn, err := icmp.ListenPacket("ip4:icmp", "0.0.0.0")
-	if err != nil {
-		c.logger.Debug().Err(err).Str("target", target).Msg("failed to create ICMP connection")
-		return false
-	}
-	defer conn.Close()
-
-	// Set timeout based on both context and timeout parameter
-	deadline := time.Now().Add(timeout)
-	if ctxDeadline, ok := ctx.Deadline(); ok && ctxDeadline.Before(deadline) {
-		deadline = ctxDeadline
-	}
-
-	if err := conn.SetDeadline(deadline); err != nil {
-		c.logger.Debug().Err(err).Str("target", target).Msg("failed to set connection deadline")
-		return false
-	}
-
-	// Create ICMP message
+	// Create ICMP message with fixed sequence number
 	message := &icmp.Message{
 		Type: ipv4.ICMPTypeEcho,
 		Code: 0,
 		Body: &icmp.Echo{
 			ID:   int(icmpId),
-			Seq:  int(seq),
+			Seq:  1, // Fixed sequence number since we don't check it
 			Data: []byte("stunmesh-ping"),
 		},
 	}
@@ -239,31 +227,105 @@ func (c *PingMonitorController) pingTarget(ctx context.Context, state *PeerPingS
 	data, err := message.Marshal(nil)
 	if err != nil {
 		c.logger.Debug().Err(err).Str("target", target).Msg("failed to marshal ICMP message")
-		return false
+		return
 	}
 
-	// Send ping
-	addr, err := net.ResolveIPAddr("ip4", target)
-	if err != nil {
-		c.logger.Debug().Err(err).Str("target", target).Msg("failed to resolve target address")
-		return false
-	}
-
-	_, err = conn.WriteTo(data, addr)
+	// Send ping using pre-resolved IP
+	_, err = conn.WriteTo(data, targetIP)
 	if err != nil {
 		c.logger.Debug().Err(err).Str("target", target).Msg("failed to send ping")
-		return false
+		return
 	}
 
-	// Wait for reply
+	c.logger.Debug().
+		Str("target", target).
+		Uint16("icmp_id", icmpId).
+		Msg("sent ping")
+}
+
+func (c *PingMonitorController) readerLoop(ctx context.Context, state *PeerPingState, conn *icmp.PacketConn) {
 	reply := make([]byte, 1500)
-	_, _, err = conn.ReadFrom(reply)
-	if err != nil {
-		c.logger.Debug().Err(err).Str("target", target).Msg("failed to read ping reply")
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			// Set deadline for timeout
+			conn.SetReadDeadline(time.Now().Add(state.timeout))
+			
+			_, addr, err := conn.ReadFrom(reply)
+			if err != nil {
+				// Timeout or other error occurred
+				c.logger.Debug().
+					Str("peer", state.peerId.String()).
+					Str("target", state.target).
+					Dur("timeout", state.timeout).
+					Err(err).
+					Msg("ping timeout or read error")
+				c.handlePingResult(ctx, state, false)
+				continue
+			}
+
+			// Parse and validate reply
+			if c.validateReply(reply, addr, state) {
+				c.logger.Debug().
+					Str("peer", state.peerId.String()).
+					Str("target", state.target).
+					Msg("ping success")
+				c.handlePingResult(ctx, state, true)
+			}
+		}
+	}
+}
+
+func (c *PingMonitorController) validateReply(reply []byte, addr net.Addr, state *PeerPingState) bool {
+	// Check if source IP matches target IP
+	sourceIP, ok := addr.(*net.IPAddr)
+	if !ok {
+		c.logger.Debug().Str("target", state.target).Msg("invalid address type")
 		return false
 	}
 
-	return true
+	// Read immutable fields (no lock needed)
+	targetIP := state.targetIP
+	icmpId := state.icmpId
+
+	if !sourceIP.IP.Equal(targetIP.IP) {
+		c.logger.Debug().
+			Str("target", state.target).
+			Str("expected_ip", targetIP.IP.String()).
+			Str("got_ip", sourceIP.IP.String()).
+			Msg("ping reply IP mismatch")
+		return false
+	}
+
+	// Parse the reply to verify it's our packet
+	replyMsg, err := icmp.ParseMessage(int(ipv4.ICMPTypeEchoReply), reply[20:])
+	if err != nil {
+		c.logger.Debug().Err(err).Str("target", state.target).Msg("failed to parse ping reply")
+		return false
+	}
+
+	// Check if it's an echo reply and verify ID only (ignore sequence)
+	if replyEcho, ok := replyMsg.Body.(*icmp.Echo); ok {
+		if replyEcho.ID == int(icmpId) {
+			c.logger.Debug().
+				Str("target", state.target).
+				Int("icmp_id", int(icmpId)).
+				Int("got_seq", replyEcho.Seq).
+				Msg("valid ping reply received")
+			return true
+		} else {
+			c.logger.Debug().
+				Str("target", state.target).
+				Int("expected_id", int(icmpId)).
+				Int("got_id", replyEcho.ID).
+				Msg("ping reply ID mismatch")
+		}
+	}
+
+	return false
 }
 
 func (c *PingMonitorController) handlePingResult(ctx context.Context, state *PeerPingState, success bool) {
