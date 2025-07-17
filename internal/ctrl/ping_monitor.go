@@ -371,12 +371,6 @@ func (c *PingMonitorController) dispatchReply(ctx context.Context, reply []byte,
 		return
 	}
 
-	c.logger.Debug().
-		Int("icmp_id", replyEcho.ID).
-		Int("icmp_seq", replyEcho.Seq).
-		Str("data", string(replyEcho.Data)).
-		Msg("parsed ICMP echo reply successfully")
-
 	// Find peer by ICMP ID
 	icmpId := uint16(replyEcho.ID)
 	c.mu.RLock()

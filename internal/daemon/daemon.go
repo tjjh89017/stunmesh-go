@@ -62,7 +62,7 @@ func (d *Daemon) Run(ctx context.Context) {
 	d.bootCtrl.Execute(daemonCtx)
 
 	// Initialize ping monitoring for all peers
-	d.pingMonitor.Execute(daemonCtx)
+	go d.pingMonitor.Execute(daemonCtx)
 
 	go d.refreshCtrl.Execute(daemonCtx)
 	go d.publishCtrl.Execute(daemonCtx)
