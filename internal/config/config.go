@@ -35,6 +35,12 @@ type Stun struct {
 	Address string `mapstructure:"address"`
 }
 
+type PingMonitor struct {
+	Interval     time.Duration `mapstructure:"interval"`
+	Timeout      time.Duration `mapstructure:"timeout"`
+	FixedRetries int           `mapstructure:"fixed_retries"`
+}
+
 type PluginConfig map[string]interface{}
 
 type PluginDefinition struct {
@@ -48,6 +54,7 @@ type Config struct {
 	RefreshInterval time.Duration               `mapstructure:"refresh_interval"`
 	Log             Logger                      `mapstructure:"log"`
 	Stun            Stun                        `mapstructure:"stun"`
+	PingMonitor     PingMonitor                 `mapstructure:"ping_monitor"`
 }
 
 func Load() (*Config, error) {
@@ -59,6 +66,9 @@ func Load() (*Config, error) {
 
 	viper.SetDefault("refresh_interval", time.Duration(10)*time.Minute)
 	viper.SetDefault("stun.addr", "stun.l.google.com:19302")
+	viper.SetDefault("ping_monitor.interval", time.Duration(1)*time.Second)
+	viper.SetDefault("ping_monitor.timeout", time.Duration(1)*time.Second)
+	viper.SetDefault("ping_monitor.fixed_retries", 3)
 
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {

@@ -74,16 +74,29 @@ interfaces:
       "<PEER_NAME>":
         public_key: "<PUBLIC_KEY_IN_BASE64>"
         plugin: cloudflare1
+        ping:
+          enabled: true
+          target: "192.168.1.100"
   wg1:
     peers:
       "<PEER_NAME>":
         public_key: "<PUBLIC_KEY_IN_BASE64>"
         plugin: cloudflare2
+        ping:
+          enabled: true
+          target: "10.0.0.50"
+          interval: "60s"
+          timeout: "10s"
       "<PEER_NAME>":
         public_key: "<PUBLIC_KEY_IN_BASE64>"
         plugin: exec_plugin1
+        # ping configuration is completely optional
 stun:
   address: "stun.l.google.com:19302"
+ping_monitor:
+  interval: "5s"
+  timeout: "2s"
+  fixed_retries: 3
 plugins:
   cloudflare1:
     type: cloudflare
@@ -318,6 +331,82 @@ plugins:
     command: "curl"
     args: ["-s", "-X", "POST", "-H", "Content-Type: application/json", "--data-binary", "@-", "https://api.example.com/stunmesh"]
 ```
+
+### Ping Monitoring
+
+stunmesh-go supports intelligent ping monitoring to detect tunnel health and automatically trigger reconnection when issues are detected.
+
+#### Features
+
+- **Per-peer ping monitoring**: Each peer can have its own target IP and ping settings
+- **Adaptive retry logic**: Intelligent failure handling with exponential backoff
+- **Automatic recovery**: Triggers publish/establish operations on ping failures
+- **Configurable timeouts**: Per-peer or global timeout and interval settings
+
+#### How It Works
+
+1. **Normal Operation**: Pings target IP at configured intervals (constant frequency)
+2. **Failure Detection**: When ping fails, immediately triggers publish and establish for the specific failing peer  
+3. **Separate Retry Logic**: 
+   - **Ping monitoring**: Continues at constant configured interval regardless of failures
+   - **Publish/Establish retries**: Independent schedule with adaptive backoff
+   - All retries: Always publish endpoint for the specific failing peer, then establish connection
+   - First 3 retries: Fixed 2-second intervals  
+   - After 3 retries: Arithmetic progression backoff (10s, 12s, 14s, 16s, 18s...)
+   - Cap at `refresh_interval`: Hands over to normal refresh cycle, ping monitoring continues
+4. **Recovery**: On successful ping, resets retry logic and re-enables publish/establish
+
+#### Configuration
+
+**Global Ping Settings:**
+```yaml
+ping_monitor:
+  interval: "5s"        # Default ping interval
+  timeout: "2s"         # Default ping timeout
+  fixed_retries: 3      # Fixed retry attempts before exponential backoff
+```
+
+**Per-Peer Ping Configuration:**
+```yaml
+interfaces:
+  wg0:
+    peers:
+      "peer1":
+        public_key: "<PUBLIC_KEY_IN_BASE64>"
+        plugin: cloudflare1
+        ping:
+          enabled: true
+          target: "192.168.1.100"     # IP to ping through tunnel
+          interval: "60s"             # Override global interval (optional)
+          timeout: "10s"              # Override global timeout (optional)
+      "peer2":
+        public_key: "<PUBLIC_KEY_IN_BASE64>"
+        plugin: cloudflare2
+        ping:
+          enabled: true
+          target: "10.0.0.50"
+          # Uses global interval and timeout defaults
+      "peer3":
+        public_key: "<PUBLIC_KEY_IN_BASE64>"
+        plugin: cloudflare2
+        # No ping configuration = ping monitoring disabled
+```
+
+#### Configuration Parameters
+
+**Note: The entire `ping` section is optional. If omitted, ping monitoring is disabled for that peer.**
+
+- **`enabled`**: Enable ping monitoring for this peer (default: false)
+- **`target`**: IP address to ping through the tunnel (required if enabled)
+- **`interval`**: How often to ping (optional, uses global default)
+- **`timeout`**: Max time to wait for ping response (optional, uses global default)
+
+#### Use Cases
+
+- **Tunnel Health Monitoring**: Detect when WireGuard tunnel stops working
+- **Automatic Recovery**: Reconnect without manual intervention
+- **Network Redundancy**: Faster failover than waiting for refresh_interval
+- **Proactive Maintenance**: Identify and fix connectivity issues quickly
 
 ## Example Usage
 
