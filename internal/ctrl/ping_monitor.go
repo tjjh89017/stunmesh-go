@@ -348,24 +348,42 @@ func (c *PingMonitorController) sendPingForPeer(ctx context.Context, state *Peer
 }
 
 func (c *PingMonitorController) dispatchReply(ctx context.Context, reply []byte, addr net.Addr) {
-	// Parse the reply to get ICMP ID
-	replyMsg, err := icmp.ParseMessage(int(ipv4.ICMPTypeEchoReply), reply[20:])
+	// Try parsing without IP header first (raw ICMP)
+	replyMsg, err := icmp.ParseMessage(int(ipv4.ICMPTypeEchoReply), reply)
 	if err != nil {
-		c.logger.Debug().
-			Err(err).
-			Int("reply_length", len(reply)).
-			Str("reply_hex", fmt.Sprintf("%x", reply[:min(len(reply), 64)])).
-			Str("source_addr", addr.String()).
-			Msg("failed to parse ICMP reply - detailed debug info")
-		return
+		// If that fails, try with IP header offset
+		replyMsg, err = icmp.ParseMessage(int(ipv4.ICMPTypeEchoReply), reply[20:])
+		if err != nil {
+			c.logger.Debug().
+				Err(err).
+				Int("reply_length", len(reply)).
+				Str("reply_hex", fmt.Sprintf("%x", reply[:min(len(reply), 64)])).
+				Str("source_addr", addr.String()).
+				Msg("failed to parse ICMP reply - tried both raw and with IP header")
+			return
+		} else {
+			c.logger.Debug().Msg("successfully parsed ICMP reply with IP header offset")
+		}
+	} else {
+		c.logger.Debug().Msg("successfully parsed ICMP reply as raw ICMP")
 	}
 
 	// Check if it's an echo reply
 	replyEcho, ok := replyMsg.Body.(*icmp.Echo)
 	if !ok {
-		c.logger.Debug().Msg("received non-echo ICMP reply")
+		c.logger.Debug().
+			Str("message_type", fmt.Sprintf("%T", replyMsg.Body)).
+			Interface("icmp_type", replyMsg.Type).
+			Int("icmp_code", replyMsg.Code).
+			Msg("received non-echo ICMP reply")
 		return
 	}
+
+	c.logger.Debug().
+		Int("icmp_id", replyEcho.ID).
+		Int("icmp_seq", replyEcho.Seq).
+		Str("data", string(replyEcho.Data)).
+		Msg("parsed ICMP echo reply successfully")
 
 	// Find peer by ICMP ID
 	icmpId := uint16(replyEcho.ID)
