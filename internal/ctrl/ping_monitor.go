@@ -32,7 +32,7 @@ type PeerPingState struct {
 	failureCount int
 	lastPingTime time.Time
 	lastSentTime time.Time // Track when last ping was sent
-	
+
 	// Ping identification
 	icmpId uint16 // ICMP ID for this peer
 
@@ -53,9 +53,9 @@ type PingMonitorController struct {
 	establishCtrl *EstablishController
 	refreshCtrl   *RefreshController
 	peerStates    map[entity.PeerId]*PeerPingState
-	usedIcmpIds   map[uint16]bool // Track used ICMP IDs
+	usedIcmpIds   map[uint16]bool          // Track used ICMP IDs
 	icmpIdToPeer  map[uint16]entity.PeerId // Map ICMP ID to peer ID
-	globalConn    *icmp.PacketConn // Single global ICMP connection
+	globalConn    *icmp.PacketConn         // Single global ICMP connection
 	logger        zerolog.Logger
 	mu            sync.RWMutex
 }
@@ -116,7 +116,7 @@ func (c *PingMonitorController) Execute(ctx context.Context) {
 		Int("uid", os.Getuid()).
 		Int("gid", os.Getgid()).
 		Msg("attempting to create global ICMP connection")
-		
+
 	conn, err := icmp.ListenPacket("ip4:icmp", "0.0.0.0")
 	if err != nil {
 		c.logger.Error().
@@ -129,7 +129,7 @@ func (c *PingMonitorController) Execute(ctx context.Context) {
 			Msg("failed to create global ICMP connection - check if running as root or with CAP_NET_RAW capability")
 		return
 	}
-	
+
 	c.logger.Info().Msg("successfully created global ICMP connection")
 	defer conn.Close()
 
@@ -219,7 +219,7 @@ func (c *PingMonitorController) globalSenderLoop(ctx context.Context, conn *icmp
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			c.sendPingsToAllPeers(ctx, conn)
+			c.sendPingsToAllPeers(conn)
 		}
 	}
 }
@@ -230,7 +230,7 @@ func (c *PingMonitorController) globalReaderLoop(ctx context.Context, conn *icmp
 	for {
 		// Set a short deadline to allow periodic context checking
 		conn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
-		
+
 		_, addr, err := conn.ReadFrom(reply)
 		if err != nil {
 			// Check if context is cancelled
@@ -254,12 +254,12 @@ func (c *PingMonitorController) globalReaderLoop(ctx context.Context, conn *icmp
 	}
 }
 
-func (c *PingMonitorController) sendPingsToAllPeers(ctx context.Context, conn *icmp.PacketConn) {
+func (c *PingMonitorController) sendPingsToAllPeers(conn *icmp.PacketConn) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
 	for _, state := range c.peerStates {
-		c.sendPingForPeer(ctx, state, conn)
+		c.sendPingForPeer(state, conn)
 	}
 }
 
@@ -295,18 +295,18 @@ func (c *PingMonitorController) checkForTimeouts(ctx context.Context) {
 				Str("target", state.target).
 				Dur("timeout", timeout).
 				Msg("peer ping timed out")
-			
+
 			// Reset lastSentTime to prevent multiple timeout triggers
 			state.mu.Lock()
 			state.lastSentTime = time.Time{}
 			state.mu.Unlock()
-			
+
 			c.handlePingResult(ctx, state, false)
 		}
 	}
 }
 
-func (c *PingMonitorController) sendPingForPeer(ctx context.Context, state *PeerPingState, conn *icmp.PacketConn) {
+func (c *PingMonitorController) sendPingForPeer(state *PeerPingState, conn *icmp.PacketConn) {
 	// Get state values (no need for mutex since these don't change)
 	icmpId := state.icmpId
 	target := state.target
@@ -348,24 +348,16 @@ func (c *PingMonitorController) sendPingForPeer(ctx context.Context, state *Peer
 }
 
 func (c *PingMonitorController) dispatchReply(ctx context.Context, reply []byte, addr net.Addr) {
-	// Try parsing without IP header first (raw ICMP)
-	replyMsg, err := icmp.ParseMessage(int(ipv4.ICMPTypeEchoReply), reply)
+	// Parse ICMP reply (reply starts from ICMP header)
+	replyMsg, err := icmp.ParseMessage(ipv4.ICMPTypeEchoReply.Protocol(), reply)
 	if err != nil {
-		// If that fails, try with IP header offset
-		replyMsg, err = icmp.ParseMessage(int(ipv4.ICMPTypeEchoReply), reply[20:])
-		if err != nil {
-			c.logger.Debug().
-				Err(err).
-				Int("reply_length", len(reply)).
-				Str("reply_hex", fmt.Sprintf("%x", reply[:min(len(reply), 64)])).
-				Str("source_addr", addr.String()).
-				Msg("failed to parse ICMP reply - tried both raw and with IP header")
-			return
-		} else {
-			c.logger.Debug().Msg("successfully parsed ICMP reply with IP header offset")
-		}
-	} else {
-		c.logger.Debug().Msg("successfully parsed ICMP reply as raw ICMP")
+		c.logger.Debug().
+			Err(err).
+			Int("reply_length", len(reply)).
+			Str("reply_hex", fmt.Sprintf("%x", reply[:min(len(reply), 64)])).
+			Str("source_addr", addr.String()).
+			Msg("failed to parse ICMP reply")
+		return
 	}
 
 	// Check if it's an echo reply
@@ -413,7 +405,6 @@ func (c *PingMonitorController) dispatchReply(ctx context.Context, reply []byte,
 	}
 }
 
-
 func (c *PingMonitorController) validateReply(reply []byte, addr net.Addr, state *PeerPingState) bool {
 	// Check if source IP matches target IP
 	sourceIP, ok := addr.(*net.IPAddr)
@@ -436,7 +427,7 @@ func (c *PingMonitorController) validateReply(reply []byte, addr net.Addr, state
 	}
 
 	// Parse the reply to verify it's our packet
-	replyMsg, err := icmp.ParseMessage(int(ipv4.ICMPTypeEchoReply), reply[20:])
+	replyMsg, err := icmp.ParseMessage(1, reply)
 	if err != nil {
 		c.logger.Debug().Err(err).Str("target", state.target).Msg("failed to parse ping reply")
 		return false
