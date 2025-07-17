@@ -401,6 +401,14 @@ interfaces:
 - **`interval`**: How often to ping (optional, uses global default)
 - **`timeout`**: Max time to wait for ping response (optional, uses global default)
 
+#### Limitations
+
+- **IPv4 Only**: Ping monitoring currently supports IPv4 addresses only
+- **IP Address Required**: The `target` field must be an IP address, not a domain name
+- **Examples**: 
+  - ✅ Valid: `"192.168.1.100"`, `"10.0.0.1"`, `"172.16.0.50"`
+  - ❌ Invalid: `"router.local"`, `"google.com"`, `"2001:db8::1"`
+
 #### Use Cases
 
 - **Tunnel Health Monitoring**: Detect when WireGuard tunnel stops working
