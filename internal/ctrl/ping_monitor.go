@@ -434,11 +434,13 @@ func (c *PingMonitorController) validateReply(reply []byte, addr net.Addr, state
 	// Check if it's an echo reply and verify ID only (ignore sequence)
 	if replyEcho, ok := replyMsg.Body.(*icmp.Echo); ok {
 		if replyEcho.ID == int(icmpId) {
-			c.logger.Debug().
-				Str("target", state.target).
-				Int("icmp_id", int(icmpId)).
-				Int("got_seq", replyEcho.Seq).
-				Msg("valid ping reply received")
+			/*
+				c.logger.Debug().
+					Str("target", state.target).
+					Int("icmp_id", int(icmpId)).
+					Int("got_seq", replyEcho.Seq).
+					Msg("valid ping reply received")
+			*/
 			return true
 		} else {
 			c.logger.Debug().
