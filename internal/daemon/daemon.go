@@ -81,3 +81,50 @@ func (d *Daemon) Run(ctx context.Context) {
 		}
 	}
 }
+
+func (d *Daemon) RunOneshot(ctx context.Context) {
+	d.logger.Info().Msg("running in oneshot mode")
+	
+	// Bootstrap first
+	d.bootCtrl.Execute(ctx)
+	
+	// Run publish and establish 3 times
+	for i := 1; i <= 3; i++ {
+		d.logger.Info().Msgf("oneshot iteration %d/3", i)
+		
+		// Publish peer information
+		d.publishCtrl.Execute(ctx)
+		
+		// Wait a bit for publish to complete
+		time.Sleep(2 * time.Second)
+		
+		// Refresh to get peer information
+		d.refreshCtrl.Execute(ctx)
+		
+		// Process all peers in queue
+		d.processAllPeers(ctx)
+		
+		// Wait between iterations
+		if i < 3 {
+			time.Sleep(3 * time.Second)
+		}
+	}
+	
+	d.logger.Info().Msg("oneshot mode completed")
+}
+
+func (d *Daemon) processAllPeers(ctx context.Context) {
+	// Process all peers currently in the queue
+	for {
+		select {
+		case peerId := <-d.queue.Dequeue():
+			d.logger.Info().Str("peer", peerId.String()).Msg("processing peer in oneshot mode")
+			d.establishCtrl.Execute(ctx, peerId)
+		case <-time.After(1 * time.Second):
+			// No more peers to process
+			return
+		case <-ctx.Done():
+			return
+		}
+	}
+}
