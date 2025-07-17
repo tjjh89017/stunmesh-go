@@ -312,12 +312,13 @@ func (c *PingMonitorController) scheduleNextRetry(state *PeerPingState, now time
 
 		retryAfterfixed := state.retryCount - fixedRetries
 		intervalSeconds := baseInterval + (retryAfterfixed-1)*increment
-		if time.Duration(intervalSeconds)*time.Second >= c.config.RefreshInterval {
+		backoffInterval := time.Duration(intervalSeconds) * time.Second
+		if backoffInterval >= c.config.RefreshInterval {
 			// Hand over to refresh cycle - no more retries
 			state.handedOverToRefresh = true
 			state.nextRetryTime = time.Time{} // Clear retry time
 		} else {
-			state.nextRetryTime = now.Add(time.Duration(intervalSeconds) * time.Second)
+			state.nextRetryTime = now.Add(backoffInterval)
 		}
 	}
 }
