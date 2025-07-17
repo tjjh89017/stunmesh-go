@@ -229,7 +229,7 @@ func (c *PingMonitorController) globalReaderLoop(ctx context.Context, conn *icmp
 
 	for {
 		// Set a short deadline to allow periodic context checking
-		conn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+		_ = conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
 
 		_, addr, err := conn.ReadFrom(reply)
 		if err != nil {
@@ -341,10 +341,12 @@ func (c *PingMonitorController) sendPingForPeer(state *PeerPingState, conn *icmp
 	state.lastSentTime = time.Now()
 	state.mu.Unlock()
 
-	c.logger.Debug().
-		Str("target", target).
-		Uint16("icmp_id", icmpId).
-		Msg("sent ping")
+	/*
+		c.logger.Debug().
+			Str("target", target).
+			Uint16("icmp_id", icmpId).
+			Msg("sent ping")
+	*/
 }
 
 func (c *PingMonitorController) dispatchReply(ctx context.Context, reply []byte, addr net.Addr) {
@@ -391,10 +393,12 @@ func (c *PingMonitorController) dispatchReply(ctx context.Context, reply []byte,
 
 	// Validate reply and handle result
 	if c.validateReply(reply, addr, state) {
-		c.logger.Debug().
-			Str("peer", state.peerId.String()).
-			Str("target", state.target).
-			Msg("ping success")
+		/*
+			c.logger.Debug().
+				Str("peer", state.peerId.String()).
+				Str("target", state.target).
+				Msg("ping success")
+		*/
 		c.handlePingResult(ctx, state, true)
 	}
 }
@@ -421,7 +425,7 @@ func (c *PingMonitorController) validateReply(reply []byte, addr net.Addr, state
 	}
 
 	// Parse the reply to verify it's our packet
-	replyMsg, err := icmp.ParseMessage(1, reply)
+	replyMsg, err := icmp.ParseMessage(ipv4.ICMPTypeEchoReply.Protocol(), reply)
 	if err != nil {
 		c.logger.Debug().Err(err).Str("target", state.target).Msg("failed to parse ping reply")
 		return false
