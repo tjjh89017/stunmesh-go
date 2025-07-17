@@ -35,18 +35,24 @@ type Stun struct {
 }
 
 func New(ctx context.Context, port uint16, excludeInterface string) (*Stun, error) {
+	logger := zerolog.Ctx(ctx)
+
 	// Get all eligible interfaces (excluding the specific WireGuard interface)
 	interfaceNames, err := getAllEligibleInterfaces(excludeInterface)
 	if err != nil {
 		return nil, err
 	}
 
+	logger.Debug().Msgf("found %d eligible interfaces (excluding %s): %v", len(interfaceNames), excludeInterface, interfaceNames)
+
 	var handles []interfaceHandle
 
 	// Create pcap handle for each eligible interface
 	for _, ifaceName := range interfaceNames {
+		logger.Debug().Msgf("attempting to register OpenLive for interface: %s", ifaceName)
 		handle, err := pcap.OpenLive(ifaceName, PacketSize, false, 0, pcap.DefaultSyscalls)
 		if err != nil {
+			logger.Debug().Msgf("failed to open interface %s: %v", ifaceName, err)
 			// Skip interfaces that can't be opened
 			continue
 		}
@@ -61,19 +67,25 @@ func New(ctx context.Context, port uint16, excludeInterface string) (*Stun, erro
 		if intf.Flags&net.FlagLoopback != 0 {
 			filter, err := stunLoopbackBpfFilter(ctx, port)
 			if err != nil {
+				logger.Debug().Msgf("failed to create BPF filter for loopback interface %s: %v", ifaceName, err)
 				handle.Close()
 				continue
 			}
 			if err := handle.SetRawBPFFilter(filter); err != nil {
+				logger.Debug().Msgf("failed to set raw BPF filter for loopback interface %s: %v", ifaceName, err)
 				handle.Close()
 				continue
 			}
+			logger.Debug().Msgf("set raw BPF filter for loopback interface %s", ifaceName)
 			payloadOff = 0 + 4 + 5*4 + 2*4 // Null header + IPv4 header + UDP header
 		} else {
-			if err := handle.SetBPFFilter(fmt.Sprintf("udp dst port %d and udp[12:4] == 0x2112A442", port)); err != nil {
+			filterStr := fmt.Sprintf("udp dst port %d and udp[12:4] == 0x2112A442", port)
+			if err := handle.SetBPFFilter(filterStr); err != nil {
+				logger.Debug().Msgf("failed to set BPF filter '%s' for interface %s: %v", filterStr, ifaceName, err)
 				handle.Close()
 				continue
 			}
+			logger.Debug().Msgf("set BPF filter '%s' for interface %s", filterStr, ifaceName)
 			payloadOff = 0 + 14 + 5*4 + 2*4 // Ethernet header + IPv4 header + UDP header
 		}
 
@@ -82,11 +94,15 @@ func New(ctx context.Context, port uint16, excludeInterface string) (*Stun, erro
 			handle:     handle,
 			payloadOff: payloadOff,
 		})
+		logger.Debug().Msgf("successfully registered OpenLive for interface: %s (payloadOff: %d)", ifaceName, payloadOff)
 	}
 
 	if len(handles) == 0 {
+		logger.Error().Msg("no usable interfaces found after attempting to open all eligible interfaces")
 		return nil, errors.New("no usable interfaces found")
 	}
+
+	logger.Info().Msgf("successfully registered OpenLive for %d interfaces", len(handles))
 
 	c, err := net.ListenPacket("ip4:17", "0.0.0.0")
 	if err != nil {
