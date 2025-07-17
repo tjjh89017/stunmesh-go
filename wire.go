@@ -29,6 +29,7 @@ func setup() (*daemon.Daemon, error) {
 		wire.Bind(new(entity.DevicePeerChecker), new(*repo.Peers)),
 		providePluginManager,
 		provideRefreshQueue,
+		ctrl.NewPingMonitorController,
 		wire.Bind(new(ctrl.RefreshQueue), new(*queue.Queue[entity.PeerId])),
 		config.DefaultSet,
 		logger.DefaultSet,

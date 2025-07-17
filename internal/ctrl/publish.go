@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/rs/zerolog"
+	"github.com/tjjh89017/stunmesh-go/internal/entity"
 	"github.com/tjjh89017/stunmesh-go/plugin"
 )
 
@@ -79,4 +80,63 @@ func (c *PublishController) Execute(ctx context.Context) {
 			}
 		}
 	}
+}
+
+func (c *PublishController) ExecuteForPeer(ctx context.Context, peerId entity.PeerId) {
+	// Find the specific peer
+	peer, err := c.peers.Find(ctx, peerId)
+	if err != nil {
+		c.logger.Error().Err(err).Str("peer_id", peerId.String()).Msg("failed to find peer")
+		return
+	}
+
+	// Find the device for this peer
+	device, err := c.devices.Find(ctx, entity.DeviceId(peer.DeviceName()))
+	if err != nil {
+		c.logger.Error().Err(err).Str("device", peer.DeviceName()).Msg("failed to find device")
+		return
+	}
+
+	logger := c.logger.With().
+		Str("device", string(device.Name())).
+		Str("peer", peer.LocalId()).
+		Logger()
+
+	// Resolve outside address
+	host, port, err := c.resolver.Resolve(ctx, string(device.Name()), uint16(device.ListenPort()))
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to resolve outside address")
+		return
+	}
+
+	logger.Info().Str("host", host).Int("port", int(port)).Msg("outside address for specific peer")
+
+	// Encrypt endpoint data
+	res, err := c.encryptor.Encrypt(ctx, &EndpointEncryptRequest{
+		PeerPublicKey: peer.PublicKey(),
+		PrivateKey:    device.PrivateKey(),
+		Host:          host,
+		Port:          port,
+	})
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to encrypt endpoint")
+		return
+	}
+
+	// Get plugin store
+	store, err := c.pluginManager.GetPlugin(peer.Plugin())
+	if err != nil {
+		logger.Error().Err(err).Str("plugin", peer.Plugin()).Msg("failed to get plugin")
+		return
+	}
+
+	// Store endpoint data
+	storeCtx := context.WithoutCancel(ctx)
+	err = store.Set(storeCtx, peer.LocalId(), res.Data)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to store endpoint for specific peer")
+		return
+	}
+
+	logger.Info().Msg("successfully published endpoint for specific peer")
 }

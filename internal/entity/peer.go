@@ -1,24 +1,36 @@
 package entity
 
-import "errors"
+import (
+	"errors"
+	"time"
+)
 
 var (
 	ErrPeerNotFound = errors.New("peer not found")
 )
+
+type PeerPingConfig struct {
+	Enabled  bool
+	Target   string
+	Interval time.Duration
+	Timeout  time.Duration
+}
 
 type Peer struct {
 	id         PeerId
 	deviceName string
 	publicKey  [32]byte
 	plugin     string
+	pingConfig PeerPingConfig
 }
 
-func NewPeer(id PeerId, deviceName string, publicKey [32]byte, plugin string) *Peer {
+func NewPeer(id PeerId, deviceName string, publicKey [32]byte, plugin string, pingConfig PeerPingConfig) *Peer {
 	return &Peer{
 		id:         id,
 		deviceName: deviceName,
 		publicKey:  publicKey,
 		plugin:     plugin,
+		pingConfig: pingConfig,
 	}
 }
 
@@ -44,4 +56,8 @@ func (p *Peer) PublicKey() [32]byte {
 
 func (p *Peer) Plugin() string {
 	return p.plugin
+}
+
+func (p *Peer) PingConfig() PeerPingConfig {
+	return p.pingConfig
 }
