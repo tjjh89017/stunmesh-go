@@ -33,7 +33,7 @@ type Stun struct {
 	packetChan chan *stun.Message
 }
 
-func New(ctx context.Context, port uint16, excludeInterface string) (*Stun, error) {
+func New(ctx context.Context, excludeInterface string, port uint16) (*Stun, error) {
 	logger := zerolog.Ctx(ctx)
 
 	// Get all eligible interfaces (excluding the specific WireGuard interface)
