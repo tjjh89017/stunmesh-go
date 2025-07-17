@@ -2,8 +2,11 @@ package ctrl
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
 	"net"
+	"os"
+	"reflect"
 	"sync"
 	"time"
 
@@ -107,11 +110,27 @@ func (c *PingMonitorController) Execute(ctx context.Context) {
 	}
 
 	// Create global ICMP connection
+	c.logger.Info().
+		Str("protocol", "ip4:icmp").
+		Str("address", "0.0.0.0").
+		Int("uid", os.Getuid()).
+		Int("gid", os.Getgid()).
+		Msg("attempting to create global ICMP connection")
+		
 	conn, err := icmp.ListenPacket("ip4:icmp", "0.0.0.0")
 	if err != nil {
-		c.logger.Error().Err(err).Msg("failed to create global ICMP connection")
+		c.logger.Error().
+			Err(err).
+			Str("protocol", "ip4:icmp").
+			Str("address", "0.0.0.0").
+			Int("uid", os.Getuid()).
+			Int("gid", os.Getgid()).
+			Str("error_type", getErrorType(err)).
+			Msg("failed to create global ICMP connection - check if running as root or with CAP_NET_RAW capability")
 		return
 	}
+	
+	c.logger.Info().Msg("successfully created global ICMP connection")
 	defer conn.Close()
 
 	c.globalConn = conn
@@ -209,20 +228,29 @@ func (c *PingMonitorController) globalReaderLoop(ctx context.Context, conn *icmp
 	reply := make([]byte, 1500)
 
 	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-			_, addr, err := conn.ReadFrom(reply)
-			if err != nil {
-				// Network error - continue reading
-				c.logger.Debug().Err(err).Msg("error reading ICMP packet")
+		// Set a short deadline to allow periodic context checking
+		conn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+		
+		_, addr, err := conn.ReadFrom(reply)
+		if err != nil {
+			// Check if context is cancelled
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				// Log detailed error info for non-timeout errors
+				if !isTimeoutError(err) {
+					c.logger.Debug().
+						Err(err).
+						Str("error_type", getErrorType(err)).
+						Msg("error reading ICMP packet")
+				}
 				continue
 			}
-
-			// Parse and dispatch reply to correct peer
-			c.dispatchReply(ctx, reply, addr)
 		}
+
+		// Parse and dispatch reply to correct peer
+		c.dispatchReply(ctx, reply, addr)
 	}
 }
 
@@ -323,7 +351,12 @@ func (c *PingMonitorController) dispatchReply(ctx context.Context, reply []byte,
 	// Parse the reply to get ICMP ID
 	replyMsg, err := icmp.ParseMessage(int(ipv4.ICMPTypeEchoReply), reply[20:])
 	if err != nil {
-		c.logger.Debug().Err(err).Msg("failed to parse ICMP reply")
+		c.logger.Debug().
+			Err(err).
+			Int("reply_length", len(reply)).
+			Str("reply_hex", fmt.Sprintf("%x", reply[:min(len(reply), 64)])).
+			Str("source_addr", addr.String()).
+			Msg("failed to parse ICMP reply - detailed debug info")
 		return
 	}
 
@@ -516,4 +549,26 @@ func (c *PingMonitorController) GetPeerState(peerId entity.PeerId) (bool, int) {
 	}
 
 	return true, 0 // Default to healthy if not monitored
+}
+
+// Helper functions for error debugging
+func isTimeoutError(err error) bool {
+	if netErr, ok := err.(net.Error); ok {
+		return netErr.Timeout()
+	}
+	return false
+}
+
+func getErrorType(err error) string {
+	if err == nil {
+		return "none"
+	}
+	return reflect.TypeOf(err).String()
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
