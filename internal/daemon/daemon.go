@@ -21,6 +21,7 @@ type Daemon struct {
 	publishCtrl   *ctrl.PublishController
 	establishCtrl *ctrl.EstablishController
 	refreshCtrl   *ctrl.RefreshController
+	pingMonitor   *ctrl.PingMonitorController
 	logger        zerolog.Logger
 }
 
@@ -31,6 +32,7 @@ func New(
 	publish *ctrl.PublishController,
 	establish *ctrl.EstablishController,
 	refresh *ctrl.RefreshController,
+	pingMonitor *ctrl.PingMonitorController,
 	logger *zerolog.Logger) *Daemon {
 	return &Daemon{
 		config:        config,
@@ -39,6 +41,7 @@ func New(
 		publishCtrl:   publish,
 		establishCtrl: establish,
 		refreshCtrl:   refresh,
+		pingMonitor:   pingMonitor,
 		logger:        logger.With().Str("component", "daemon").Logger(),
 	}
 }
@@ -57,6 +60,10 @@ func (d *Daemon) Run(ctx context.Context) {
 	}()
 
 	d.bootCtrl.Execute(daemonCtx)
+
+	// Initialize ping monitoring for all peers
+	go d.pingMonitor.Execute(daemonCtx)
+
 	go d.refreshCtrl.Execute(daemonCtx)
 	go d.publishCtrl.Execute(daemonCtx)
 	d.logger.Info().Msgf("daemon started with refresh interval %s", d.config.RefreshInterval)
@@ -84,32 +91,32 @@ func (d *Daemon) Run(ctx context.Context) {
 
 func (d *Daemon) RunOneshot(ctx context.Context) {
 	d.logger.Info().Msg("running in oneshot mode")
-	
+
 	// Bootstrap first
 	d.bootCtrl.Execute(ctx)
-	
+
 	// Run publish and establish 3 times
 	for i := 1; i <= 3; i++ {
 		d.logger.Info().Msgf("oneshot iteration %d/3", i)
-		
+
 		// Publish peer information
 		d.publishCtrl.Execute(ctx)
-		
+
 		// Wait a bit for publish to complete
 		time.Sleep(2 * time.Second)
-		
+
 		// Refresh to get peer information
 		d.refreshCtrl.Execute(ctx)
-		
+
 		// Process all peers in queue
 		d.processAllPeers(ctx)
-		
+
 		// Wait between iterations
 		if i < 3 {
 			time.Sleep(3 * time.Second)
 		}
 	}
-	
+
 	d.logger.Info().Msg("oneshot mode completed")
 }
 

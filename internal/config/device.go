@@ -3,14 +3,23 @@ package config
 import (
 	"context"
 	"encoding/base64"
+	"time"
 
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
 )
 
+type PingConfig struct {
+	Enabled  bool          `mapstructure:"enabled"`
+	Target   string        `mapstructure:"target"`
+	Interval time.Duration `mapstructure:"interval"`
+	Timeout  time.Duration `mapstructure:"timeout"`
+}
+
 type Peer struct {
-	Description string `mapstructure:"description"`
-	PublicKey   string `mapstructure:"public_key"`
-	Plugin      string `mapstructure:"plugin"`
+	Description string      `mapstructure:"description"`
+	PublicKey   string      `mapstructure:"public_key"`
+	Plugin      string      `mapstructure:"plugin"`
+	Ping        *PingConfig `mapstructure:"ping"`
 }
 
 type Interface struct {
@@ -47,7 +56,24 @@ func (c *DeviceConfig) GetConfigPeers(ctx context.Context, deviceName string, lo
 		copy(publicKeyArray[:], peerPublicKey)
 
 		peerId := entity.NewPeerId(localPublicKey, peerPublicKey)
-		peer := entity.NewPeer(peerId, deviceName, publicKeyArray, configPeer.Plugin)
+		
+		// Convert config.PingConfig to entity.PeerPingConfig
+		var pingConfig entity.PeerPingConfig
+		if configPeer.Ping != nil {
+			pingConfig = entity.PeerPingConfig{
+				Enabled:  configPeer.Ping.Enabled,
+				Target:   configPeer.Ping.Target,
+				Interval: configPeer.Ping.Interval,
+				Timeout:  configPeer.Ping.Timeout,
+			}
+		} else {
+			// Default to disabled if no ping config provided
+			pingConfig = entity.PeerPingConfig{
+				Enabled: false,
+			}
+		}
+		
+		peer := entity.NewPeer(peerId, deviceName, publicKeyArray, configPeer.Plugin, pingConfig)
 		peers = append(peers, peer)
 	}
 

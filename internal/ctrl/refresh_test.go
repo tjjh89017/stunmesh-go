@@ -25,6 +25,7 @@ func TestRefresh_Execute(t *testing.T) {
 			"wg0",
 			[32]byte{},
 			"cloudflare",
+			entity.PeerPingConfig{Enabled: false},
 		),
 	}
 
