@@ -51,9 +51,19 @@ type Config struct {
 }
 
 func Load() (*Config, error) {
-	viper.SetConfigName(Name)
-	for _, path := range Paths {
-		viper.AddConfigPath(path)
+	return LoadWithPath("")
+}
+
+func LoadWithPath(configPath string) (*Config, error) {
+	if configPath != "" {
+		// Use specific config file
+		viper.SetConfigFile(configPath)
+	} else {
+		// Use default search paths
+		viper.SetConfigName(Name)
+		for _, path := range Paths {
+			viper.AddConfigPath(path)
+		}
 	}
 	viper.AutomaticEnv()
 

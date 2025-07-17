@@ -20,7 +20,12 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl"
 )
 
-func setup() (*daemon.Daemon, error) {
+func setup(configPath string) (*daemon.Daemon, error) {
+	config, err := provideConfigFromPath(configPath)
+	if err != nil {
+		return nil, err
+	}
+	
 	wire.Build(
 		wgctrl.New,
 		wire.Bind(new(ctrl.WireGuardClient), new(*wgctrl.Client)),
@@ -29,8 +34,9 @@ func setup() (*daemon.Daemon, error) {
 		wire.Bind(new(entity.DevicePeerChecker), new(*repo.Peers)),
 		providePluginManager,
 		provideRefreshQueue,
+		wire.Value(config),
+		config.NewDeviceConfig,
 		wire.Bind(new(ctrl.RefreshQueue), new(*queue.Queue[entity.PeerId])),
-		config.DefaultSet,
 		logger.DefaultSet,
 		repo.DefaultSet,
 		stun.DefaultSet,
@@ -65,4 +71,8 @@ func providePluginManager(config *config.Config) (*plugin.Manager, error) {
 
 func provideRefreshQueue() *queue.Queue[entity.PeerId] {
 	return queue.New[entity.PeerId]()
+}
+
+func provideConfigFromPath(configPath string) (*config.Config, error) {
+	return config.LoadWithPath(configPath)
 }

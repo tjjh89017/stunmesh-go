@@ -23,8 +23,8 @@ import (
 
 // Injectors from wire.go:
 
-func setup() (*daemon.Daemon, error) {
-	configConfig, err := config.Load()
+func setup(configPath string) (*daemon.Daemon, error) {
+	configConfig, err := config.LoadWithPath(configPath)
 	if err != nil {
 		return nil, err
 	}
