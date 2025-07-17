@@ -23,7 +23,7 @@ type Stun struct {
 	packetChan chan []byte
 }
 
-func New(ctx context.Context, port uint16, excludeInterface string) (*Stun, error) {
+func New(ctx context.Context, excludeInterface string, port uint16) (*Stun, error) {
 	c, err := net.ListenPacket("ip4:17", "0.0.0.0")
 	if err != nil {
 		return nil, err

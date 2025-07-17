@@ -22,7 +22,7 @@ func NewResolver(config *config.Config, logger *zerolog.Logger) *Resolver {
 func (r *Resolver) Resolve(ctx context.Context, deviceName string, port uint16) (_ string, _ int, err error) {
 	stunCtx := r.logger.WithContext(ctx)
 
-	stun, err := New(stunCtx, port, deviceName)
+	stun, err := New(stunCtx, deviceName, port)
 	if err != nil {
 		return "", 0, err
 	}
