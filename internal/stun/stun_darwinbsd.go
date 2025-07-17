@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"net"
 	"sync"
-	"syscall"
 	"time"
 
 	pcap "github.com/packetcap/go-pcap"
@@ -17,62 +16,84 @@ import (
 	"github.com/rs/zerolog"
 	"golang.org/x/net/bpf"
 	"golang.org/x/net/ipv4"
-	"golang.org/x/net/route"
 )
 
 const PacketSize = 1600
 
+type interfaceHandle struct {
+	name       string
+	handle     *pcap.Handle
+	payloadOff uint32
+}
+
 type Stun struct {
 	port       uint16
-	payloadOff uint32
 	conn       *ipv4.PacketConn
-	handle     *pcap.Handle
+	handles    []interfaceHandle
 	once       sync.Once
 	packetChan chan *stun.Message
 }
 
-func New(ctx context.Context, port uint16) (*Stun, error) {
-
-	// use default route to be the interface to listen stun
-	defaultRouteInterface, err := getDefaultRouteInterface()
+func New(ctx context.Context, port uint16, excludeInterface string) (*Stun, error) {
+	// Get all eligible interfaces (excluding the specific WireGuard interface)
+	interfaceNames, err := getAllEligibleInterfaces(excludeInterface)
 	if err != nil {
 		return nil, err
 	}
 
-	handle, err := pcap.OpenLive(defaultRouteInterface, PacketSize, false, 0, pcap.DefaultSyscalls)
-	if err != nil {
-		return nil, err
-	}
+	var handles []interfaceHandle
 
-	//filter := fmt.Sprintf("udp dst port %d and udp[12:4] == 0x2112A442", port)
-	//if err := handle.SetBPFFilter(filter); err != nil {
-	//	return nil, err
-	//}
-	intf, err := net.InterfaceByName(defaultRouteInterface)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get interface by name %s: %w", defaultRouteInterface, err)
-	}
-
-	payloadOff := uint32(0)
-	if intf.Flags&net.FlagLoopback != 0 {
-		// TODO Loopback
-		filter, err := stunLoopbackBpfFilter(ctx, port)
+	// Create pcap handle for each eligible interface
+	for _, ifaceName := range interfaceNames {
+		handle, err := pcap.OpenLive(ifaceName, PacketSize, false, 0, pcap.DefaultSyscalls)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create BPF filter for loopback: %w", err)
+			// Skip interfaces that can't be opened
+			continue
 		}
-		if err := handle.SetRawBPFFilter(filter); err != nil {
-			return nil, fmt.Errorf("failed to set raw BPF filter: %w", err)
+
+		intf, err := net.InterfaceByName(ifaceName)
+		if err != nil {
+			handle.Close()
+			continue
 		}
-		payloadOff = 0 + 4 + 5*4 + 2*4 // Null header + IPv4 header + UDP header
-	} else {
-		if err := handle.SetBPFFilter(fmt.Sprintf("udp dst port %d and udp[12:4] == 0x2112A442", port)); err != nil {
-			return nil, fmt.Errorf("failed to set BPF filter: %w", err)
+
+		var payloadOff uint32
+		if intf.Flags&net.FlagLoopback != 0 {
+			filter, err := stunLoopbackBpfFilter(ctx, port)
+			if err != nil {
+				handle.Close()
+				continue
+			}
+			if err := handle.SetRawBPFFilter(filter); err != nil {
+				handle.Close()
+				continue
+			}
+			payloadOff = 0 + 4 + 5*4 + 2*4 // Null header + IPv4 header + UDP header
+		} else {
+			if err := handle.SetBPFFilter(fmt.Sprintf("udp dst port %d and udp[12:4] == 0x2112A442", port)); err != nil {
+				handle.Close()
+				continue
+			}
+			payloadOff = 0 + 14 + 5*4 + 2*4 // Ethernet header + IPv4 header + UDP header
 		}
-		payloadOff = 0 + 14 + 5*4 + 2*4 // Ethernet header + IPv4 header + UDP header
+
+		handles = append(handles, interfaceHandle{
+			name:       ifaceName,
+			handle:     handle,
+			payloadOff: payloadOff,
+		})
+	}
+
+	if len(handles) == 0 {
+		return nil, errors.New("no usable interfaces found")
 	}
 
 	c, err := net.ListenPacket("ip4:17", "0.0.0.0")
 	if err != nil {
+		// Close all handles on error
+		for _, ih := range handles {
+			ih.handle.Close()
+		}
 		return nil, err
 	}
 
@@ -80,54 +101,62 @@ func New(ctx context.Context, port uint16) (*Stun, error) {
 
 	return &Stun{
 		port:       port,
-		payloadOff: payloadOff,
 		conn:       conn,
-		handle:     handle,
+		handles:    handles,
 		packetChan: make(chan *stun.Message),
 	}, nil
 }
 
 func (s *Stun) Stop() error {
 	close(s.packetChan)
-	s.handle.Close()
+	for _, ih := range s.handles {
+		ih.handle.Close()
+	}
 	return s.conn.Close()
 }
 
 func (s *Stun) Start(ctx context.Context) {
 	logger := zerolog.Ctx(ctx)
 
-	logger.Info().Msgf("starting to listen stun response")
+	logger.Info().Msgf("starting to listen stun response on %d interfaces", len(s.handles))
 	s.once.Do(func() {
-		go func() {
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-time.After(time.Duration(StunTimeout) * time.Second):
-					return
-				default:
-					var (
-						buf []byte
-						err error
-					)
-					buf, _, err = s.handle.ReadPacketData()
-					if err != nil {
-						logger.Debug().Msgf("fail to read packet data")
-						continue
+		// Start a goroutine for each interface handle
+		for _, ih := range s.handles {
+			go func(handle interfaceHandle) {
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case <-time.After(time.Duration(StunTimeout) * time.Second):
+						return
+					default:
+						var (
+							buf []byte
+							err error
+						)
+						buf, _, err = handle.handle.ReadPacketData()
+						if err != nil {
+							logger.Debug().Msgf("fail to read packet data from %s", handle.name)
+							continue
+						}
+						// decode STUN
+						m := &stun.Message{
+							Raw: buf[handle.payloadOff:],
+						}
+						if err := m.Decode(); err != nil {
+							logger.Debug().Msgf("fail to decode stun msg from %s", handle.name)
+							continue
+						}
+						select {
+						case s.packetChan <- m:
+						case <-ctx.Done():
+							return
+						}
+						return
 					}
-					// decode STUN
-					m := &stun.Message{
-						Raw: buf[s.payloadOff:],
-					}
-					if err := m.Decode(); err != nil {
-						logger.Debug().Msgf("fail to decode stun msg")
-						continue
-					}
-					s.packetChan <- m
-					return
 				}
-			}
-		}()
+			}(ih)
+		}
 	})
 }
 
@@ -190,57 +219,29 @@ func createStunBindingPacket(srcPort, dstPort uint16) ([]byte, error) {
 	return append(buf, msg.Raw...), nil
 }
 
-func getDefaultRouteInterface() (string, error) {
-	// Fetch the routing information base (RIB) for routes.
-	rib, err := route.FetchRIB(syscall.AF_INET, route.RIBTypeRoute, 0)
+func getAllEligibleInterfaces(excludeInterface string) ([]string, error) {
+	interfaces, err := net.Interfaces()
 	if err != nil {
-		fmt.Println("Error fetching RIB:", err)
-		return "", err
+		return nil, err
 	}
 
-	msgs, err := route.ParseRIB(route.RIBTypeRoute, rib)
-	if err != nil {
-		fmt.Println("Error parsing RIB:", err)
-		return "", err
-	}
-
-	var dstIP string
-	var netmask string
-	var ifaceName string
-
-	for _, msg := range msgs {
-		switch m := msg.(type) {
-		case *route.RouteMessage:
-			// Extract destination address.
-			if len(m.Addrs) > syscall.RTAX_NETMASK {
-				switch addr := m.Addrs[syscall.RTAX_DST].(type) {
-				case *route.Inet4Addr:
-					dstIP = net.IPv4(addr.IP[0], addr.IP[1], addr.IP[2], addr.IP[3]).String()
-				}
-				switch addr := m.Addrs[syscall.RTAX_NETMASK].(type) {
-				case *route.Inet4Addr:
-					netmask = net.IPv4Mask(addr.IP[0], addr.IP[1], addr.IP[2], addr.IP[3]).String()
-				}
-			}
-
-			// Extract interface index and name using the Index field.
-			ifaceIndex := m.Index
-			if ifaceIndex != 0 {
-				iface, err := net.InterfaceByIndex(ifaceIndex)
-				if err == nil {
-					ifaceName = iface.Name
-				} else {
-					ifaceName = fmt.Sprintf("if%d", ifaceIndex)
-				}
-			}
-
-			if dstIP == "0.0.0.0" && netmask == "00000000" {
-				return ifaceName, nil
-			}
+	var eligible []string
+	for _, iface := range interfaces {
+		// Skip loopback, down, and the specific WireGuard interface we're excluding
+		if iface.Flags&net.FlagLoopback != 0 || iface.Flags&net.FlagUp == 0 {
+			continue
 		}
+		if iface.Name == excludeInterface {
+			continue
+		}
+		eligible = append(eligible, iface.Name)
 	}
 
-	return "", errors.New("No default route found")
+	if len(eligible) == 0 {
+		return nil, errors.New("no eligible interfaces found")
+	}
+
+	return eligible, nil
 }
 
 func stunLoopbackBpfFilter(ctx context.Context, port uint16) ([]bpf.RawInstruction, error) {

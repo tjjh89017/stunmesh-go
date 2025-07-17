@@ -37,7 +37,7 @@ func (c *PublishController) Execute(ctx context.Context) {
 	for _, device := range devices {
 		logger := c.logger.With().Str("device", string(device.Name())).Logger()
 
-		host, port, err := c.resolver.Resolve(ctx, uint16(device.ListenPort()))
+		host, port, err := c.resolver.Resolve(ctx, string(device.Name()), uint16(device.ListenPort()))
 		if err != nil {
 			logger.Error().Err(err).Msg("failed to resolve outside address")
 			continue
