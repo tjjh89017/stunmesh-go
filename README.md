@@ -28,11 +28,11 @@ Once getting info from internet, it will setup peer endpoint with wireguard tool
 
 ✅ **Plugin system supported** - Multiple storage backends with flexible configuration - supports exec plugin for custom implementations
 
-## Limitatoin
+## Platform Implementation Details
 
-In FreeBSD, MacOS (BSD-based system), we will listen on the default route interface for STUN response message by default. If your system is without default route, it will fail.
+**Linux**: Uses raw sockets with BPF filtering to listen on all interfaces system-wide. No interface-specific limitations.
 
-Planning to assign specific or all interfaces in future release.
+**FreeBSD and macOS (BSD-based systems)**: Uses BPF with interface-specific packet capture. stunmesh-go will listen on all eligible network interfaces for STUN response messages, excluding the specific WireGuard interface being managed. This provides better resilience for systems with multiple network paths or backup routes compared to single default route dependency.
 
 ## Build
 
