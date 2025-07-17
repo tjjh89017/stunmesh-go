@@ -2,6 +2,7 @@ package ctrl
 
 import (
 	"context"
+	"math/rand"
 	"net"
 	"sync"
 	"time"
@@ -26,6 +27,8 @@ type PeerPingState struct {
 	isHealthy    bool
 	failureCount int
 	lastPingTime time.Time
+	pingSeq      uint16 // ICMP sequence number
+	icmpId       uint16 // ICMP ID for this peer
 
 	// Publish/Establish retry tracking (separate from ping)
 	lastRetryTime       time.Time
@@ -44,6 +47,7 @@ type PingMonitorController struct {
 	establishCtrl *EstablishController
 	refreshCtrl   *RefreshController
 	peerStates    map[entity.PeerId]*PeerPingState
+	usedIcmpIds   map[uint16]bool // Track used ICMP IDs
 	logger        zerolog.Logger
 	mu            sync.RWMutex
 }
@@ -65,6 +69,7 @@ func NewPingMonitorController(
 		establishCtrl: establishCtrl,
 		refreshCtrl:   refreshCtrl,
 		peerStates:    make(map[entity.PeerId]*PeerPingState),
+		usedIcmpIds:   make(map[uint16]bool),
 		logger:        logger.With().Str("controller", "ping_monitor").Logger(),
 	}
 }
@@ -92,6 +97,17 @@ func (c *PingMonitorController) Execute(ctx context.Context) {
 	go c.Start(ctx)
 }
 
+func (c *PingMonitorController) generateUniqueIcmpId() uint16 {
+	// Generate a random ICMP ID that's not already in use
+	for {
+		id := uint16(rand.Intn(65536)) // 0-65535
+		if !c.usedIcmpIds[id] {
+			c.usedIcmpIds[id] = true
+			return id
+		}
+	}
+}
+
 func (c *PingMonitorController) AddPeer(peerId entity.PeerId, pingConfig entity.PeerPingConfig) {
 	if !pingConfig.Enabled || pingConfig.Target == "" {
 		return
@@ -111,6 +127,9 @@ func (c *PingMonitorController) AddPeer(peerId entity.PeerId, pingConfig entity.
 		timeout = c.config.PingMonitor.Timeout
 	}
 
+	// Generate unique ICMP ID for this peer
+	icmpId := c.generateUniqueIcmpId()
+
 	c.peerStates[peerId] = &PeerPingState{
 		peerId:              peerId,
 		target:              pingConfig.Target,
@@ -121,6 +140,8 @@ func (c *PingMonitorController) AddPeer(peerId entity.PeerId, pingConfig entity.
 		retryCount:          0,
 		backoffMultiplier:   1,
 		handedOverToRefresh: false,
+		pingSeq:             0, // Start from 0, will be incremented before use
+		icmpId:              icmpId,
 	}
 
 	c.logger.Info().
@@ -128,6 +149,7 @@ func (c *PingMonitorController) AddPeer(peerId entity.PeerId, pingConfig entity.
 		Str("target", pingConfig.Target).
 		Dur("interval", interval).
 		Dur("timeout", timeout).
+		Uint16("icmp_id", icmpId).
 		Msg("added peer for ping monitoring")
 }
 
@@ -156,20 +178,33 @@ func (c *PingMonitorController) monitorPeer(ctx context.Context, state *PeerPing
 		case <-ticker.C:
 			// Launch ping asynchronously to avoid blocking the ticker
 			go func() {
-				success := c.pingTarget(ctx, state.target, state.timeout)
+				success := c.pingTarget(ctx, state)
 				c.handlePingResult(ctx, state, success)
 			}()
 		}
 	}
 }
 
-func (c *PingMonitorController) pingTarget(ctx context.Context, target string, timeout time.Duration) bool {
+func (c *PingMonitorController) pingTarget(ctx context.Context, state *PeerPingState) bool {
 	// Check if context is already cancelled
 	select {
 	case <-ctx.Done():
 		return false
 	default:
 	}
+
+	// Increment sequence number for this ping, handling overflow
+	state.mu.Lock()
+	if state.pingSeq == 65535 {
+		state.pingSeq = 1 // Reset to 1 on overflow (avoid 0)
+	} else {
+		state.pingSeq++
+	}
+	seq := state.pingSeq
+	icmpId := state.icmpId
+	target := state.target
+	timeout := state.timeout
+	state.mu.Unlock()
 
 	// Create ICMP connection
 	conn, err := icmp.ListenPacket("ip4:icmp", "0.0.0.0")
@@ -195,8 +230,8 @@ func (c *PingMonitorController) pingTarget(ctx context.Context, target string, t
 		Type: ipv4.ICMPTypeEcho,
 		Code: 0,
 		Body: &icmp.Echo{
-			ID:   1,
-			Seq:  1,
+			ID:   int(icmpId),
+			Seq:  int(seq),
 			Data: []byte("stunmesh-ping"),
 		},
 	}
