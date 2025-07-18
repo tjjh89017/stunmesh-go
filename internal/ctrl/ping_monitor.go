@@ -48,7 +48,7 @@ type PeerPingState struct {
 
 type DevicePingMonitor struct {
 	deviceName    string
-	conn          *icmp.PacketConn
+	conn          *ICMPConn
 	peerStates    map[entity.PeerId]*PeerPingState
 	usedIcmpIds   map[uint16]bool          // Track used ICMP IDs
 	icmpIdToPeer  map[uint16]entity.PeerId // Map ICMP ID to peer ID
@@ -101,21 +101,6 @@ func NewDevicePingMonitor(deviceName string, controller *PingMonitorController, 
 	}
 }
 
-// createDeviceBoundConnection creates an ICMP connection bound to a specific device
-func createDeviceBoundConnection(deviceName string) (*icmp.PacketConn, error) {
-	// For now, fallback to regular ICMP connection
-	// TODO: Implement proper device binding for different platforms
-	conn, err := icmp.ListenPacket("ip4:icmp", "0.0.0.0")
-	if err != nil {
-		return nil, err
-	}
-	
-	// TODO: Add SO_BINDTODEVICE socket option here
-	// This requires platform-specific implementation
-	_ = deviceName // Suppress unused variable warning
-	
-	return conn, nil
-}
 
 func (c *PingMonitorController) Execute(ctx context.Context) {
 	// Wait for system initialization before starting ping monitoring
@@ -155,8 +140,8 @@ func (c *PingMonitorController) Execute(ctx context.Context) {
 	for deviceName, devicePeerList := range devicePeers {
 		monitor := NewDevicePingMonitor(deviceName, c, c.logger)
 		
-		// Create device-bound ICMP connection
-		conn, err := createDeviceBoundConnection(deviceName)
+		// Create device-bound ICMP connection using platform-specific implementation
+		conn, err := NewICMPConn(deviceName)
 		if err != nil {
 			c.logger.Error().
 				Err(err).
@@ -289,29 +274,28 @@ func (m *DevicePingMonitor) deviceReaderLoop(ctx context.Context) {
 	reply := make([]byte, 1500)
 
 	for {
-		// Set a short deadline to allow periodic context checking
-		_ = m.conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+		// Check if context is cancelled
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
 
-		_, addr, err := m.conn.ReadFrom(reply)
+		// Receive ICMP packet with timeout
+		n, addr, err := m.conn.Recv(reply, 500*time.Millisecond)
 		if err != nil {
-			// Check if context is cancelled
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				// Log detailed error info for non-timeout errors
-				if !isTimeoutError(err) {
-					m.logger.Debug().
-						Err(err).
-						Str("error_type", getErrorType(err)).
-						Msg("error reading ICMP packet")
-				}
-				continue
+			// Log detailed error info for non-timeout errors
+			if !isTimeoutError(err) {
+				m.logger.Debug().
+					Err(err).
+					Str("error_type", getErrorType(err)).
+					Msg("error reading ICMP packet")
 			}
+			continue
 		}
 
 		// Parse and dispatch reply to correct peer
-		m.dispatchReply(ctx, reply, addr)
+		m.dispatchReply(ctx, reply[:n], addr)
 	}
 }
 
@@ -391,7 +375,7 @@ func (m *DevicePingMonitor) sendPingForPeer(state *PeerPingState) {
 	}
 
 	// Send ping using pre-resolved IP
-	_, err = m.conn.WriteTo(data, targetIP)
+	err = m.conn.Send(data, targetIP)
 	if err != nil {
 		m.logger.Debug().Err(err).Str("target", target).Msg("failed to send ping")
 		return
