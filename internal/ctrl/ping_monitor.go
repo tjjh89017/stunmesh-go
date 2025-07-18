@@ -206,9 +206,9 @@ func (c *PingMonitorController) Execute(ctx context.Context) {
 }
 
 func (m *DevicePingMonitor) generateUniqueIcmpId() uint16 {
-	// Generate a random ICMP ID that's not already in use
+	// Generate a random ICMP ID that's not already in use (1-65535, excluding 0)
 	for {
-		id := uint16(rand.Intn(65536)) // 0-65535
+		id := uint16(rand.Intn(65535) + 1) // 1-65535 (non-zero)
 		if !m.usedIcmpIds[id] {
 			m.usedIcmpIds[id] = true
 			return id
