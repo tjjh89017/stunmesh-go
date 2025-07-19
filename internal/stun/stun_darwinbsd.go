@@ -129,9 +129,6 @@ func New(ctx context.Context, excludeInterface string, port uint16) (*Stun, erro
 
 func (s *Stun) Stop() error {
 	close(s.packetChan)
-	for _, ih := range s.handles {
-		ih.handle.Close()
-	}
 	return s.conn.Close()
 }
 
@@ -143,6 +140,10 @@ func (s *Stun) Start(ctx context.Context) {
 		// Start a goroutine for each interface handle
 		for _, ih := range s.handles {
 			go func(handle interfaceHandle) {
+				defer func() {
+					handle.handle.Close()
+					logger.Debug().Msgf("closed handle for interface: %s", handle.name)
+				}()
 				for {
 					select {
 					case <-ctx.Done():

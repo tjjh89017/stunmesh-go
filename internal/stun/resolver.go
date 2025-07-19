@@ -2,6 +2,7 @@ package stun
 
 import (
 	"context"
+	"sync"
 
 	"github.com/rs/zerolog"
 	"github.com/tjjh89017/stunmesh-go/internal/config"
@@ -10,6 +11,7 @@ import (
 type Resolver struct {
 	config *config.Config
 	logger zerolog.Logger
+	mu     sync.Mutex
 }
 
 func NewResolver(config *config.Config, logger *zerolog.Logger) *Resolver {
@@ -20,6 +22,9 @@ func NewResolver(config *config.Config, logger *zerolog.Logger) *Resolver {
 }
 
 func (r *Resolver) Resolve(ctx context.Context, deviceName string, port uint16) (_ string, _ int, err error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	
 	stunCtx := r.logger.WithContext(ctx)
 
 	stun, err := New(stunCtx, deviceName, port)
