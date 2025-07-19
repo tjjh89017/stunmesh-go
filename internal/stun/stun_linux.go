@@ -66,8 +66,12 @@ func (s *Stun) Start(ctx context.Context) {
 					if err != nil {
 						continue
 					}
-					s.packetChan <- buf[:n]
-					return
+					select {
+					case s.packetChan <- buf[:n]:
+						return
+					case <-ctx.Done():
+						return
+					}
 				}
 			}
 		}()

@@ -2,6 +2,7 @@ package ctrl
 
 import (
 	"context"
+	"sync"
 
 	"github.com/rs/zerolog"
 )
@@ -10,6 +11,7 @@ type RefreshController struct {
 	peers  PeerRepository
 	queue  RefreshQueue
 	logger zerolog.Logger
+	mu     sync.Mutex
 }
 
 func NewRefreshController(peers PeerRepository, queue RefreshQueue, logger *zerolog.Logger) *RefreshController {
@@ -21,6 +23,9 @@ func NewRefreshController(peers PeerRepository, queue RefreshQueue, logger *zero
 }
 
 func (c *RefreshController) Execute(ctx context.Context) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	
 	peers, err := c.peers.List(ctx)
 	if err != nil {
 		c.logger.Error().Err(err).Msg("failed to list peers")
