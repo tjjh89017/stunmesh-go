@@ -56,26 +56,21 @@ func New(ctx context.Context, excludeInterface string, port uint16) (*Stun, erro
 			continue
 		}
 
-		intf, err := net.InterfaceByName(ifaceName)
-		if err != nil {
-			handle.Close()
-			continue
-		}
-
 		var payloadOff uint32
-		if intf.Flags&net.FlagLoopback != 0 {
-			filter, err := stunLoopbackBpfFilter(ctx, port)
+		linkType := handle.LinkType()
+		if linkType == pcap.LinkTypeNull {
+			filter, err := stunNullBpfFilter(ctx, port)
 			if err != nil {
-				logger.Debug().Msgf("failed to create BPF filter for loopback interface %s: %v", ifaceName, err)
+				logger.Debug().Msgf("failed to create BPF filter for Null/loopback interface %s: %v", ifaceName, err)
 				handle.Close()
 				continue
 			}
 			if err := handle.SetRawBPFFilter(filter); err != nil {
-				logger.Debug().Msgf("failed to set raw BPF filter for loopback interface %s: %v", ifaceName, err)
+				logger.Debug().Msgf("failed to set raw BPF filter for Null/loopback interface %s: %v", ifaceName, err)
 				handle.Close()
 				continue
 			}
-			logger.Debug().Msgf("set raw BPF filter for loopback interface %s", ifaceName)
+			logger.Debug().Msgf("set raw BPF filter for Null/loopback interface %s", ifaceName)
 			payloadOff = 0 + 4 + 5*4 + 2*4 // Null header + IPv4 header + UDP header
 		} else {
 			filter, err := stunEthernetBpfFilter(ctx, port)
@@ -265,7 +260,7 @@ func getAllEligibleInterfaces(excludeInterface string) ([]string, error) {
 	return eligible, nil
 }
 
-func stunLoopbackBpfFilter(ctx context.Context, port uint16) ([]bpf.RawInstruction, error) {
+func stunNullBpfFilter(ctx context.Context, port uint16) ([]bpf.RawInstruction, error) {
 	const (
 		nullOff            = 0
 		ipOff              = nullOff + 4
@@ -277,6 +272,17 @@ func stunLoopbackBpfFilter(ctx context.Context, port uint16) ([]bpf.RawInstructi
 	)
 
 	r, e := bpf.Assemble([]bpf.Instruction{
+		bpf.LoadAbsolute{
+			// A = protocol type
+			Off:  nullOff,
+			Size: 4,
+		},
+		bpf.JumpIf{
+			// if A == 0x02000000 // Null header for IPv4
+			Cond:      bpf.JumpEqual,
+			Val:       0x02000000,
+			SkipFalse: 5,
+		},
 		bpf.LoadAbsolute{
 			// A = dst port
 			Off:  udpOff + 2,
