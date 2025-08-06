@@ -6,7 +6,7 @@ require (
 	github.com/cloudflare/cloudflare-go v0.115.0
 	github.com/google/wire v0.6.0
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/packetcap/go-pcap v0.0.0-20250417081904-081143ce5ce4
+	github.com/packetcap/go-pcap v0.0.0-20250723190045-d00b185f30b7
 	github.com/pion/stun v0.6.1
 	github.com/rs/zerolog v1.34.0
 	github.com/spf13/viper v1.19.0
@@ -21,7 +21,7 @@ require (
 	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
-	github.com/gopacket/gopacket v1.3.1 // indirect
+	github.com/gopacket/gopacket v1.4.0 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/josharian/native v1.1.0 // indirect
 	github.com/magiconair/properties v1.8.9 // indirect
@@ -54,5 +54,3 @@ require (
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/packetcap/go-pcap => github.com/tjjh89017/go-pcap v0.0.0-20250720124303-9804717c9ce0
