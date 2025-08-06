@@ -37,7 +37,7 @@ func NewEstablishController(ctrl *wgctrl.Client, devices DeviceRepository, peers
 func (c *EstablishController) Execute(ctx context.Context, peerId entity.PeerId) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	
+
 	peer, err := c.peers.Find(ctx, peerId)
 	if err != nil {
 		c.logger.Error().Err(err).Msg("failed to find peer")

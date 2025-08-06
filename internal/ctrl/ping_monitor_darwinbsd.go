@@ -23,10 +23,10 @@ func NewICMPConn(deviceName string) (*ICMPConn, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create ICMP connection: %w", err)
 	}
-	
+
 	// Note: Device binding is not supported on this platform
 	// deviceName is ignored
-	
+
 	return &ICMPConn{
 		conn:       conn,
 		deviceName: deviceName,
@@ -69,4 +69,3 @@ func (c *ICMPConn) SetReadDeadline(t time.Time) error {
 	}
 	return fmt.Errorf("connection not initialized")
 }
-

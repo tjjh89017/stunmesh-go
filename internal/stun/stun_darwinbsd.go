@@ -31,6 +31,7 @@ type Stun struct {
 	handles    []interfaceHandle
 	once       sync.Once
 	packetChan chan *stun.Message
+	waitGroup  sync.WaitGroup
 }
 
 func New(ctx context.Context, excludeInterface string, port uint16) (*Stun, error) {
@@ -123,6 +124,7 @@ func New(ctx context.Context, excludeInterface string, port uint16) (*Stun, erro
 }
 
 func (s *Stun) Stop() error {
+	s.waitGroup.Wait()
 	close(s.packetChan)
 	return s.conn.Close()
 }
@@ -135,9 +137,11 @@ func (s *Stun) Start(ctx context.Context) {
 		// Start a goroutine for each interface handle
 		for _, ih := range s.handles {
 			go func(handle interfaceHandle) {
+				s.waitGroup.Add(1)
 				defer func() {
 					handle.handle.Close()
 					logger.Debug().Msgf("closed handle for interface: %s", handle.name)
+					s.waitGroup.Done()
 				}()
 				for {
 					select {
@@ -152,7 +156,7 @@ func (s *Stun) Start(ctx context.Context) {
 						)
 						buf, _, err = handle.handle.ReadPacketData()
 						if err != nil {
-							logger.Debug().Msgf("fail to read packet data from %s", handle.name)
+							logger.Debug().Msgf("fail to read packet data from %s, err %v", handle.name, err)
 							continue
 						}
 						// decode STUN

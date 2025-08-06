@@ -25,7 +25,7 @@ func NewRefreshController(peers PeerRepository, queue RefreshQueue, logger *zero
 func (c *RefreshController) Execute(ctx context.Context) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	
+
 	peers, err := c.peers.List(ctx)
 	if err != nil {
 		c.logger.Error().Err(err).Msg("failed to list peers")

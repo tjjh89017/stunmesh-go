@@ -38,7 +38,7 @@ func NewICMPConn(deviceName string) (*ICMPConn, error) {
 
 	// Convert to os.File
 	file := os.NewFile(uintptr(fd), "icmp-socket")
-	
+
 	// Create net.PacketConn from file
 	netConn, err := net.FilePacketConn(file)
 	if err != nil {
@@ -99,25 +99,25 @@ func (c *ICMPConn) Recv(buffer []byte, timeout time.Duration) (n int, addr net.A
 
 	// Copy payload to buffer
 	copy(buffer, payload)
-	
+
 	// Create address from header
 	addr = &net.IPAddr{IP: header.Src}
-	
+
 	return len(payload), addr, nil
 }
 
 // Close closes the connection
 func (c *ICMPConn) Close() error {
 	var err1, err2 error
-	
+
 	if c.conn != nil {
 		err1 = c.conn.Close()
 	}
-	
+
 	if c.file != nil {
 		err2 = c.file.Close()
 	}
-	
+
 	// Return first error encountered
 	if err1 != nil {
 		return err1
@@ -132,4 +132,3 @@ func (c *ICMPConn) SetReadDeadline(t time.Time) error {
 	}
 	return fmt.Errorf("connection not initialized")
 }
-

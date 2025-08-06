@@ -56,7 +56,7 @@ func (c *DeviceConfig) GetConfigPeers(ctx context.Context, deviceName string, lo
 		copy(publicKeyArray[:], peerPublicKey)
 
 		peerId := entity.NewPeerId(localPublicKey, peerPublicKey)
-		
+
 		// Convert config.PingConfig to entity.PeerPingConfig
 		var pingConfig entity.PeerPingConfig
 		if configPeer.Ping != nil {
@@ -72,7 +72,7 @@ func (c *DeviceConfig) GetConfigPeers(ctx context.Context, deviceName string, lo
 				Enabled: false,
 			}
 		}
-		
+
 		peer := entity.NewPeer(peerId, deviceName, publicKeyArray, configPeer.Plugin, pingConfig)
 		peers = append(peers, peer)
 	}

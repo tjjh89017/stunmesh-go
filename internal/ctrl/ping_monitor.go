@@ -47,14 +47,14 @@ type PeerPingState struct {
 }
 
 type DevicePingMonitor struct {
-	deviceName    string
-	conn          *ICMPConn
-	peerStates    map[entity.PeerId]*PeerPingState
-	usedIcmpIds   map[uint16]bool          // Track used ICMP IDs
-	icmpIdToPeer  map[uint16]entity.PeerId // Map ICMP ID to peer ID
-	controller    *PingMonitorController   // Reference to parent controller
-	logger        zerolog.Logger
-	mu            sync.RWMutex
+	deviceName   string
+	conn         *ICMPConn
+	peerStates   map[entity.PeerId]*PeerPingState
+	usedIcmpIds  map[uint16]bool          // Track used ICMP IDs
+	icmpIdToPeer map[uint16]entity.PeerId // Map ICMP ID to peer ID
+	controller   *PingMonitorController   // Reference to parent controller
+	logger       zerolog.Logger
+	mu           sync.RWMutex
 }
 
 type PingMonitorController struct {
@@ -101,12 +101,11 @@ func NewDevicePingMonitor(deviceName string, controller *PingMonitorController, 
 	}
 }
 
-
 func (c *PingMonitorController) Execute(ctx context.Context) {
 	// Wait for system initialization before starting ping monitoring
 	c.logger.Info().Dur("delay", PingMonitorStartupDelay).Msg("waiting before starting ping monitor")
 	time.Sleep(PingMonitorStartupDelay)
-	
+
 	// Get all configured peers from all interfaces
 	peers, err := c.peers.List(ctx)
 	if err != nil {
@@ -139,7 +138,7 @@ func (c *PingMonitorController) Execute(ctx context.Context) {
 	c.mu.Lock()
 	for deviceName, devicePeerList := range devicePeers {
 		monitor := NewDevicePingMonitor(deviceName, c, c.logger)
-		
+
 		// Create device-bound ICMP connection using platform-specific implementation
 		conn, err := NewICMPConn(deviceName)
 		if err != nil {
@@ -150,15 +149,15 @@ func (c *PingMonitorController) Execute(ctx context.Context) {
 				Msg("failed to create device-bound ICMP connection - check if running as root or with CAP_NET_RAW capability")
 			continue
 		}
-		
+
 		monitor.conn = conn
 		c.deviceMonitors[deviceName] = monitor
-		
+
 		// Add peers to this device monitor
 		for _, peer := range devicePeerList {
 			monitor.AddPeer(peer.Id(), peer.PingConfig(), c.config)
 		}
-		
+
 		c.logger.Info().
 			Str("device", deviceName).
 			Int("peer_count", len(devicePeerList)).
@@ -171,7 +170,7 @@ func (c *PingMonitorController) Execute(ctx context.Context) {
 		go monitor.deviceSenderLoop(ctx, c.config.PingMonitor.Interval)
 		go monitor.deviceReaderLoop(ctx)
 		go monitor.deviceTimeoutChecker(ctx, c.config.PingMonitor.Timeout)
-		
+
 		c.logger.Info().
 			Str("device", deviceName).
 			Msg("started device ping monitoring loops")
@@ -179,7 +178,7 @@ func (c *PingMonitorController) Execute(ctx context.Context) {
 
 	// Wait for context cancellation
 	<-ctx.Done()
-	
+
 	// Close all device connections
 	c.mu.Lock()
 	for _, monitor := range c.deviceMonitors {
