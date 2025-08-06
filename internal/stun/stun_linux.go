@@ -54,11 +54,12 @@ func (s *Stun) Stop() error {
 func (s *Stun) Start(ctx context.Context) {
 	s.once.Do(func() {
 		go func() {
+			timeout := time.After(time.Duration(StunTimeout+5) * time.Second)
 			for {
 				select {
 				case <-ctx.Done():
 					return
-				case <-time.After(time.Duration(StunTimeout+5) * time.Second):
+				case <-timeout:
 					return
 				default:
 					buf := make([]byte, PacketSize)

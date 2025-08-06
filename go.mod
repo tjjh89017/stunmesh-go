@@ -54,3 +54,5 @@ require (
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/packetcap/go-pcap v0.0.0-20250723190045-d00b185f30b7 => github.com/tjjh89017/go-pcap v0.0.0-20250806125406-94a3a3dd1d4f

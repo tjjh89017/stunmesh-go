@@ -135,28 +135,30 @@ func (s *Stun) Start(ctx context.Context) {
 	logger.Info().Msgf("starting to listen stun response on %d interfaces", len(s.handles))
 	s.once.Do(func() {
 		// Start a goroutine for each interface handle
+		s.waitGroup.Add(len(s.handles))
 		for _, ih := range s.handles {
+			logger.Debug().Msgf("start handle for interface: %s", ih.name)
 			go func(handle interfaceHandle) {
-				s.waitGroup.Add(1)
 				defer func() {
 					handle.handle.Close()
 					logger.Debug().Msgf("closed handle for interface: %s", handle.name)
 					s.waitGroup.Done()
 				}()
+				timeout := time.After(time.Duration(StunTimeout) * time.Second)
 				for {
 					select {
 					case <-ctx.Done():
 						return
-					case <-time.After(time.Duration(StunTimeout) * time.Second):
+					case <-timeout:
 						return
 					default:
 						var (
 							buf []byte
 							err error
 						)
-						buf, _, err = handle.handle.ReadPacketData()
+						buf, _, err = handle.handle.ReadPacketDataWithTimeout(time.Duration(StunTimeout) * time.Second)
 						if err != nil {
-							logger.Debug().Msgf("fail to read packet data from %s, err %v", handle.name, err)
+							logger.Trace().Msgf("fail to read packet data from %s, err %v", handle.name, err)
 							continue
 						}
 						// decode STUN
