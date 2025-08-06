@@ -4,10 +4,10 @@ APP?=stunmesh-go
 GO_FLAGS?=
 
 # Platforms that require CGO_ENABLED=1
-CGO_REQUIRED_PLATFORMS := freebsd openbsd
+CGO_REQUIRED_PLATFORMS := FreeBSD OpenBSD
 
 # Set CGO_ENABLED based on OS
-ifeq (${GOOS},$(filter ${GOOS},${CGO_REQUIRED_PLATFORMS}))
+ifeq ($(shell uname -s),$(filter $(shell uname -s),$(CGO_REQUIRED_PLATFORMS)))
 	CGO_ENABLED=1
 	GO_FLAGS:=${GO_FLAGS} -ldflags -extldflags="-static"
 else
