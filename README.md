@@ -10,7 +10,7 @@ Supported Platform:
 - FreeBSD (amd64, arm64)
 
 > [!NOTE]
-> We only support wireguard-go in MacOS, Wireguard App store version is not supported  because of sandbox currently.
+> We only support wireguard-go in MacOS, Wireguard App store version is not supported because of sandbox currently.
 
 Tested with
 - VyOS 2025.07.14-0022-rolling (built-in Wireguard kernel module)
@@ -18,6 +18,7 @@ Tested with
 - MacOS Wireguard-go 0.0.20230223, Wireguard-tools 1.0.20210914
 - FreeBSD 14.3-RELEASE (built-in Wireguard)
 - OPNSense 25.1 (built-in Wireguard)
+- EdgeRouter X (EdgeOS 3.0.0)
 
 ## Implementation
 
