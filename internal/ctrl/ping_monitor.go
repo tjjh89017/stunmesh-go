@@ -183,7 +183,9 @@ func (c *PingMonitorController) Execute(ctx context.Context) {
 	c.mu.Lock()
 	for _, monitor := range c.deviceMonitors {
 		if monitor.conn != nil {
-			monitor.conn.Close()
+			if err := monitor.conn.Close(); err != nil {
+				c.logger.Warn().Str("device", monitor.deviceName).Msg("failed to close connection")
+			}
 		}
 	}
 	c.mu.Unlock()

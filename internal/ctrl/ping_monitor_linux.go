@@ -31,7 +31,9 @@ func NewICMPConn(deviceName string) (*ICMPConn, error) {
 	if deviceName != "" {
 		err = syscall.SetsockoptString(fd, syscall.SOL_SOCKET, syscall.SO_BINDTODEVICE, deviceName)
 		if err != nil {
-			syscall.Close(fd)
+			if err2 := syscall.Close(fd); err2 != nil {
+				return nil, fmt.Errorf("failed to close syscall socket %s: %w", deviceName, err2)
+			}
 			return nil, fmt.Errorf("failed to bind socket to device %s: %w (requires CAP_NET_RAW capability)", deviceName, err)
 		}
 	}
@@ -42,15 +44,21 @@ func NewICMPConn(deviceName string) (*ICMPConn, error) {
 	// Create net.PacketConn from file
 	netConn, err := net.FilePacketConn(file)
 	if err != nil {
-		file.Close()
+		if err2 := file.Close(); err2 != nil {
+			return nil, fmt.Errorf("failed to close filePacketConn: %w", err2)
+		}
 		return nil, fmt.Errorf("failed to create PacketConn from file: %w", err)
 	}
 
 	// Create IPv4 raw connection
 	rawConn, err := ipv4.NewRawConn(netConn)
 	if err != nil {
-		netConn.Close()
-		file.Close()
+		if err2 := netConn.Close(); err2 != nil {
+			return nil, fmt.Errorf("failed to close netConn: %w", err2)
+		}
+		if err2 := file.Close(); err2 != nil {
+			return nil, fmt.Errorf("failed to close file: %w", err2)
+		}
 		return nil, fmt.Errorf("failed to create IPv4 raw connection: %w", err)
 	}
 

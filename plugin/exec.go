@@ -111,10 +111,14 @@ func (p *ExecPlugin) executeCommand(ctx context.Context, request ExecRequest) (*
 	// Send request to stdin
 	encoder := json.NewEncoder(stdin)
 	if err := encoder.Encode(request); err != nil {
-		stdin.Close()
+		if err2 := stdin.Close(); err2 != nil {
+			return nil, fmt.Errorf("failed to close stdin: %w", err2)
+		}
 		return nil, fmt.Errorf("failed to encode request: %w", err)
 	}
-	stdin.Close()
+	if err := stdin.Close(); err != nil {
+		return nil, fmt.Errorf("failed to close stdin: %w", err)
+	}
 
 	// Read response from stdout
 	var response ExecResponse
