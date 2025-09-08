@@ -3,7 +3,7 @@ module github.com/tjjh89017/stunmesh-go
 go 1.25
 
 require (
-	github.com/cloudflare/cloudflare-go v0.115.0
+	github.com/cloudflare/cloudflare-go v0.116.0
 	github.com/google/wire v0.7.0
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/packetcap/go-pcap v0.0.0-20250723190045-d00b185f30b7
