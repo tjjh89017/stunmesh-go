@@ -10,7 +10,7 @@ require (
 	github.com/pion/stun v0.6.1
 	github.com/rs/zerolog v1.34.0
 	github.com/spf13/viper v1.19.0
-	go.uber.org/mock v0.5.2
+	go.uber.org/mock v0.6.0
 	golang.org/x/crypto v0.41.0
 	golang.org/x/net v0.43.0
 	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20241231184526-a9ab2273dd10
