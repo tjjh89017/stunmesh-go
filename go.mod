@@ -4,7 +4,7 @@ go 1.25
 
 require (
 	github.com/cloudflare/cloudflare-go v0.115.0
-	github.com/google/wire v0.6.0
+	github.com/google/wire v0.7.0
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/packetcap/go-pcap v0.0.0-20250723190045-d00b185f30b7
 	github.com/pion/stun v0.6.1
