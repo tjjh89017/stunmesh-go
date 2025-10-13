@@ -12,7 +12,7 @@ require (
 	github.com/spf13/viper v1.21.0
 	go.uber.org/mock v0.6.0
 	golang.org/x/crypto v0.43.0
-	golang.org/x/net v0.45.0
+	golang.org/x/net v0.46.0
 	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20241231184526-a9ab2273dd10
 )
 
