@@ -53,7 +53,7 @@ runs:
     
     - name: Build (FreeBSD)
       if: inputs.os == 'freebsd'
-      uses: vmactions/freebsd-vm@v1.2.1
+      uses: vmactions/freebsd-vm@v1.2.4
       with:
         arch: ${{ inputs.arch }}
         sync: sshfs
