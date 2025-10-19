@@ -15,3 +15,32 @@
 # vendor/
 
 stunmesh-go
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Editor temporary files
+*.swp
+*.swo
+*.swn
+*~
+.*.swp
+\#*\#
+.\#*
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# Build artifacts
+plugins_dist/
+contrib/*/stunmesh-*
+!contrib/*/stunmesh-*.md
+
+# Temporary files
+*.tmp
+*.log
