@@ -57,6 +57,29 @@ interfaces:
         plugin: cf1
 ```
 
+### Example 1b: Docker configuration
+
+When using the official Docker image, plugins are in PATH:
+
+```yaml
+plugins:
+  cf1:
+    type: exec
+    command: stunmesh-cloudflare  # No path needed in Docker
+    args:
+      - "-zone"
+      - "example.com"
+      - "-token"
+      - "your_cloudflare_api_token"
+
+interfaces:
+  wg0:
+    peers:
+      peer1:
+        public_key: "base64_encoded_key"
+        plugin: cf1
+```
+
 ### Example 2: With subdomain
 
 ```yaml
