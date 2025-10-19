@@ -64,7 +64,11 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ steps.build.outputs.binary-name }}
-          prerelease: ${{ contains(steps.tag.outputs.TAG, 'RC') || contains(steps.tag.outputs.TAG, 'rc') }}
+          prerelease: >-
+            ${{
+              contains(steps.tag.outputs.TAG, 'RC') ||
+              contains(steps.tag.outputs.TAG, 'rc')
+            }}
 
   release-freebsd:
     name: Release FreeBSD
@@ -94,7 +98,85 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ steps.build.outputs.binary-name }}
-          prerelease: ${{ contains(steps.tag.outputs.TAG, 'RC') || contains(steps.tag.outputs.TAG, 'rc') }}
+          prerelease: >-
+            ${{
+              contains(steps.tag.outputs.TAG, 'RC') ||
+              contains(steps.tag.outputs.TAG, 'rc')
+            }}
+
+  release-plugins:
+    name: Release Plugins
+    runs-on: ubuntu-latest
+    needs:
+      - lint
+      - test
+    permissions:
+      contents: write
+    strategy:
+      matrix:
+        plugin: [cloudflare]
+        os: [linux, darwin]
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - name: tag
+        id: tag
+        run: echo "TAG=$(git describe --tags --dirty)" >> "$GITHUB_OUTPUT"
+      - name: Build Plugin
+        uses: ./.github/actions/build-plugin
+        id: build
+        with:
+          plugin-name: ${{ matrix.plugin }}
+          os: ${{ matrix.os }}
+          arch: ${{ matrix.arch }}
+          go-version: ${{ env.GO_VERSION }}
+          tag: ${{ steps.tag.outputs.TAG }}
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.build.outputs.binary-name }}
+          prerelease: >-
+            ${{
+              contains(steps.tag.outputs.TAG, 'RC') ||
+              contains(steps.tag.outputs.TAG, 'rc')
+            }}
+
+  release-plugins-freebsd:
+    name: Release Plugins FreeBSD
+    runs-on: ubuntu-latest
+    needs:
+      - lint
+      - test
+    permissions:
+      contents: write
+    strategy:
+      matrix:
+        plugin: [cloudflare]
+        os: [freebsd]
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - name: tag
+        id: tag
+        run: echo "TAG=$(git describe --tags --dirty)" >> "$GITHUB_OUTPUT"
+      - name: Build Plugin
+        uses: ./.github/actions/build-plugin
+        id: build
+        with:
+          plugin-name: ${{ matrix.plugin }}
+          os: ${{ matrix.os }}
+          arch: ${{ matrix.arch }}
+          go-version: ${{ env.GO_VERSION }}
+          tag: ${{ steps.tag.outputs.TAG }}
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.build.outputs.binary-name }}
+          prerelease: >-
+            ${{
+              contains(steps.tag.outputs.TAG, 'RC') ||
+              contains(steps.tag.outputs.TAG, 'rc')
+            }}
 
   docker:
     name: Build Docker container
