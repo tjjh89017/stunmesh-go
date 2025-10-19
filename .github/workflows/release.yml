@@ -113,6 +113,7 @@ jobs:
           os: ${{ matrix.os }}
           arch: ${{ matrix.arch }}
           source-dir: plugins_dist
+          tag: ${{ steps.tag.outputs.TAG }}
       - name: Release
         uses: softprops/action-gh-release@v2
         with:

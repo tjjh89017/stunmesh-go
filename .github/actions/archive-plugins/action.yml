@@ -12,28 +12,44 @@ inputs:
     description: 'Directory containing plugin binaries'
     required: true
     default: 'plugins_dist'
+  tag:
+    description: 'Tag to append to archive name'
+    required: false
+    default: ''
 
 outputs:
   zip-file:
     description: 'Name of the zip file'
-    value: 'stunmesh-plugins-${{ inputs.os }}-${{ inputs.arch }}.zip'
+    value: ${{ steps.archive-name.outputs.zip-file }}
   tar-file:
     description: 'Name of the tar.gz file'
-    value: 'stunmesh-plugins-${{ inputs.os }}-${{ inputs.arch }}.tar.gz'
+    value: ${{ steps.archive-name.outputs.tar-file }}
 
 runs:
   using: 'composite'
   steps:
+    - name: Set archive names
+      id: archive-name
+      shell: bash
+      run: |
+        if [ -n "${{ inputs.tag }}" ]; then
+          echo "zip-file=stunmesh-plugins-${{ inputs.os }}-${{ inputs.arch }}-${{ inputs.tag }}.zip" >> "$GITHUB_OUTPUT"
+          echo "tar-file=stunmesh-plugins-${{ inputs.os }}-${{ inputs.arch }}-${{ inputs.tag }}.tar.gz" >> "$GITHUB_OUTPUT"
+        else
+          echo "zip-file=stunmesh-plugins-${{ inputs.os }}-${{ inputs.arch }}.zip" >> "$GITHUB_OUTPUT"
+          echo "tar-file=stunmesh-plugins-${{ inputs.os }}-${{ inputs.arch }}.tar.gz" >> "$GITHUB_OUTPUT"
+        fi
+
     - name: Create archives
       shell: bash
       run: |
         cd ${{ inputs.source-dir }}
 
         # Create zip archive (files in root of archive)
-        zip -j ../stunmesh-plugins-${{ inputs.os }}-${{ inputs.arch }}.zip stunmesh-*
+        zip -j ../${{ steps.archive-name.outputs.zip-file }} stunmesh-*
 
         # Create tar.gz archive (files in root of archive)
-        tar -czf ../stunmesh-plugins-${{ inputs.os }}-${{ inputs.arch }}.tar.gz stunmesh-*
+        tar -czf ../${{ steps.archive-name.outputs.tar-file }} stunmesh-*
 
         cd ..
         ls -lh stunmesh-plugins-*
