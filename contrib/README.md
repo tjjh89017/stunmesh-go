@@ -22,10 +22,13 @@ See [cloudflare/README.md](cloudflare/README.md) for setup instructions.
 Stunmesh plugins communicate via JSON over stdin/stdout. To create a new plugin:
 
 1. Create a new directory under `contrib/`
-2. Implement the exec plugin protocol:
+2. Name your binary with the `stunmesh-*` prefix (e.g., `stunmesh-yourplugin`)
+   - **Recommended**: This naming convention allows the Dockerfile to automatically include your plugin
+   - The Dockerfile uses pattern `/work/contrib/*/stunmesh-*` to copy all plugins
+3. Implement the exec plugin protocol:
    - Read JSON requests from stdin
    - Write JSON responses to stdout
-3. Support two operations: `get` and `set`
+4. Support two operations: `get` and `set`
 
 ### Plugin Protocol
 
@@ -54,6 +57,8 @@ See the [exec plugin documentation](../README.md) for more details.
 We welcome contributions of new plugins! Please ensure your plugin:
 
 - Follows the exec plugin protocol
+- Uses the `stunmesh-*` naming convention for the binary
+- Includes a Makefile with `build`, `clean`, `install`, and `uninstall` targets
 - Includes a README with setup instructions
 - Is well-tested and handles errors gracefully
 - Includes example configuration
