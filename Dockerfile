@@ -16,7 +16,10 @@ WORKDIR /app
 # Copy main application
 COPY --from=builder /work/stunmesh-go /app/stunmesh-go
 
-# Copy all plugins (automatically includes any new plugins)
-COPY --from=builder /work/contrib/*/stunmesh-* /app/plugins/
+# Copy all plugins to /app (automatically includes any new plugins)
+COPY --from=builder /work/contrib/*/stunmesh-* /app/
+
+# Set PATH to include /app directory
+ENV PATH="/app:${PATH}"
 
 CMD ["/app/stunmesh-go"]
