@@ -150,7 +150,7 @@ The exec plugin communicates with external programs using JSON over stdin/stdout
 **Request Format:**
 ```json
 {
-  "operation": "get|set",
+  "action": "get|set",
   "key": "peer_identifier_string",
   "value": "encrypted_data_for_set_operation"
 }
@@ -159,7 +159,7 @@ The exec plugin communicates with external programs using JSON over stdin/stdout
 **Response Format:**
 ```json
 {
-  "success": true,
+  "action": true,
   "value": "encrypted_data_for_get_operation",
   "error": "error_message_if_failed"
 }

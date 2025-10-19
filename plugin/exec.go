@@ -10,6 +10,11 @@ import (
 	"github.com/rs/zerolog"
 )
 
+const (
+	OpSet = "set"
+	OpGet = "get"
+)
+
 type ExecConfig struct {
 	Command string   `mapstructure:"command"`
 	Args    []string `mapstructure:"args"`
