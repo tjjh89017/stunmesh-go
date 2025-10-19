@@ -21,9 +21,23 @@ This is an alternative to the Go-based [cloudflare plugin](../cloudflare/) that 
 
 ## Installation
 
-1. Copy the script to your system:
+### From Source
+
+1. Build and install the script:
    ```bash
-   sudo cp stunmesh-cloudflare-shell /usr/local/bin/
+   cd contrib/cloudflare-shell
+   make install
+   # Or specify custom installation path:
+   # make install PREFIX=/opt/local
+   ```
+
+### From Release
+
+1. Download from GitHub releases and install:
+   ```bash
+   # Extract from plugin archive
+   unzip stunmesh-plugins-linux-amd64-v1.4.0.zip
+   sudo mv stunmesh-cloudflare-shell /usr/local/bin/
    sudo chmod +x /usr/local/bin/stunmesh-cloudflare-shell
    ```
 

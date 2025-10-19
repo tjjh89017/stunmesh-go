@@ -1,4 +1,5 @@
 PLUGIN ?= stunmesh-cloudflare-shell
+SOURCE ?= cloudflare-shell.sh
 PREFIX ?= /usr/local
 BINDIR ?= $(PREFIX)/bin
 
@@ -7,12 +8,13 @@ all: clean build
 
 .PHONY: build
 build:
-	@echo "Shell script plugin - no compilation needed"
-	@chmod +x $(PLUGIN)
+	@echo "Building shell script plugin..."
+	cp $(SOURCE) $(PLUGIN)
+	chmod +x $(PLUGIN)
 
 .PHONY: clean
 clean:
-	@echo "Shell script plugin - no build artifacts to clean"
+	rm -f $(PLUGIN)
 
 .PHONY: install
 install: build
