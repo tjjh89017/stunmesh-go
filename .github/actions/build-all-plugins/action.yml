@@ -16,7 +16,7 @@ inputs:
 outputs:
   artifact-name:
     description: 'Name for the artifact'
-    value: 'plugins-${{ inputs.os }}-${{ inputs.arch }}'
+    value: 'stunmesh-plugins-${{ inputs.os }}-${{ inputs.arch }}'
 
 runs:
   using: 'composite'
@@ -29,6 +29,8 @@ runs:
       if: inputs.os != 'freebsd'
       shell: bash
       run: |
+        # Unset APP to avoid conflicts with workflow-level env.APP
+        unset APP
         mkdir -p plugins_dist
         for plugin_dir in contrib/*/; do
           if [ -f "${plugin_dir}Makefile" ]; then
@@ -62,6 +64,8 @@ runs:
           pkg install -y gmake go
         run: |
           cd $GITHUB_WORKSPACE
+          # Unset APP to avoid conflicts with workflow-level env.APP
+          unset APP
           mkdir -p plugins_dist
           for plugin_dir in contrib/*/; do
             if [ -f "${plugin_dir}Makefile" ]; then

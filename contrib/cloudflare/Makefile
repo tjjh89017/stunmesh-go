@@ -1,4 +1,4 @@
-APP ?= stunmesh-cloudflare
+PLUGIN ?= stunmesh-cloudflare
 CGO_ENABLED ?= 0
 PREFIX ?= /usr/local
 BINDIR ?= $(PREFIX)/bin
@@ -8,17 +8,17 @@ all: clean build
 
 .PHONY: build
 build:
-	CGO_ENABLED=$(CGO_ENABLED) go build -o $(APP)
+	CGO_ENABLED=$(CGO_ENABLED) go build -o $(PLUGIN)
 
 .PHONY: clean
 clean:
-	rm -f $(APP)
+	rm -f $(PLUGIN)
 
 .PHONY: install
 install: build
 	install -d $(BINDIR)
-	install -m 755 $(APP) $(BINDIR)/$(APP)
+	install -m 755 $(PLUGIN) $(BINDIR)/$(PLUGIN)
 
 .PHONY: uninstall
 uninstall:
-	rm -f $(BINDIR)/$(APP)
+	rm -f $(BINDIR)/$(PLUGIN)
