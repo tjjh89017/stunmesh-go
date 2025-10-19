@@ -43,9 +43,9 @@ jobs:
         arch: [amd64, arm64, arm, mipsle]
         exclude:
           - os: darwin
-            arch: mipsle
-          - os: darwin
             arch: arm
+          - os: darwin
+            arch: mipsle
           - os: freebsd
             arch: arm
           - os: freebsd
@@ -78,20 +78,18 @@ jobs:
     name: Release Plugins
     runs-on: ubuntu-latest
     needs:
-      - lint
-      - test
+      - release
     permissions:
       contents: write
     strategy:
       matrix:
-        plugin: [cloudflare]
         os: [linux, darwin, freebsd]
         arch: [amd64, arm64, arm, mipsle]
         exclude:
           - os: darwin
-            arch: mipsle
-          - os: darwin
             arch: arm
+          - os: darwin
+            arch: mipsle
           - os: freebsd
             arch: arm
           - os: freebsd
@@ -101,19 +99,25 @@ jobs:
       - name: tag
         id: tag
         run: echo "TAG=$(git describe --tags --dirty)" >> "$GITHUB_OUTPUT"
-      - name: Build Plugin
-        uses: ./.github/actions/build-plugin
-        id: build
+      - name: Build All Plugins
+        uses: ./.github/actions/build-all-plugins
         with:
-          plugin-name: ${{ matrix.plugin }}
           os: ${{ matrix.os }}
           arch: ${{ matrix.arch }}
           go-version: ${{ env.GO_VERSION }}
-          tag: ${{ steps.tag.outputs.TAG }}
+      - name: Archive Plugins
+        uses: ./.github/actions/archive-plugins
+        id: archive
+        with:
+          os: ${{ matrix.os }}
+          arch: ${{ matrix.arch }}
+          source-dir: plugins_dist
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ steps.build.outputs.binary-name }}
+          files: |
+            ${{ steps.archive.outputs.zip-file }}
+            ${{ steps.archive.outputs.tar-file }}
           prerelease: >-
             ${{
               contains(steps.tag.outputs.TAG, 'RC') ||

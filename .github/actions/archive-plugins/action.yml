@@ -1,0 +1,39 @@
+name: 'Archive Plugins'
+description: 'Create zip and tar.gz archives of all built plugins'
+
+inputs:
+  os:
+    description: 'Target OS (linux, darwin, freebsd)'
+    required: true
+  arch:
+    description: 'Target architecture (amd64, arm64, arm, mipsle)'
+    required: true
+  source-dir:
+    description: 'Directory containing plugin binaries'
+    required: true
+    default: 'plugins_dist'
+
+outputs:
+  zip-file:
+    description: 'Name of the zip file'
+    value: 'stunmesh-plugins-${{ inputs.os }}-${{ inputs.arch }}.zip'
+  tar-file:
+    description: 'Name of the tar.gz file'
+    value: 'stunmesh-plugins-${{ inputs.os }}-${{ inputs.arch }}.tar.gz'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Create archives
+      shell: bash
+      run: |
+        cd ${{ inputs.source-dir }}
+
+        # Create zip archive (files in root of archive)
+        zip -j ../stunmesh-plugins-${{ inputs.os }}-${{ inputs.arch }}.zip stunmesh-*
+
+        # Create tar.gz archive (files in root of archive)
+        tar -czf ../stunmesh-plugins-${{ inputs.os }}-${{ inputs.arch }}.tar.gz stunmesh-*
+
+        cd ..
+        ls -lh stunmesh-plugins-*

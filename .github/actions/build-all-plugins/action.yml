@@ -29,12 +29,15 @@ runs:
       if: inputs.os != 'freebsd'
       shell: bash
       run: |
+        mkdir -p plugins_dist
         for plugin_dir in contrib/*/; do
           if [ -f "${plugin_dir}Makefile" ]; then
             plugin_name=$(basename "$plugin_dir")
             echo "Building plugin: $plugin_name"
             cd "$plugin_dir"
             make build
+            # Move built binary to output directory
+            mv stunmesh-* ../../plugins_dist/ 2>/dev/null || true
             cd ../..
           fi
         done
@@ -52,12 +55,15 @@ runs:
           pkg install -y gmake go
         run: |
           cd $GITHUB_WORKSPACE
+          mkdir -p plugins_dist
           for plugin_dir in contrib/*/; do
             if [ -f "${plugin_dir}Makefile" ]; then
               plugin_name=$(basename "$plugin_dir")
               echo "Building plugin: $plugin_name"
               cd "$plugin_dir"
               gmake build
+              # Move built binary to output directory
+              mv stunmesh-* ../../plugins_dist/ 2>/dev/null || true
               cd ../..
             fi
           done
