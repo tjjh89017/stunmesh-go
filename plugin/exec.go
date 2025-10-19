@@ -133,6 +133,10 @@ func (p *ExecPlugin) executeCommand(ctx context.Context, request ExecRequest) (*
 	}
 
 	if err := cmd.Wait(); err != nil {
+		// Include response error message if available
+		if response.Error != "" {
+			return nil, fmt.Errorf("command execution failed: %w (plugin error: %s)", err, response.Error)
+		}
 		return nil, fmt.Errorf("command execution failed: %w", err)
 	}
 
