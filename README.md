@@ -100,14 +100,13 @@ ping_monitor:
   fixed_retries: 3
 plugins:
   cloudflare1:
-    type: cloudflare
-    zone_name: "example.com"
-    subdomain: "wg"
-    api_token: "${CLOUDFLARE_API_TOKEN}"
+    type: exec
+    command: "/usr/local/bin/stunmesh-cloudflare"
+    args: ["-zone", "example.com", "-token", "${CLOUDFLARE_API_TOKEN}", "-subdomain", "wg"]
   cloudflare2:
-    type: cloudflare
-    zone_name: "example.com"
-    api_token: "${CLOUDFLARE2_API_TOKEN}"
+    type: exec
+    command: "/usr/local/bin/stunmesh-cloudflare"
+    args: ["-zone", "example.com", "-token", "${CLOUDFLARE2_API_TOKEN}"]
   exec_plugin1:
     type: exec
     command: "python3"
@@ -124,19 +123,21 @@ stunmesh-go now supports a flexible plugin system that allows you to:
 
 #### Supported Plugin Types
 
-**Cloudflare DNS Plugin (`type: cloudflare`)**
-- Stores peer information in Cloudflare DNS TXT records
-- Configuration:
-  - `zone_name`: Your domain name managed by Cloudflare
-  - `subdomain`: Subdomain prefix for DNS records (optional, defaults to empty)
-  - `api_token`: Cloudflare API token with DNS edit permissions
-
 **Exec Plugin (`type: exec`)**
 - Executes external scripts/programs for storage operations
 - Configuration:
   - `command`: Command to execute
   - `args`: Command line arguments (optional)
 - Protocol: JSON over stdin/stdout
+
+**Contrib Plugins**
+
+Additional plugins are available in the [`contrib/`](contrib/) directory:
+- **Cloudflare DNS Plugin**: Stores peer information in Cloudflare DNS TXT records
+  - See [contrib/cloudflare/README.md](contrib/cloudflare/README.md) for setup instructions
+- More community plugins can be added here
+
+To use contrib plugins, build them and reference them as exec plugins in your configuration.
 
 #### Exec Plugin Protocol
 
@@ -458,9 +459,9 @@ stun:
   address: "stun.l.google.com:19302"
 plugins:
   cloudflare_main:
-    type: cloudflare
-    zone_name: "<ZONE_NAME>"
-    api_token: "<API_TOKEN>"
+    type: exec
+    command: "/usr/local/bin/stunmesh-cloudflare"
+    args: ["-zone", "<ZONE_NAME>", "-token", "<API_TOKEN>"]
 EOF
 
 configure
@@ -516,9 +517,9 @@ stun:
   address: "stun.l.google.com:19302"
 plugins:
   cloudflare_main:
-    type: cloudflare
-    zone_name: "<ZONE_NAME>"
-    api_token: "<API_TOKEN>"
+    type: exec
+    command: "/usr/local/bin/stunmesh-cloudflare"
+    args: ["-zone", "<ZONE_NAME>", "-token", "<API_TOKEN>"]
 EOF
 
 configure
@@ -611,9 +612,9 @@ stun:
   address: "stun.l.google.com:19302"
 plugins:
   cloudflare_main:
-    type: cloudflare
-    zone_name: "<ZONE_NAME>"
-    api_token: "<API_TOKEN>"
+    type: exec
+    command: "/usr/local/bin/stunmesh-cloudflare"
+    args: ["-zone", "<ZONE_NAME>", "-token", "<API_TOKEN>"]
 ```
 
 #### Steps in Site B
@@ -656,9 +657,9 @@ stun:
   address: "stun.l.google.com:19302"
 plugins:
   cloudflare_main:
-    type: cloudflare
-    zone_name: "<ZONE_NAME>"
-    api_token: "<API_TOKEN>"
+    type: exec
+    command: "/usr/local/bin/stunmesh-cloudflare"
+    args: ["-zone", "<ZONE_NAME>", "-token", "<API_TOKEN>"]
 ```
 
 #### Verify the Wireguard connections is established
