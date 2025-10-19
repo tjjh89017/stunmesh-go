@@ -1,0 +1,63 @@
+name: 'Build All Plugins'
+description: 'Build all contrib plugins for specified OS and architecture'
+
+inputs:
+  os:
+    description: 'Target OS (linux, darwin, freebsd)'
+    required: true
+  arch:
+    description: 'Target architecture (amd64, arm64, arm, mipsle)'
+    required: true
+  go-version:
+    description: 'Go version to use'
+    required: true
+    default: 'stable'
+
+outputs:
+  artifact-name:
+    description: 'Name for the artifact'
+    value: 'plugins-${{ inputs.os }}-${{ inputs.arch }}'
+
+runs:
+  using: 'composite'
+  steps:
+    - uses: actions/setup-go@v5
+      with:
+        go-version: ${{ inputs.go-version }}
+
+    - name: Build All Plugins (Linux/Darwin)
+      if: inputs.os != 'freebsd'
+      shell: bash
+      run: |
+        for plugin_dir in contrib/*/; do
+          if [ -f "${plugin_dir}Makefile" ]; then
+            plugin_name=$(basename "$plugin_dir")
+            echo "Building plugin: $plugin_name"
+            cd "$plugin_dir"
+            make build
+            cd ../..
+          fi
+        done
+      env:
+        GOARCH: ${{ inputs.arch }}
+        GOOS: ${{ inputs.os }}
+
+    - name: Build All Plugins (FreeBSD)
+      if: inputs.os == 'freebsd'
+      uses: vmactions/freebsd-vm@v1.2.4
+      with:
+        arch: ${{ inputs.arch }}
+        sync: sshfs
+        prepare: |
+          pkg install -y gmake go
+        run: |
+          cd $GITHUB_WORKSPACE
+          for plugin_dir in contrib/*/; do
+            if [ -f "${plugin_dir}Makefile" ]; then
+              plugin_name=$(basename "$plugin_dir")
+              echo "Building plugin: $plugin_name"
+              cd "$plugin_dir"
+              gmake build
+              cd ../..
+            fi
+          done
