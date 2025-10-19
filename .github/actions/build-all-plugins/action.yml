@@ -37,10 +37,17 @@ runs:
             cd "$plugin_dir"
             make build
             # Move built binary to output directory
-            mv stunmesh-* ../../plugins_dist/ 2>/dev/null || true
+            if ls stunmesh-* 1> /dev/null 2>&1; then
+              mv stunmesh-* ../../plugins_dist/
+              echo "✓ Moved binary to plugins_dist/"
+            else
+              echo "✗ Warning: No binary found for $plugin_name"
+            fi
             cd ../..
           fi
         done
+        echo "=== Contents of plugins_dist/ ==="
+        ls -lah plugins_dist/ || echo "plugins_dist/ is empty or does not exist"
       env:
         GOARCH: ${{ inputs.arch }}
         GOOS: ${{ inputs.os }}

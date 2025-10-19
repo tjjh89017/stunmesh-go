@@ -42,7 +42,7 @@ runs:
     - uses: actions/setup-go@v5
       with:
         go-version: ${{ inputs.go-version }}
-    
+
     - name: Build (Linux/Darwin)
       if: inputs.os != 'freebsd'
       shell: bash
@@ -50,7 +50,7 @@ runs:
       env:
         GOARCH: ${{ inputs.arch }}
         GOOS: ${{ inputs.os }}
-    
+
     - name: Build (FreeBSD)
       if: inputs.os == 'freebsd'
       uses: vmactions/freebsd-vm@v1.2.4
