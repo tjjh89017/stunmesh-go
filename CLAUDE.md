@@ -11,8 +11,10 @@ stunmesh-go is a WireGuard helper tool that enables peer-to-peer connections thr
 ### Building
 ```bash
 make build          # Build the main binary
-make all           # Build everything (alias for build)  
+make all           # Build everything (clean + build)
 make clean         # Clean build artifacts
+make plugin        # Build all contrib plugins
+make contrib       # Alias for 'make plugin'
 go build -o stunmesh-go  # Direct go build
 ```
 
@@ -56,9 +58,11 @@ The plugin system supports multiple named storage backend instances:
 **Supported Plugin Types**:
 - `exec`: External process communication via JSON stdin/stdout
 
-**Contrib Plugins**:
-- Cloudflare DNS plugin is now available as a standalone exec plugin in `contrib/cloudflare/`
-- Additional community plugins can be added to the `contrib/` directory
+**Contrib Plugins** (`contrib/` directory):
+- Cloudflare DNS plugin: Standalone exec plugin in `contrib/cloudflare/`
+- Additional community plugins can be added to `contrib/`
+- Plugin Makefiles should use `PLUGIN` variable (not `APP`) to avoid conflicts with workflow-level environment variables
+- Plugins are built with `make plugin` or `make contrib` from the root directory
 
 **Configuration Structure**:
 ```yaml
@@ -177,19 +181,49 @@ When `entity.NewPeer()` signature changes, update all test files with the new pa
 
 ## Common Development Scenarios
 
-### Adding New Plugin Types
+### Adding New Contrib Plugins
+1. Create a new directory under `contrib/` (e.g., `contrib/myplugin/`)
+2. Create a `Makefile` with:
+   - Use `PLUGIN ?= stunmesh-<name>` variable (not `APP`)
+   - Implement `build`, `clean`, `install`, `uninstall` targets
+   - Set `CGO_ENABLED ?= 0` for static binaries (recommended)
+3. Implement the exec plugin protocol (JSON stdin/stdout)
+4. GitHub Actions will automatically build and release the plugin for all supported platforms
+5. See `contrib/README.md` for detailed plugin development guide
+
+### Adding New Plugin Types to Core
 1. Add new `PluginType` constant in `plugin/manager.go`
 2. Implement `Store` interface in new plugin file
 3. Add case in `createPlugin()` method
 4. Update documentation in README.md
 
-### Modifying Wire Dependencies  
+### Modifying Wire Dependencies
 1. Update `wire.go` with new bindings
 2. Run `go generate wire.go` to regenerate `wire_gen.go`
 3. Build to verify dependency resolution
 
 ### Interface Changes
 1. Update interface definition
-2. Update all implementations 
+2. Update all implementations
 3. Regenerate mocks: `go generate ./internal/entity`
 4. Update tests to match new signatures
+
+## GitHub Actions CI/CD
+
+### Workflow Structure
+- **main.yml**: Build and test on PR/push to main
+  - `build` job: Builds main binary for all OS/arch combinations
+  - `build-plugins` job: Builds all contrib plugins (runs in parallel with `build`)
+  - Both depend on `lint` and `test` jobs
+
+- **release.yml**: Release binaries on tag push
+  - `release` job: Releases main binary
+  - `release-plugins` job: Releases plugin archives (runs in parallel with `release`)
+  - Plugin binaries are packaged per OS/arch (e.g., `stunmesh-plugins-linux-amd64.zip`)
+
+### Plugin Build System
+- Uses `.github/actions/build-all-plugins/` to build all plugins
+- Automatically discovers plugins in `contrib/` directory
+- Sets `unset APP` to avoid conflicts with workflow-level `env.APP`
+- Creates `plugins_dist/` directory with all built binaries
+- Supports Linux, Darwin (macOS), and FreeBSD with multiple architectures
