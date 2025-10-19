@@ -56,7 +56,8 @@ The plugin system supports multiple named storage backend instances:
 - Each peer can reference a different plugin instance
 
 **Supported Plugin Types**:
-- `exec`: External process communication via JSON stdin/stdout
+- `exec`: External process communication via JSON stdin/stdout (for complex plugins)
+- `shell`: Simplified protocol using shell variables via stdin (for simple shell scripts)
 
 **Contrib Plugins** (`contrib/` directory):
 - Cloudflare DNS plugin: Standalone exec plugin in `contrib/cloudflare/`
@@ -153,9 +154,9 @@ External storage scripts communicate via JSON stdin/stdout:
 **Request Format**:
 ```json
 {
-  "operation": "get|set",
-  "key": "peer_identifier", 
-  "value": "encrypted_data_for_set"
+  "action": "get|set",
+  "key": "peer_identifier_sha1_hex",
+  "value": "encrypted_data_hex"
 }
 ```
 
@@ -163,10 +164,30 @@ External storage scripts communicate via JSON stdin/stdout:
 ```json
 {
   "success": true|false,
-  "value": "encrypted_data_for_get",
+  "value": "encrypted_data_hex",
   "error": "error_message_if_failed"
 }
 ```
+
+### Shell Plugin Protocol
+Simplified protocol for shell scripts using shell variable assignments:
+
+**Input (stdin)**:
+```bash
+STUNMESH_ACTION=get
+STUNMESH_KEY=3061b8fcbdb6972059518f1adc3590dca6a5f352  # SHA1 hex
+STUNMESH_VALUE=a1b2c3d4e5f6...  # hex (for set only)
+```
+
+**Output**:
+- For `get`: stdout contains the value (hex string)
+- For `set`: exit code 0 for success
+- For errors: exit non-zero, stderr contains error message
+
+**Notes**:
+- Both key and value are hex-encoded strings (no special characters)
+- No escaping or quoting needed - can safely use `source /dev/stdin` or `eval`
+- Simpler than JSON protocol for basic shell scripts
 
 ## Testing Patterns
 

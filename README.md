@@ -129,6 +129,15 @@ stunmesh-go now supports a flexible plugin system that allows you to:
   - `command`: Command to execute
   - `args`: Command line arguments (optional)
 - Protocol: JSON over stdin/stdout
+- Best for: Complex plugins requiring structured data handling
+
+**Shell Plugin (`type: shell`)**
+- Simplified plugin type for shell scripts
+- Configuration:
+  - `command`: Command to execute
+  - `args`: Command line arguments (optional)
+- Protocol: Shell variables over stdin, plain text over stdout
+- Best for: Simple shell scripts without JSON parsing requirements
 
 **Contrib Plugins**
 
@@ -160,10 +169,73 @@ The exec plugin communicates with external programs using JSON over stdin/stdout
 **Response Format:**
 ```json
 {
-  "action": true,
+  "success": true,
   "value": "encrypted_data_for_get_operation",
   "error": "error_message_if_failed"
 }
+```
+
+#### Shell Plugin Protocol
+
+The shell plugin provides a simpler alternative for shell scripts, using shell variable assignments instead of JSON.
+
+**Input Format (stdin):**
+```bash
+STUNMESH_ACTION=get
+STUNMESH_KEY=3061b8fcbdb6972059518f1adc3590dca6a5f352
+STUNMESH_VALUE=a1b2c3d4e5f6...  # Only for "set" action
+```
+
+**Output:**
+- For `get`: Write the value to stdout
+- For `set`: Exit with code 0 for success
+- For errors: Exit with non-zero code, error message on stderr
+
+**Example: Cloudflare DNS Storage (Shell Script)**
+```bash
+#!/bin/bash
+source /dev/stdin
+
+ZONE_ID="your-zone-id"
+API_TOKEN="your-api-token"
+SUBDOMAIN="wg"
+
+case "$STUNMESH_ACTION" in
+    get)
+        # Get TXT record from Cloudflare
+        # Record name format: <key>.<subdomain>.example.com
+        RECORD_NAME="${STUNMESH_KEY}.${SUBDOMAIN}.example.com"
+        VALUE=$(curl -s -X GET \
+            "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records?type=TXT&name=$RECORD_NAME" \
+            -H "Authorization: Bearer $API_TOKEN" | \
+            jq -r '.result[0].content' 2>/dev/null)
+
+        if [ "$VALUE" != "null" ] && [ -n "$VALUE" ]; then
+            echo "$VALUE"
+        else
+            echo "Record not found" >&2
+            exit 1
+        fi
+        ;;
+    set)
+        # Create/update TXT record in Cloudflare
+        RECORD_NAME="${STUNMESH_KEY}.${SUBDOMAIN}.example.com"
+        curl -s -X POST \
+            "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records" \
+            -H "Authorization: Bearer $API_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data "{\"type\":\"TXT\",\"name\":\"$RECORD_NAME\",\"content\":\"$STUNMESH_VALUE\",\"ttl\":120}" \
+            >/dev/null
+        ;;
+esac
+```
+
+**Configuration Example:**
+```yaml
+plugins:
+  cf_shell:
+    type: shell
+    command: "/usr/local/bin/cloudflare-storage.sh"
 ```
 
 #### Exec Plugin Examples
