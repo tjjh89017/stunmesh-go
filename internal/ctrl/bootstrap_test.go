@@ -29,7 +29,7 @@ func TestBootstrap_WithError(t *testing.T) {
 				Peers: map[string]config.Peer{
 					"test_peer1": {
 						PublicKey: "XgPRso34lnrSAx8nJtdj1/zlF7CoNj7B64LPElYdOGs=",
-						Plugin:    "cloudflare",
+						Plugin:    "exec",
 					},
 				},
 			},
@@ -67,7 +67,7 @@ func TestBootstrap_WithMultipleInterfaces(t *testing.T) {
 				Peers: map[string]config.Peer{
 					"test_peer1": {
 						PublicKey: "XgPRso34lnrSAx8nJtdj1/zlF7CoNj7B64LPElYdOGs=",
-						Plugin:    "cloudflare",
+						Plugin:    "exec",
 					},
 				},
 			},
@@ -79,7 +79,7 @@ func TestBootstrap_WithMultipleInterfaces(t *testing.T) {
 					},
 					"test_peer3": {
 						PublicKey: "Cud5HogJJLCppoUuHnWrSvEJuI49D01sQcfiD3Y9RRU=",
-						Plugin:    "cloudflare",
+						Plugin:    "exec",
 					},
 				},
 			},

@@ -50,19 +50,23 @@ The plugin system supports multiple named storage backend instances:
 
 **Plugin Manager** (`plugin/manager.go`):
 - Factory pattern for creating plugin instances by type
-- Manages multiple named instances (e.g., `cloudflare1`, `cloudflare2`)
+- Manages multiple named instances (e.g., `exec1`, `exec2`)
 - Each peer can reference a different plugin instance
 
 **Supported Plugin Types**:
-- `cloudflare`: DNS TXT record storage via Cloudflare API
 - `exec`: External process communication via JSON stdin/stdout
+
+**Contrib Plugins**:
+- Cloudflare DNS plugin is now available as a standalone exec plugin in `contrib/cloudflare/`
+- Additional community plugins can be added to the `contrib/` directory
 
 **Configuration Structure**:
 ```yaml
 plugins:
   plugin_name:
-    type: cloudflare|exec
-    # Plugin-specific configuration
+    type: exec
+    command: /path/to/plugin
+    args: [...]
 interfaces:
   wg0:
     peers:

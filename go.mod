@@ -3,7 +3,6 @@ module github.com/tjjh89017/stunmesh-go
 go 1.25
 
 require (
-	github.com/cloudflare/cloudflare-go v0.116.0
 	github.com/google/wire v0.7.0
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/packetcap/go-pcap v0.0.0-20250723190045-d00b185f30b7
@@ -19,9 +18,7 @@ require (
 require (
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
-	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
-	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/gopacket/gopacket v1.4.0 // indirect
 	github.com/josharian/native v1.1.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
@@ -46,8 +43,8 @@ require (
 	golang.org/x/sync v0.17.0 // indirect
 	golang.org/x/sys v0.37.0 // indirect
 	golang.org/x/text v0.30.0 // indirect
-	golang.org/x/time v0.9.0 // indirect
 	golang.zx2c4.com/wireguard v0.0.0-20231211153847-12269c276173 // indirect
+	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 )
 
 replace github.com/packetcap/go-pcap v0.0.0-20250723190045-d00b185f30b7 => github.com/tjjh89017/go-pcap v0.0.0-20250806125406-94a3a3dd1d4f

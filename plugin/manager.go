@@ -8,8 +8,7 @@ import (
 type PluginType string
 
 const (
-	PluginTypeCloudflare PluginType = "cloudflare"
-	PluginTypeExec       PluginType = "exec"
+	PluginTypeExec PluginType = "exec"
 )
 
 type PluginConfig map[string]interface{}
@@ -50,8 +49,6 @@ func (m *Manager) GetPlugin(name string) (Store, error) {
 
 func (m *Manager) createPlugin(ctx context.Context, def PluginDefinition) (Store, error) {
 	switch PluginType(def.Type) {
-	case PluginTypeCloudflare:
-		return NewCloudflarePlugin(def.Config)
 	case PluginTypeExec:
 		return NewExecPlugin(def.Config)
 	default:
