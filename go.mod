@@ -5,7 +5,7 @@ go 1.25
 require (
 	github.com/google/wire v0.7.0
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/packetcap/go-pcap v0.0.0-20250723190045-d00b185f30b7
+	github.com/packetcap/go-pcap v0.0.0-20251012111502-b21daddd9e00
 	github.com/pion/stun v0.6.1
 	github.com/rs/zerolog v1.34.0
 	github.com/spf13/viper v1.21.0
@@ -19,7 +19,7 @@ require (
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
-	github.com/gopacket/gopacket v1.4.0 // indirect
+	github.com/gopacket/gopacket v1.5.0 // indirect
 	github.com/josharian/native v1.1.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
@@ -47,4 +47,4 @@ require (
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 )
 
-replace github.com/packetcap/go-pcap v0.0.0-20250723190045-d00b185f30b7 => github.com/tjjh89017/go-pcap v0.0.0-20250806125406-94a3a3dd1d4f
+replace github.com/packetcap/go-pcap v0.0.0-20251012111502-b21daddd9e00 => github.com/tjjh89017/go-pcap v0.0.0-20251108100324-8ec3d5f5a9f9
