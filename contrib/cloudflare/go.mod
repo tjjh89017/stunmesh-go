@@ -1,6 +1,6 @@
 module github.com/tjjh89017/stunmesh-go/contrib/cloudflare
 
-go 1.25
+go 1.25.0
 
 require (
 	github.com/cloudflare/cloudflare-go v0.116.0
