@@ -12,13 +12,15 @@ type Device struct {
 	name       DeviceId
 	listenPort int
 	privateKey []byte
+	protocol   string
 }
 
-func NewDevice(name DeviceId, listenPort int, privateKey []byte) *Device {
+func NewDevice(name DeviceId, listenPort int, privateKey []byte, protocol string) *Device {
 	return &Device{
 		name:       name,
 		listenPort: listenPort,
 		privateKey: privateKey,
+		protocol:   protocol,
 	}
 }
 
@@ -34,4 +36,8 @@ func (d *Device) PrivateKey() [32]byte {
 
 func (d *Device) ListenPort() int {
 	return d.listenPort
+}
+
+func (d *Device) Protocol() string {
+	return d.protocol
 }

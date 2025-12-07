@@ -21,15 +21,17 @@ type Peer struct {
 	deviceName string
 	publicKey  [32]byte
 	plugin     string
+	protocol   string
 	pingConfig PeerPingConfig
 }
 
-func NewPeer(id PeerId, deviceName string, publicKey [32]byte, plugin string, pingConfig PeerPingConfig) *Peer {
+func NewPeer(id PeerId, deviceName string, publicKey [32]byte, plugin string, protocol string, pingConfig PeerPingConfig) *Peer {
 	return &Peer{
 		id:         id,
 		deviceName: deviceName,
 		publicKey:  publicKey,
 		plugin:     plugin,
+		protocol:   protocol,
 		pingConfig: pingConfig,
 	}
 }
@@ -56,6 +58,10 @@ func (p *Peer) PublicKey() [32]byte {
 
 func (p *Peer) Plugin() string {
 	return p.plugin
+}
+
+func (p *Peer) Protocol() string {
+	return p.protocol
 }
 
 func (p *Peer) PingConfig() PeerPingConfig {

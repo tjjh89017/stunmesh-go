@@ -6,8 +6,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
-	"net"
-	"strconv"
 
 	"github.com/tjjh89017/stunmesh-go/internal/ctrl"
 	"golang.org/x/crypto/nacl/box"
@@ -33,7 +31,8 @@ func (s *Endpoint) Encrypt(ctx context.Context, input *ctrl.EndpointEncryptReque
 		return &ctrl.EndpointEncryptResponse{}, err
 	}
 
-	message := []byte(net.JoinHostPort(input.Host, strconv.Itoa(input.Port)))
+	// Encrypt the entire JSON content
+	message := []byte(input.Content)
 	encryptedData := box.Seal(nil, message, &nonce, &input.PeerPublicKey, &input.PrivateKey)
 	encryptedDataHex := hex.EncodeToString(append(nonce[:], encryptedData...))
 
@@ -56,18 +55,8 @@ func (s *Endpoint) Decrypt(ctx context.Context, input *ctrl.EndpointDecryptReque
 		return &ctrl.EndpointDecryptResponse{}, ErrUnableToDecrypt
 	}
 
-	host, port, err := net.SplitHostPort(string(decryptedData))
-	if err != nil {
-		return &ctrl.EndpointDecryptResponse{}, err
-	}
-
-	intPort, err := strconv.Atoi(port)
-	if err != nil {
-		return &ctrl.EndpointDecryptResponse{}, err
-	}
-
+	// Return the decrypted JSON content
 	return &ctrl.EndpointDecryptResponse{
-		Host: host,
-		Port: intPort,
+		Content: string(decryptedData),
 	}, nil
 }

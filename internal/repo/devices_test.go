@@ -10,7 +10,7 @@ import (
 
 func Test_DeviceFind(t *testing.T) {
 	deviceName := entity.DeviceId("wg0")
-	device := entity.NewDevice(deviceName, 6379, []byte{})
+	device := entity.NewDevice(deviceName, 6379, []byte{}, "ipv4")
 
 	devices := repo.NewDevices()
 	devices.Save(context.TODO(), device)
@@ -57,15 +57,15 @@ func Test_DeviceList(t *testing.T) {
 		{
 			name: "single device",
 			devices: []*entity.Device{
-				entity.NewDevice(entity.DeviceId("wg0"), 6379, []byte{}),
+				entity.NewDevice(entity.DeviceId("wg0"), 6379, []byte{}, "ipv4"),
 			},
 		},
 		{
 			name: "multiple devices",
 			devices: []*entity.Device{
-				entity.NewDevice(entity.DeviceId("wg0"), 6379, []byte{}),
-				entity.NewDevice(entity.DeviceId("wg1"), 6380, []byte{}),
-				entity.NewDevice(entity.DeviceId("wg2"), 6381, []byte{}),
+				entity.NewDevice(entity.DeviceId("wg0"), 6379, []byte{}, "ipv4"),
+				entity.NewDevice(entity.DeviceId("wg1"), 6380, []byte{}, "ipv4"),
+				entity.NewDevice(entity.DeviceId("wg2"), 6381, []byte{}, "ipv4"),
 			},
 		},
 	}

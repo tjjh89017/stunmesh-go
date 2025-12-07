@@ -11,16 +11,18 @@ import (
 type BootstrapController struct {
 	wg            WireGuardClient
 	config        *config.Config
+	deviceConfig  *config.DeviceConfig
 	devices       DeviceRepository
 	peers         PeerRepository
 	logger        zerolog.Logger
 	filterService *entity.FilterPeerService
 }
 
-func NewBootstrapController(wg WireGuardClient, config *config.Config, devices DeviceRepository, peers PeerRepository, logger *zerolog.Logger, filterService *entity.FilterPeerService) *BootstrapController {
+func NewBootstrapController(wg WireGuardClient, config *config.Config, deviceConfig *config.DeviceConfig, devices DeviceRepository, peers PeerRepository, logger *zerolog.Logger, filterService *entity.FilterPeerService) *BootstrapController {
 	return &BootstrapController{
 		wg:            wg,
 		config:        config,
+		deviceConfig:  deviceConfig,
 		devices:       devices,
 		peers:         peers,
 		logger:        logger.With().Str("controller", "bootstrap").Logger(),
@@ -43,10 +45,13 @@ func (ctrl *BootstrapController) registerDevice(ctx context.Context, deviceName 
 		return err
 	}
 
+	protocol := ctrl.deviceConfig.GetInterfaceProtocol(deviceName)
+
 	deviceEntity := entity.NewDevice(
 		entity.DeviceId(device.Name),
 		device.ListenPort,
 		device.PrivateKey[:],
+		protocol,
 	)
 
 	allowPeers, err := ctrl.filterService.Execute(ctx, deviceEntity.Name(), device.PublicKey[:])
