@@ -2,6 +2,9 @@ package crypto_test
 
 import (
 	"context"
+	"encoding/json"
+	"net"
+	"strconv"
 	"testing"
 
 	"github.com/tjjh89017/stunmesh-go/internal/crypto"
@@ -16,11 +19,20 @@ func Test_Endpoint_Encrypt(t *testing.T) {
 
 	endpoint := crypto.NewEndpoint()
 
+	// Build JSON content
+	endpointData := ctrl.EndpointData{
+		IPv4: "127.0.0.1:1234",
+		IPv6: "",
+	}
+	jsonContent, err := json.Marshal(endpointData)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	res, err := endpoint.Encrypt(context.TODO(), &ctrl.EndpointEncryptRequest{
 		PeerPublicKey: remotePublicKey,
 		PrivateKey:    localPrivateKey,
-		Host:          "127.0.0.1",
-		Port:          1234,
+		Content:       string(jsonContent),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -38,24 +50,60 @@ func Test_Endpoint_Decrypt(t *testing.T) {
 	remotePublicKey := [32]byte{}
 
 	endpoint := crypto.NewEndpoint()
-	encryptedEndpointData := "91b30de0d0790ca37f6e777429374876cbbef7148ad68054fb25417315af8528e7328cfed292ab372c4486c17b0d1f08ce46fc2bb9fd"
 
-	res, err := endpoint.Decrypt(context.TODO(), &ctrl.EndpointDecryptRequest{
+	// First encrypt to get valid encrypted data
+	endpointData := ctrl.EndpointData{
+		IPv4: "127.0.0.1:1234",
+		IPv6: "",
+	}
+	jsonContent, err := json.Marshal(endpointData)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	encRes, err := endpoint.Encrypt(context.TODO(), &ctrl.EndpointEncryptRequest{
 		PeerPublicKey: remotePublicKey,
 		PrivateKey:    localPrivateKey,
-		Data:          encryptedEndpointData,
+		Content:       string(jsonContent),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	// Now decrypt
+	res, err := endpoint.Decrypt(context.TODO(), &ctrl.EndpointDecryptRequest{
+		PeerPublicKey: remotePublicKey,
+		PrivateKey:    localPrivateKey,
+		Data:          encRes.Data,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Parse JSON content
+	var decryptedData ctrl.EndpointData
+	if err := json.Unmarshal([]byte(res.Content), &decryptedData); err != nil {
+		t.Fatal(err)
+	}
+
+	// Parse host:port
+	host, portStr, err := net.SplitHostPort(decryptedData.IPv4)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	expectedHost := "127.0.0.1"
-	if res.Host != expectedHost {
-		t.Fatalf("expected: %s, got: %s\n", expectedHost, res.Host)
+	if host != expectedHost {
+		t.Fatalf("expected: %s, got: %s\n", expectedHost, host)
 	}
 
 	expectedPort := 1234
-	if res.Port != expectedPort {
-		t.Fatalf("expected: %d, got: %d\n", expectedPort, res.Port)
+	if port != expectedPort {
+		t.Fatalf("expected: %d, got: %d\n", expectedPort, port)
 	}
 }

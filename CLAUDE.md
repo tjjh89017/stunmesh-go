@@ -74,10 +74,12 @@ plugins:
     args: [...]
 interfaces:
   wg0:
+    protocol: "ipv4"  # Interface protocol: ipv4, ipv6, or dualstack
     peers:
       peer_name:
         public_key: "base64_encoded_key"
         plugin: plugin_name  # References named plugin instance
+        protocol: "ipv4"     # Peer protocol: ipv4, ipv6, prefer_ipv4, prefer_ipv6
 ```
 
 ### Controller Architecture
@@ -86,15 +88,28 @@ Four main controllers orchestrate the application workflow:
 1. **BootstrapController** (`internal/ctrl/bootstrap.go`):
    - Initializes WireGuard devices and discovers existing peers
    - Uses `FilterPeerService` to match config peers with device peers
+   - Reads device protocol from config and stores in Device entity
 
 2. **PublishController** (`internal/ctrl/publish.go`):
-   - Performs STUN discovery to get public IP/port
-   - Encrypts endpoint data and stores via configured plugins
+   - Performs STUN discovery to get public IP/port based on device protocol
+   - Supports three modes: `ipv4` (IPv4 only), `ipv6` (IPv6 only), `dualstack` (both)
+   - Uses `discoverEndpoints()` helper method for protocol-aware STUN discovery
+   - **Validation**: `Resolver.Resolve()` validates endpoints (port != 0 and host != "")
+     - Invalid endpoints are not published to storage
+     - Logs warning when STUN returns invalid endpoint
+   - Encrypts entire endpoint JSON (`{"ipv4": "...", "ipv6": "..."}`) and stores via plugins
    - Each peer uses its designated plugin instance
+   - Logs discovered endpoints for debugging
 
 3. **EstablishController** (`internal/ctrl/establish.go`):
    - Retrieves peer endpoint data from storage plugins
-   - Decrypts and configures WireGuard peer endpoints
+   - Decrypts endpoint JSON and selects appropriate endpoint based on peer protocol:
+     - `ipv4`: Use IPv4 endpoint only (returns error if empty)
+     - `ipv6`: Use IPv6 endpoint only (returns error if empty)
+     - `prefer_ipv4`: Prefer IPv4, fallback to IPv6 if unavailable
+     - `prefer_ipv6`: Prefer IPv6, fallback to IPv4 if unavailable
+   - **No port validation needed**: Since publish validates before storage, port should never be 0
+   - Configures WireGuard peer with selected endpoint
 
 4. **RefreshController** (`internal/ctrl/refresh.go`):
    - Queues peer refresh operations on a periodic schedule
@@ -115,8 +130,87 @@ This reversed approach ensures peers have complete plugin configuration througho
 
 ### Entity and Repository Layers
 - **Entities** (`internal/entity/`): Domain objects (`Peer`, `Device`, `PeerId`)
+  - `Device`: Contains `protocol` field (interface-level protocol configuration)
+  - `Peer`: Contains `protocol` field (peer-level protocol preference)
 - **Repositories** (`internal/repo/`): Data access abstractions
 - **Configuration** (`internal/config/`): YAML config loading and device peer management
+
+### Protocol Configuration Architecture
+
+The protocol configuration operates at two distinct levels:
+
+**Interface Protocol** (Device Level):
+- Controls which STUN discovery protocols are performed
+- Values: `ipv4`, `ipv6`, `dualstack`
+- Default: `ipv4` (for backward compatibility)
+- Validation in `config.DeviceConfig.GetInterfaceProtocol()`
+- Stored in `entity.Device.protocol` field
+
+**Peer Protocol** (Peer Level):
+- Controls which endpoint to use when establishing connections
+- Values: `ipv4`, `ipv6`, `prefer_ipv4`, `prefer_ipv6`
+- Default: `ipv4` (for backward compatibility)
+- Validation in `config.Peer.GetProtocol()`
+- Stored in `entity.Peer.protocol` field
+
+**Data Flow**:
+1. `BootstrapController` reads protocol from config → creates Device/Peer entities with protocol
+2. `PublishController` uses `device.Protocol()` → performs appropriate STUN discovery → stores endpoints
+3. `EstablishController` uses `peer.Protocol()` → selects appropriate endpoint → configures WireGuard
+
+### STUN Implementation
+
+**Platform-Specific Implementations**:
+- **Linux** (`internal/stun/stun_linux.go`): Raw IP sockets with BPF filters
+- **Darwin/BSD** (`internal/stun/stun_darwinbsd.go`): pcap with BPF filters
+
+**IPv6 Support**:
+- Uses `golang.org/x/net/ipv6.PacketConn` for IPv6 raw sockets
+- IPv6 UDP checksum is **mandatory** (RFC 8200) - handled by kernel via `SetChecksum(true, 6)`
+- Network strings: `ip6:17` for raw socket, `udp6` for STUN server connection
+- For IPv6, raw socket addresses must use `net.IPAddr` (not `net.UDPAddr`) when sending packets
+
+**Linux-Specific Behavior**:
+- **IP Header Stripping**: Linux kernel strips IP headers for both IPv4 and IPv6 raw sockets at application layer
+- **BPF Filter Timing**: BPF filters run at different stages for IPv4 vs IPv6:
+  - **IPv4**: BPF filter sees full packet (IP header + UDP header + payload)
+    - BPF offsets: dst_port at 22, STUN magic at 32
+  - **IPv6**: BPF filter sees packet without IP header (UDP header + payload)
+    - BPF offsets: dst_port at 2, STUN magic at 12
+- **Application Layer**: Both protocols receive UDP header (8 bytes) + payload
+  - Application offset: Always 8 bytes (skip UDP header)
+
+**Darwin/BSD-Specific Behavior**:
+- Uses pcap with BPF filters
+- Different link layer types (Null/Loopback vs Ethernet) require different BPF offsets
+- IPv6 BPF filter checks EtherType (0x86DD) for Ethernet frames
+
+**Key Methods**:
+- `stun.New(ctx, deviceName, port, protocol)`: Creates STUN client with specified protocol
+- `resolver.Resolve(ctx, deviceName, port, protocol)`: Performs STUN discovery and returns endpoint
+  - Returns error if port == 0 or host == "" (validates endpoint before returning)
+- `stun.Connect(ctx, stunAddr)`: Sends STUN request and receives response
+  - Converts `net.UDPAddr` to `net.IPAddr` for raw socket transmission
+
+### Encryption and Storage Format
+
+**Endpoint Data Format**:
+```json
+{
+  "ipv4": "1.2.3.4:5678",
+  "ipv6": "[2001:db8::1]:5678"
+}
+```
+
+**Encryption**:
+- Entire JSON is encrypted using NaCl box (Curve25519 + XSalsa20 + Poly1305)
+- Encrypted data is hex-encoded for storage
+- Plugin stores/retrieves hex string (no JSON parsing needed in plugin)
+
+**Decryption and Selection**:
+- Controller decrypts entire JSON
+- Selects endpoint based on peer protocol preference
+- Supports fallback logic for `prefer_ipv4`/`prefer_ipv6`
 
 ## Configuration System
 
@@ -139,8 +233,22 @@ wire.Bind(new(entity.ConfigPeerProvider), new(*config.DeviceConfig))
 wire.Bind(new(entity.DevicePeerChecker), new(*repo.Peers))
 ```
 
-### Peer Entity Plugin Field
-All `entity.NewPeer()` calls require a plugin parameter. When adding new peer creation code, ensure the plugin field is provided.
+### Entity Constructor Signatures
+
+**Device Entity**:
+```go
+entity.NewDevice(name DeviceId, listenPort int, privateKey []byte, protocol string) *Device
+```
+- `protocol`: Must be "ipv4", "ipv6", or "dualstack"
+
+**Peer Entity**:
+```go
+entity.NewPeer(id PeerId, deviceName string, publicKey [32]byte, plugin string, protocol string, pingConfig PeerPingConfig) *Peer
+```
+- `plugin`: Required - references the plugin instance name from config
+- `protocol`: Must be "ipv4", "ipv6", "prefer_ipv4", or "prefer_ipv6"
+
+When adding new entity creation code, ensure all required parameters are provided with correct values.
 
 ### Mock Generation
 Mocks are generated using `go.uber.org/mock/mockgen`. Interface changes require regenerating mocks:
@@ -198,7 +306,16 @@ Tests extensively use mocks for external dependencies:
 - `MockPeerRepository` and `MockDeviceRepository` for storage
 
 ### Constructor Parameter Updates
-When `entity.NewPeer()` signature changes, update all test files with the new parameter requirements (typically adding plugin parameter).
+When `entity.NewPeer()` or `entity.NewDevice()` signatures change, update all affected files:
+- Test files in `internal/repo/*_test.go`
+- Test files in `internal/ctrl/*_test.go`
+- Test files in `internal/crypto/*_test.go`
+- Controller implementations in `internal/ctrl/bootstrap.go`
+
+Common parameters to remember:
+- Both Device and Peer require `protocol` parameter
+- Peer requires `plugin` parameter (references config plugin name)
+- Use "ipv4" as default protocol value in tests for backward compatibility
 
 ## Common Development Scenarios
 

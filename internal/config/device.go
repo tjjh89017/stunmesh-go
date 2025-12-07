@@ -19,12 +19,35 @@ type Peer struct {
 	Description string      `mapstructure:"description"`
 	PublicKey   string      `mapstructure:"public_key"`
 	Plugin      string      `mapstructure:"plugin"`
+	Protocol    string      `mapstructure:"protocol"`
 	Ping        *PingConfig `mapstructure:"ping"`
 }
 
-type Interface struct {
-	Peers map[string]Peer `mapstructure:"peers"`
+// GetProtocol returns the peer's protocol, defaulting to "ipv4" for backward compatibility
+// Valid values: "ipv4", "ipv6", "prefer_ipv4", "prefer_ipv6"
+// Note: Invalid values are caught during config validation in Load()
+func (p *Peer) GetProtocol() string {
+	if p.Protocol == "" {
+		return "ipv4" // Default for backward compatibility
+	}
+	return p.Protocol
 }
+
+type Interface struct {
+	Protocol string          `mapstructure:"protocol"`
+	Peers    map[string]Peer `mapstructure:"peers"`
+}
+
+// GetProtocol returns the configured protocol, defaulting to "ipv4" for backward compatibility
+// Valid values: "ipv4", "ipv6", "dualstack"
+// Note: Invalid values are caught during config validation in Load()
+func (i *Interface) GetProtocol() string {
+	if i.Protocol == "" {
+		return "ipv4" // Default for backward compatibility
+	}
+	return i.Protocol
+}
+
 type Interfaces map[string]Interface
 
 var _ entity.ConfigPeerProvider = &DeviceConfig{}
@@ -37,6 +60,14 @@ func NewDeviceConfig(config *Config) *DeviceConfig {
 	return &DeviceConfig{
 		interfaces: config.Interfaces,
 	}
+}
+
+func (c *DeviceConfig) GetInterfaceProtocol(deviceName string) string {
+	device, ok := c.interfaces[deviceName]
+	if !ok {
+		return "ipv4"
+	}
+	return device.GetProtocol()
 }
 
 func (c *DeviceConfig) GetConfigPeers(ctx context.Context, deviceName string, localPublicKey []byte) ([]*entity.Peer, error) {
@@ -73,7 +104,7 @@ func (c *DeviceConfig) GetConfigPeers(ctx context.Context, deviceName string, lo
 			}
 		}
 
-		peer := entity.NewPeer(peerId, deviceName, publicKeyArray, configPeer.Plugin, pingConfig)
+		peer := entity.NewPeer(peerId, deviceName, publicKeyArray, configPeer.Plugin, configPeer.GetProtocol(), pingConfig)
 		peers = append(peers, peer)
 	}
 

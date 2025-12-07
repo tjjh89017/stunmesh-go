@@ -2,15 +2,26 @@ package ctrl
 
 import "context"
 
+// EndpointData represents the encrypted endpoint information stored for peers
+// This structure is serialized to JSON and stored via plugins
+type EndpointData struct {
+	// IPv4 contains the encrypted IPv4 endpoint (format: "ip:port")
+	// Empty string means IPv4 endpoint is not available
+	IPv4 string `json:"ipv4,omitempty"`
+
+	// IPv6 contains the encrypted IPv6 endpoint (format: "ip:port")
+	// Empty string means IPv6 endpoint is not available
+	IPv6 string `json:"ipv6,omitempty"`
+}
+
 type EndpointEncryptRequest struct {
 	PeerPublicKey [32]byte
 	PrivateKey    [32]byte
-	Host          string
-	Port          int
+	Content       string // JSON content to encrypt
 }
 
 type EndpointEncryptResponse struct {
-	Data string
+	Data string // Encrypted base64/hex string
 }
 
 type EndpointEncryptor interface {
@@ -20,12 +31,11 @@ type EndpointEncryptor interface {
 type EndpointDecryptRequest struct {
 	PeerPublicKey [32]byte
 	PrivateKey    [32]byte
-	Data          string
+	Data          string // Encrypted base64/hex string
 }
 
 type EndpointDecryptResponse struct {
-	Host string
-	Port int
+	Content string // Decrypted JSON content
 }
 
 type EndpointDecryptor interface {

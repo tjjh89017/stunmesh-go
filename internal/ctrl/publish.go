@@ -2,11 +2,19 @@ package ctrl
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"net"
+	"strconv"
 
 	"github.com/rs/zerolog"
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
 	"github.com/tjjh89017/stunmesh-go/plugin"
 )
+
+type DeviceConfigProvider interface {
+	GetInterfaceProtocol(deviceName string) string
+}
 
 type PublishController struct {
 	devices       DeviceRepository
@@ -14,18 +22,95 @@ type PublishController struct {
 	pluginManager *plugin.Manager
 	resolver      StunResolver
 	encryptor     EndpointEncryptor
+	deviceConfig  DeviceConfigProvider
 	logger        zerolog.Logger
 }
 
-func NewPublishController(devices DeviceRepository, peers PeerRepository, pluginManager *plugin.Manager, resolver StunResolver, encryptor EndpointEncryptor, logger *zerolog.Logger) *PublishController {
+func NewPublishController(devices DeviceRepository, peers PeerRepository, pluginManager *plugin.Manager, resolver StunResolver, encryptor EndpointEncryptor, deviceConfig DeviceConfigProvider, logger *zerolog.Logger) *PublishController {
 	return &PublishController{
 		devices:       devices,
 		peers:         peers,
 		pluginManager: pluginManager,
 		resolver:      resolver,
 		encryptor:     encryptor,
+		deviceConfig:  deviceConfig,
 		logger:        logger.With().Str("controller", "publish").Logger(),
 	}
+}
+
+// discoverEndpoints performs STUN discovery based on device protocol
+// Returns IPv4 and IPv6 endpoints, or error if discovery failed
+func (c *PublishController) discoverEndpoints(ctx context.Context, device *entity.Device, logger zerolog.Logger) (ipv4Endpoint, ipv6Endpoint string, err error) {
+	protocol := device.Protocol()
+
+	// Determine which protocols to resolve
+	var resolveIPv4, resolveIPv6 bool
+	switch protocol {
+	case "ipv4":
+		resolveIPv4 = true
+	case "ipv6":
+		resolveIPv6 = true
+	case "dualstack":
+		resolveIPv4 = true
+		resolveIPv6 = true
+	default:
+		err := errors.New("unknown protocol: " + protocol)
+		logger.Error().Err(err).Msg("invalid protocol")
+		return "", "", err
+	}
+
+	// Perform IPv4 STUN discovery if needed
+	var ipv4Err error
+	if resolveIPv4 {
+		host, port, err := c.resolver.Resolve(ctx, string(device.Name()), uint16(device.ListenPort()), "ipv4")
+		if err != nil {
+			ipv4Err = err
+		} else {
+			ipv4Endpoint = net.JoinHostPort(host, strconv.Itoa(port))
+			logger.Info().Str("ipv4", ipv4Endpoint).Msg("discovered IPv4 endpoint")
+		}
+	}
+
+	// Perform IPv6 STUN discovery if needed
+	var ipv6Err error
+	if resolveIPv6 {
+		host, port, err := c.resolver.Resolve(ctx, string(device.Name()), uint16(device.ListenPort()), "ipv6")
+		if err != nil {
+			ipv6Err = err
+		} else {
+			ipv6Endpoint = net.JoinHostPort(host, strconv.Itoa(port))
+			logger.Info().Str("ipv6", ipv6Endpoint).Msg("discovered IPv6 endpoint")
+		}
+	}
+
+	// Handle errors based on protocol mode
+	switch protocol {
+	case "ipv4":
+		if ipv4Err != nil {
+			logger.Error().Err(ipv4Err).Msg("failed to resolve IPv4 address")
+			return "", "", ipv4Err
+		}
+	case "ipv6":
+		if ipv6Err != nil {
+			logger.Error().Err(ipv6Err).Msg("failed to resolve IPv6 address")
+			return "", "", ipv6Err
+		}
+	case "dualstack":
+		if ipv4Err != nil {
+			logger.Warn().Err(ipv4Err).Msg("failed to resolve IPv4 address in dualstack mode")
+		}
+		if ipv6Err != nil {
+			logger.Warn().Err(ipv6Err).Msg("failed to resolve IPv6 address in dualstack mode")
+		}
+		// If both failed, return error
+		if ipv4Endpoint == "" && ipv6Endpoint == "" {
+			err := errors.New("both IPv4 and IPv6 STUN discovery failed")
+			logger.Error().Err(err).Msg("dualstack discovery failed")
+			return "", "", err
+		}
+	}
+
+	return ipv4Endpoint, ipv6Endpoint, nil
 }
 
 func (c *PublishController) Execute(ctx context.Context) {
@@ -38,13 +123,19 @@ func (c *PublishController) Execute(ctx context.Context) {
 	for _, device := range devices {
 		logger := c.logger.With().Str("device", string(device.Name())).Logger()
 
-		host, port, err := c.resolver.Resolve(ctx, string(device.Name()), uint16(device.ListenPort()))
+		// Perform STUN discovery based on device protocol
+		ipv4Endpoint, ipv6Endpoint, err := c.discoverEndpoints(ctx, device, logger)
 		if err != nil {
-			logger.Error().Err(err).Msg("failed to resolve outside address")
+			logger.Error().Err(err).Msg("failed to discover endpoints")
 			continue
 		}
 
-		logger.Info().Str("host", host).Int("port", int(port)).Msg("outside address")
+		// Log discovered endpoints
+		logger.Info().
+			Str("ipv4", ipv4Endpoint).
+			Str("ipv6", ipv6Endpoint).
+			Msg("discovered endpoints for device")
+
 		peers, err := c.peers.ListByDevice(ctx, device.Name())
 		if err != nil {
 			logger.Error().Err(err).Msg("failed to list peers")
@@ -54,11 +145,23 @@ func (c *PublishController) Execute(ctx context.Context) {
 		for _, peer := range peers {
 			logger := logger.With().Str("peer", peer.LocalId()).Logger()
 
+			// Build endpoint data in plain JSON
+			endpointData := EndpointData{
+				IPv4: ipv4Endpoint,
+				IPv6: ipv6Endpoint,
+			}
+
+			jsonPlain, err := json.Marshal(endpointData)
+			if err != nil {
+				logger.Error().Err(err).Msg("failed to marshal endpoint data")
+				continue
+			}
+
+			// Encrypt entire JSON content
 			res, err := c.encryptor.Encrypt(ctx, &EndpointEncryptRequest{
 				PeerPublicKey: peer.PublicKey(),
 				PrivateKey:    device.PrivateKey(),
-				Host:          host,
-				Port:          port,
+				Content:       string(jsonPlain),
 			})
 			if err != nil {
 				logger.Error().Err(err).Msg("failed to encrypt endpoint")
@@ -102,21 +205,36 @@ func (c *PublishController) ExecuteForPeer(ctx context.Context, peerId entity.Pe
 		Str("peer", peer.LocalId()).
 		Logger()
 
-	// Resolve outside address
-	host, port, err := c.resolver.Resolve(ctx, string(device.Name()), uint16(device.ListenPort()))
+	// Perform STUN discovery based on device protocol
+	ipv4Endpoint, ipv6Endpoint, err := c.discoverEndpoints(ctx, device, logger)
 	if err != nil {
-		logger.Error().Err(err).Msg("failed to resolve outside address")
+		logger.Error().Err(err).Msg("failed to discover endpoints for specific peer")
 		return
 	}
 
-	logger.Info().Str("host", host).Int("port", int(port)).Msg("outside address for specific peer")
+	// Log discovered endpoints
+	logger.Info().
+		Str("ipv4", ipv4Endpoint).
+		Str("ipv6", ipv6Endpoint).
+		Msg("discovered endpoints for peer")
 
-	// Encrypt endpoint data
+	// Build endpoint data in plain JSON
+	endpointData := EndpointData{
+		IPv4: ipv4Endpoint,
+		IPv6: ipv6Endpoint,
+	}
+
+	jsonPlain, err := json.Marshal(endpointData)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to marshal endpoint data")
+		return
+	}
+
+	// Encrypt entire JSON content
 	res, err := c.encryptor.Encrypt(ctx, &EndpointEncryptRequest{
 		PeerPublicKey: peer.PublicKey(),
 		PrivateKey:    device.PrivateKey(),
-		Host:          host,
-		Port:          port,
+		Content:       string(jsonPlain),
 	})
 	if err != nil {
 		logger.Error().Err(err).Msg("failed to encrypt endpoint")

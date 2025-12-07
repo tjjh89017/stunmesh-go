@@ -23,6 +23,7 @@ func Test_PeerRepository_Find(t *testing.T) {
 		"wg0",
 		[32]byte{},
 		"cloudflare",
+		"ipv4",
 		entity.PeerPingConfig{Enabled: false},
 	)
 
@@ -81,6 +82,7 @@ func Test_PeerRepository_List(t *testing.T) {
 					"wg0",
 					[32]byte{},
 					"exec",
+					"ipv4",
 					entity.PeerPingConfig{Enabled: false},
 				),
 			},
@@ -93,6 +95,7 @@ func Test_PeerRepository_List(t *testing.T) {
 					"wg0",
 					[32]byte{},
 					"exec",
+					"ipv4",
 					entity.PeerPingConfig{Enabled: false},
 				),
 				entity.NewPeer(
@@ -100,6 +103,7 @@ func Test_PeerRepository_List(t *testing.T) {
 					"wg1",
 					[32]byte{},
 					"exec",
+					"ipv4",
 					entity.PeerPingConfig{Enabled: false},
 				),
 			},
@@ -158,6 +162,7 @@ func Test_PeerListByDevice(t *testing.T) {
 					"wg0",
 					[32]byte{},
 					"exec",
+					"ipv4",
 					entity.PeerPingConfig{Enabled: false},
 				),
 			},
@@ -172,6 +177,7 @@ func Test_PeerListByDevice(t *testing.T) {
 					"wg0",
 					[32]byte{},
 					"exec",
+					"ipv4",
 					entity.PeerPingConfig{Enabled: false},
 				),
 				entity.NewPeer(
@@ -179,6 +185,7 @@ func Test_PeerListByDevice(t *testing.T) {
 					"wg1",
 					[32]byte{},
 					"exec",
+					"ipv4",
 					entity.PeerPingConfig{Enabled: false},
 				),
 			},

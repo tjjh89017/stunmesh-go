@@ -26,6 +26,7 @@ func setup() (*daemon.Daemon, error) {
 		wire.Bind(new(repo.WireGuardClient), new(*wgctrl.Client)),
 		wire.Bind(new(entity.ConfigPeerProvider), new(*config.DeviceConfig)),
 		wire.Bind(new(entity.DevicePeerChecker), new(*repo.Peers)),
+		wire.Bind(new(ctrl.DeviceConfigProvider), new(*config.DeviceConfig)),
 		providePluginManager,
 		provideRefreshQueue,
 		ctrl.NewPingMonitorController,
