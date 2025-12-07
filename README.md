@@ -71,18 +71,22 @@ log:
   level: "debug"
 interfaces:
   wg0:
+    protocol: "ipv4"  # Optional: "ipv4" (default), "ipv6", or "dualstack" for STUN discovery
     peers:
       "<PEER_NAME>":
         public_key: "<PUBLIC_KEY_IN_BASE64>"
         plugin: cloudflare1
+        protocol: "ipv4"  # Optional: peer protocol selection (default: "ipv4")
         ping:
           enabled: true
           target: "192.168.1.100"
   wg1:
+    protocol: "dualstack"  # Discover both IPv4 and IPv6 endpoints
     peers:
       "<PEER_NAME>":
         public_key: "<PUBLIC_KEY_IN_BASE64>"
         plugin: cloudflare2
+        protocol: "prefer_ipv6"  # Prefer IPv6, fallback to IPv4
         ping:
           enabled: true
           target: "10.0.0.50"
@@ -91,6 +95,7 @@ interfaces:
       "<PEER_NAME>":
         public_key: "<PUBLIC_KEY_IN_BASE64>"
         plugin: exec_plugin1
+        # protocol defaults to "ipv4" if not specified
         # ping configuration is completely optional
 stun:
   address: "stun.l.google.com:19302"
@@ -112,6 +117,70 @@ plugins:
     command: "python3"
     args: ["/path/to/script.py", "--config", "/path/to/config"]
 ```
+
+### Protocol Configuration
+
+stunmesh-go supports both IPv4 and IPv6 for STUN discovery and peer connections. The protocol configuration operates at two levels:
+
+#### Interface Protocol
+
+Controls which STUN discovery protocols are used for the interface:
+
+- `ipv4` (default): Use IPv4 STUN discovery only
+- `ipv6`: Use IPv6 STUN discovery only
+- `dualstack`: Perform both IPv4 and IPv6 STUN discovery
+
+**Example:**
+```yaml
+interfaces:
+  wg0:
+    protocol: "ipv4"      # IPv4 only (default if not specified)
+    peers: {...}
+  wg1:
+    protocol: "ipv6"      # IPv6 only
+    peers: {...}
+  wg2:
+    protocol: "dualstack" # Both IPv4 and IPv6
+    peers: {...}
+```
+
+#### Peer Protocol
+
+Controls which endpoint a peer will use when establishing connections:
+
+- `ipv4` (default): Use only IPv4 endpoint
+- `ipv6`: Use only IPv6 endpoint
+- `prefer_ipv4`: Prefer IPv4, fallback to IPv6 if IPv4 is unavailable
+- `prefer_ipv6`: Prefer IPv6, fallback to IPv4 if IPv6 is unavailable
+
+**Example:**
+```yaml
+interfaces:
+  wg0:
+    protocol: "dualstack"  # Publish both IPv4 and IPv6 endpoints
+    peers:
+      peer1:
+        public_key: "<BASE64_KEY>"
+        plugin: cloudflare1
+        protocol: "ipv4"         # This peer will only use IPv4
+      peer2:
+        public_key: "<BASE64_KEY>"
+        plugin: cloudflare1
+        protocol: "prefer_ipv6"  # Prefer IPv6, fallback to IPv4
+      peer3:
+        public_key: "<BASE64_KEY>"
+        plugin: cloudflare1
+        # protocol not specified - defaults to "ipv4"
+```
+
+**Important Notes:**
+
+- The interface protocol determines what endpoints are discovered and published
+- The peer protocol determines which endpoint to use from the published data
+- For `dualstack` interfaces, both IPv4 and IPv6 endpoints are stored, but each peer selects which to use
+- STUN server must support the chosen protocol (not all STUN servers support IPv6)
+- Network must have proper IPv6 configuration and routing for IPv6 to work
+- Ping monitoring currently only supports IPv4
 
 ### Plugin System
 
@@ -175,6 +244,37 @@ The exec plugin communicates with external programs using JSON over stdin/stdout
 }
 ```
 
+**Stored Data Format:**
+
+The `value` field contains encrypted endpoint data in hexadecimal format. The encryption/decryption process:
+
+1. **Encryption** (`internal/crypto/endpoint.go:37`):
+   - Plain JSON is encrypted using NaCl box (Curve25519 + XSalsa20 + Poly1305)
+   - Result is hex-encoded: `hex.EncodeToString(nonce + encryptedData)`
+   - Example: `"a1b2c3d4e5f6..."`
+
+2. **Decryption** (`internal/crypto/endpoint.go:45`):
+   - Hex string is decoded: `hex.DecodeString(value)`
+   - NaCl box decrypts the data
+   - Result is plain JSON
+
+**Decrypted JSON Structure:**
+```json
+{
+  "ipv4": "1.2.3.4:51820",
+  "ipv6": "[2001:db8::1]:51820"
+}
+```
+
+**Notes:**
+- Plugins only store/retrieve the hex-encoded string; no encryption or JSON parsing needed
+- Field presence depends on interface protocol configuration:
+  - `ipv4` mode: Only `ipv4` field present
+  - `ipv6` mode: Only `ipv6` field present
+  - `dualstack` mode: Both fields present
+- Empty string indicates STUN discovery failed for that protocol
+- The `key` field is SHA-1 hash of peer identifier in hex format
+
 #### Shell Plugin Protocol
 
 The shell plugin provides a simpler alternative for shell scripts, using shell variable assignments instead of JSON.
@@ -182,14 +282,19 @@ The shell plugin provides a simpler alternative for shell scripts, using shell v
 **Input Format (stdin):**
 ```bash
 STUNMESH_ACTION=get
-STUNMESH_KEY=3061b8fcbdb6972059518f1adc3590dca6a5f352
-STUNMESH_VALUE=a1b2c3d4e5f6...  # Only for "set" action
+STUNMESH_KEY=3061b8fcbdb6972059518f1adc3590dca6a5f352  # SHA-1 hash of peer identifier (hex)
+STUNMESH_VALUE=a1b2c3d4e5f6...  # Hex-encoded encrypted endpoint data (for "set" only)
 ```
 
 **Output:**
-- For `get`: Write the value to stdout
+- For `get`: Write the hex-encoded value to stdout
 - For `set`: Exit with code 0 for success
 - For errors: Exit with non-zero code, error message on stderr
+
+**Notes:**
+- Both `STUNMESH_KEY` and `STUNMESH_VALUE` are hex strings (no special characters)
+- The value format is identical to the exec plugin (hex-encoded encrypted JSON)
+- No escaping or quoting needed - safe to use with `source /dev/stdin` or `eval`
 
 **Example: Cloudflare DNS Storage (Shell Script)**
 ```bash
@@ -406,6 +511,81 @@ plugins:
     args: ["-s", "-X", "POST", "-H", "Content-Type: application/json", "--data-binary", "@-", "https://api.example.com/stunmesh"]
 ```
 
+### IPv4/IPv6 Protocol Configuration
+
+stunmesh-go supports both IPv4 and IPv6 for STUN discovery, configurable on a per-interface basis.
+
+#### Configuration
+
+The `protocol` field is specified at the interface level:
+
+```yaml
+interfaces:
+  wg0:
+    protocol: "ipv4"  # or "ipv6"
+    peers:
+      # ...
+```
+
+#### Protocol Options
+
+- **`"ipv4"`**: Use IPv4 for STUN discovery (default if not specified)
+- **`"ipv6"`**: Use IPv6 for STUN discovery
+
+#### Default Behavior
+
+If the `protocol` field is omitted, IPv4 is used for backward compatibility with existing configurations.
+
+#### Requirements
+
+- **STUN Server Support**: Your STUN server must support the chosen protocol
+- **Network Connectivity**: Your network must have connectivity using the chosen protocol
+- **For IPv6**:
+  - Ensure your interfaces have IPv6 addresses configured
+  - Your STUN server address must be resolvable to an IPv6 address (or use an IPv6 address directly)
+
+#### Example Configurations
+
+**Mixed Protocol Setup:**
+```yaml
+interfaces:
+  wg0:
+    protocol: "ipv4"
+    peers:
+      "peer1":
+        public_key: "<KEY1>"
+        plugin: cloudflare1
+  wg1:
+    protocol: "ipv6"
+    peers:
+      "peer2":
+        public_key: "<KEY2>"
+        plugin: cloudflare2
+stun:
+  address: "stun.l.google.com:19302"  # Must support both IPv4 and IPv6
+```
+
+**IPv6 Only:**
+```yaml
+interfaces:
+  wg0:
+    protocol: "ipv6"
+    peers:
+      "peer1":
+        public_key: "<KEY1>"
+        plugin: cloudflare1
+stun:
+  address: "stun.l.google.com:19302"
+```
+
+#### Notes
+
+- Each interface uses only one protocol (no dual-stack on a single interface)
+- Different interfaces can use different protocols
+- The discovered endpoint (IP and port) will match the configured protocol
+- WireGuard itself supports dual-stack independently of STUN protocol configuration
+- Invalid protocol values (not "ipv4" or "ipv6") will default to "ipv4"
+
 ### Ping Monitoring
 
 stunmesh-go supports intelligent ping monitoring to detect tunnel health and automatically trigger reconnection when issues are detected.
@@ -479,9 +659,12 @@ interfaces:
 
 - **IPv4 Only**: Ping monitoring currently supports IPv4 addresses only
 - **IP Address Required**: The `target` field must be an IP address, not a domain name
-- **Examples**: 
+- **STUN Protocol Independence**: Ping monitoring protocol is independent of STUN protocol configuration
+  - You can use IPv6 STUN discovery with IPv4 ping targets
+  - Ping always uses IPv4 regardless of interface protocol setting
+- **Examples**:
   - ✅ Valid: `"192.168.1.100"`, `"10.0.0.1"`, `"172.16.0.50"`
-  - ❌ Invalid: `"router.local"`, `"google.com"`, `"2001:db8::1"`
+  - ❌ Invalid: `"router.local"`, `"google.com"`, `"2001:db8::1"` (IPv6 not supported for ping)
 
 #### Use Cases
 

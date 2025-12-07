@@ -33,19 +33,19 @@ func setup() (*daemon.Daemon, error) {
 	if err != nil {
 		return nil, err
 	}
+	deviceConfig := config.NewDeviceConfig(configConfig)
 	devices := repo.NewDevices()
 	peers := repo.NewPeers(client)
 	zerologLogger := logger.NewLogger(configConfig)
-	deviceConfig := config.NewDeviceConfig(configConfig)
 	filterPeerService := entity.NewFilterPeerService(peers, deviceConfig)
-	bootstrapController := ctrl.NewBootstrapController(client, configConfig, devices, peers, zerologLogger, filterPeerService)
+	bootstrapController := ctrl.NewBootstrapController(client, configConfig, deviceConfig, devices, peers, zerologLogger, filterPeerService)
 	manager, err := providePluginManager(configConfig)
 	if err != nil {
 		return nil, err
 	}
-	resolver := stun.NewResolver(configConfig, zerologLogger)
+	resolver := stun.NewResolver(configConfig, deviceConfig, zerologLogger)
 	endpoint := crypto.NewEndpoint()
-	publishController := ctrl.NewPublishController(devices, peers, manager, resolver, endpoint, zerologLogger)
+	publishController := ctrl.NewPublishController(devices, peers, manager, resolver, endpoint, deviceConfig, zerologLogger)
 	establishController := ctrl.NewEstablishController(client, devices, peers, manager, endpoint, zerologLogger)
 	refreshController := ctrl.NewRefreshController(peers, queue, zerologLogger)
 	pingMonitorController := ctrl.NewPingMonitorController(configConfig, devices, peers, publishController, establishController, refreshController, zerologLogger)

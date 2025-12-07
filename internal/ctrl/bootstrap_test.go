@@ -44,6 +44,7 @@ func TestBootstrap_WithError(t *testing.T) {
 	bootstrap := ctrl.NewBootstrapController(
 		mockWgClient,
 		cfg,
+		deviceConfig,
 		mockDevices,
 		mockPeers,
 		&logger,
@@ -133,6 +134,7 @@ func TestBootstrap_WithMultipleInterfaces(t *testing.T) {
 	bootstrap := ctrl.NewBootstrapController(
 		mockWgClient,
 		cfg,
+		deviceConfig,
 		mockDevices,
 		mockPeers,
 		&logger,

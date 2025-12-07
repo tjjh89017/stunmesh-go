@@ -81,5 +81,39 @@ func Load() (*Config, error) {
 		return nil, errors.Join(ErrUnmarshalConfig, err)
 	}
 
+	// Validate protocol configurations
+	if err := validateConfig(&cfg); err != nil {
+		return nil, err
+	}
+
 	return &cfg, nil
+}
+
+// validateConfig validates protocol configurations and returns error if invalid
+func validateConfig(cfg *Config) error {
+	for ifaceName, iface := range cfg.Interfaces {
+		// Validate interface protocol
+		if iface.Protocol != "" {
+			switch iface.Protocol {
+			case "ipv4", "ipv6", "dualstack":
+				// Valid
+			default:
+				return errors.New("invalid interface protocol '" + iface.Protocol + "' for interface '" + ifaceName + "', must be one of: ipv4, ipv6, dualstack")
+			}
+		}
+
+		// Validate peer protocols
+		for peerName, peer := range iface.Peers {
+			if peer.Protocol != "" {
+				switch peer.Protocol {
+				case "ipv4", "ipv6", "prefer_ipv4", "prefer_ipv6":
+					// Valid
+				default:
+					return errors.New("invalid peer protocol '" + peer.Protocol + "' for peer '" + peerName + "' on interface '" + ifaceName + "', must be one of: ipv4, ipv6, prefer_ipv4, prefer_ipv6")
+				}
+			}
+		}
+	}
+
+	return nil
 }

@@ -2,6 +2,7 @@ package ctrl
 
 import (
 	"context"
+	"encoding/json"
 	"net"
 	"strconv"
 	"sync"
@@ -59,31 +60,108 @@ func (c *EstablishController) Execute(ctx context.Context, peerId entity.PeerId)
 	}
 
 	storeCtx := logger.WithContext(ctx)
-	endpointData, err := store.Get(storeCtx, peer.RemoteId())
+	encryptedData, err := store.Get(storeCtx, peer.RemoteId())
 	if err != nil {
 		logger.Warn().Err(err).Msg("endpoint is unavailable or not ready")
 		return
 	}
 
+	// Decrypt entire JSON content
 	res, err := c.decryptor.Decrypt(ctx, &EndpointDecryptRequest{
 		PeerPublicKey: peer.PublicKey(),
 		PrivateKey:    device.PrivateKey(),
-		Data:          endpointData,
+		Data:          encryptedData,
 	})
 	if err != nil {
 		logger.Error().Err(err).Msg("failed to decrypt endpoint")
 		return
 	}
 
-	err = c.ConfigureDevice(ctx, peer, res)
+	// Parse decrypted JSON
+	var endpointData EndpointData
+	if err := json.Unmarshal([]byte(res.Content), &endpointData); err != nil {
+		logger.Error().Err(err).Msg("failed to unmarshal endpoint data")
+		return
+	}
+
+	// Log decrypted endpoint data for debugging
+	logger.Trace().Str("json", res.Content).Msg("decrypted endpoint data")
+
+	// Select endpoint based on peer protocol
+	var selectedEndpoint string
+	peerProtocol := peer.Protocol()
+
+	switch peerProtocol {
+	case "ipv4":
+		selectedEndpoint = endpointData.IPv4
+		if selectedEndpoint == "" {
+			logger.Error().Msg("IPv4 endpoint not available")
+			return
+		}
+		logger.Debug().Str("endpoint", selectedEndpoint).Msg("using IPv4 endpoint")
+
+	case "ipv6":
+		selectedEndpoint = endpointData.IPv6
+		if selectedEndpoint == "" {
+			logger.Error().Msg("IPv6 endpoint not available")
+			return
+		}
+		logger.Debug().Str("endpoint", selectedEndpoint).Msg("using IPv6 endpoint")
+
+	case "prefer_ipv4":
+		// Prefer IPv4, fallback to IPv6
+		if endpointData.IPv4 != "" {
+			selectedEndpoint = endpointData.IPv4
+			logger.Debug().Str("endpoint", selectedEndpoint).Msg("using preferred IPv4 endpoint")
+		} else if endpointData.IPv6 != "" {
+			selectedEndpoint = endpointData.IPv6
+			logger.Warn().Str("endpoint", selectedEndpoint).Msg("IPv4 endpoint unavailable, falling back to IPv6")
+		} else {
+			logger.Error().Msg("no endpoint available (prefer_ipv4)")
+			return
+		}
+
+	case "prefer_ipv6":
+		// Prefer IPv6, fallback to IPv4
+		if endpointData.IPv6 != "" {
+			selectedEndpoint = endpointData.IPv6
+			logger.Debug().Str("endpoint", selectedEndpoint).Msg("using preferred IPv6 endpoint")
+		} else if endpointData.IPv4 != "" {
+			selectedEndpoint = endpointData.IPv4
+			logger.Warn().Str("endpoint", selectedEndpoint).Msg("IPv6 endpoint unavailable, falling back to IPv4")
+		} else {
+			logger.Error().Msg("no endpoint available (prefer_ipv6)")
+			return
+		}
+
+	default:
+		// Unknown protocol, log and return
+		logger.Error().Str("protocol", peerProtocol).Msg("unknown peer protocol")
+		return
+	}
+
+	// Parse host:port
+	host, portStr, err := net.SplitHostPort(selectedEndpoint)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to parse endpoint")
+		return
+	}
+
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to parse port")
+		return
+	}
+
+	err = c.ConfigureDevice(ctx, peer, host, port)
 	if err != nil {
 		logger.Error().Err(err).Msg("failed to configure device")
 		return
 	}
 }
 
-func (c *EstablishController) ConfigureDevice(ctx context.Context, peer *entity.Peer, res *EndpointDecryptResponse) error {
-	remoteEndpoint := res.Host + ":" + strconv.FormatInt(int64(res.Port), 10)
+func (c *EstablishController) ConfigureDevice(ctx context.Context, peer *entity.Peer, host string, port int) error {
+	remoteEndpoint := host + ":" + strconv.FormatInt(int64(port), 10)
 	c.logger.Debug().Str("peer", peer.LocalId()).Str("remote", remoteEndpoint).Msg("configuring device for peer")
 
 	err := c.wgCtrl.ConfigureDevice(peer.DeviceName(), wgtypes.Config{
@@ -92,8 +170,8 @@ func (c *EstablishController) ConfigureDevice(ctx context.Context, peer *entity.
 				PublicKey:  peer.PublicKey(),
 				UpdateOnly: UpdateOnly,
 				Endpoint: &net.UDPAddr{
-					IP:   net.ParseIP(res.Host),
-					Port: res.Port,
+					IP:   net.ParseIP(host),
+					Port: port,
 				},
 			},
 		},

@@ -12,43 +12,95 @@ import (
 	"github.com/rs/zerolog"
 	"golang.org/x/net/bpf"
 	"golang.org/x/net/ipv4"
+	"golang.org/x/net/ipv6"
 )
 
 const PacketSize = 1500
 
 type Stun struct {
 	port       uint16
-	conn       *ipv4.PacketConn
+	protocol   string
+	conn4      *ipv4.PacketConn
+	conn6      *ipv6.PacketConn
 	once       sync.Once
 	packetChan chan []byte
 }
 
-func New(ctx context.Context, excludeInterface string, port uint16) (*Stun, error) {
-	c, err := net.ListenPacket("ip4:17", "0.0.0.0")
+func createRawSocket(protocol string, logger zerolog.Logger) (net.PacketConn, error) {
+	if protocol == "ipv6" {
+		logger.Debug().Msg("creating IPv6 raw socket")
+		return net.ListenPacket("ip6:17", "")
+	}
+	logger.Debug().Msg("creating IPv4 raw socket")
+	return net.ListenPacket("ip4:17", "0.0.0.0")
+}
+
+func setPacketConn(s *Stun, c net.PacketConn, filter []bpf.RawInstruction) error {
+	if s.protocol == "ipv6" {
+		conn6 := ipv6.NewPacketConn(c)
+		if filter != nil {
+			if err := conn6.SetBPF(filter); err != nil {
+				return err
+			}
+		}
+		// Enable kernel checksum calculation for UDP (checksum at offset 6)
+		if err := conn6.SetChecksum(true, 6); err != nil {
+			return err
+		}
+		s.conn6 = conn6
+	} else {
+		conn4 := ipv4.NewPacketConn(c)
+		if filter != nil {
+			if err := conn4.SetBPF(filter); err != nil {
+				return err
+			}
+		}
+		s.conn4 = conn4
+	}
+	return nil
+}
+
+func New(ctx context.Context, excludeInterface string, port uint16, protocol string) (*Stun, error) {
+	logger := zerolog.Ctx(ctx)
+
+	c, err := createRawSocket(protocol, *logger)
 	if err != nil {
 		return nil, err
 	}
 
-	filter, err := stunBpfFilter(ctx, port)
+	filter, err := stunBpfFilter(ctx, port, protocol)
 	if err != nil {
 		return nil, err
 	}
 
-	conn := ipv4.NewPacketConn(c)
-	if err := conn.SetBPF(filter); err != nil {
-		return nil, err
-	}
-
-	return &Stun{
+	s := &Stun{
 		port:       port,
-		conn:       conn,
+		protocol:   protocol,
 		packetChan: make(chan []byte),
-	}, nil
+	}
+
+	if err := setPacketConn(s, c, filter); err != nil {
+		return nil, err
+	}
+
+	return s, nil
 }
 
 func (s *Stun) Stop() error {
 	close(s.packetChan)
-	return s.conn.Close()
+	if s.protocol == "ipv6" {
+		return s.conn6.Close()
+	}
+	return s.conn4.Close()
+}
+
+func (s *Stun) readFrom(buf []byte) (int, error) {
+	if s.protocol == "ipv6" {
+		n, _, _, err := s.conn6.ReadFrom(buf)
+		return n, err
+	}
+	n, _, _, err := s.conn4.ReadFrom(buf)
+	return n, err
 }
 
 func (s *Stun) Start(ctx context.Context) {
@@ -63,7 +115,7 @@ func (s *Stun) Start(ctx context.Context) {
 					return
 				default:
 					buf := make([]byte, PacketSize)
-					n, _, _, err := s.conn.ReadFrom(buf)
+					n, err := s.readFrom(buf)
 					if err != nil {
 						continue
 					}
@@ -79,11 +131,36 @@ func (s *Stun) Start(ctx context.Context) {
 	})
 }
 
+func (s *Stun) getUDPAddressFamily() string {
+	if s.protocol == "ipv6" {
+		return "udp6"
+	}
+	return "udp4"
+}
+
+func (s *Stun) writeTo(packet []byte, addr net.Addr) (int, error) {
+	// For raw IP sockets, convert UDPAddr to IPAddr
+	// because the UDP header (including ports) is already in our packet
+	destAddr := addr
+	if udpAddr, ok := addr.(*net.UDPAddr); ok {
+		destAddr = &net.IPAddr{
+			IP:   udpAddr.IP,
+			Zone: udpAddr.Zone,
+		}
+	}
+
+	if s.protocol == "ipv6" {
+		return s.conn6.WriteTo(packet, nil, destAddr)
+	}
+	return s.conn4.WriteTo(packet, nil, destAddr)
+}
+
 func (s *Stun) Connect(ctx context.Context, stunAddr string) (string, int, error) {
 	logger := zerolog.Ctx(ctx)
 
 	logger.Info().Msgf("connecting to STUN server: %s", stunAddr)
-	addr, err := net.ResolveUDPAddr("udp4", stunAddr)
+
+	addr, err := net.ResolveUDPAddr(s.getUDPAddressFamily(), stunAddr)
 	if err != nil {
 		return "", 0, err
 	}
@@ -93,8 +170,7 @@ func (s *Stun) Connect(ctx context.Context, stunAddr string) (string, int, error
 		return "", 0, err
 	}
 
-	_, err = s.conn.WriteTo(packet, nil, addr)
-	if err != nil {
+	if _, err = s.writeTo(packet, addr); err != nil {
 		return "", 0, err
 	}
 
@@ -111,8 +187,11 @@ func (s *Stun) Connect(ctx context.Context, stunAddr string) (string, int, error
 func (s *Stun) Read(ctx context.Context) (*stun.Message, error) {
 	select {
 	case buf := <-s.packetChan:
+		// Linux kernel strips IP headers for both IPv4 and IPv6 raw sockets
+		// We only receive: UDP header (8 bytes) + STUN payload
+		// Note: BPF filter runs before IP header stripping, so it needs different offsets
 		m := &stun.Message{
-			Raw: buf[8:],
+			Raw: buf[8:], // Skip UDP header
 		}
 
 		if err := m.Decode(); err != nil {
@@ -146,16 +225,33 @@ func createStunBindingPacket(srcPort, dstPort uint16) ([]byte, error) {
 	return append(buf, msg.Raw...), nil
 }
 
-func stunBpfFilter(ctx context.Context, port uint16) ([]bpf.RawInstruction, error) {
-	// if possible make some magic here to determine STUN packet
-	const (
-		ipOff              = 0
-		udpOff             = ipOff + 5*4
-		payloadOff         = udpOff + 2*4
-		stunMagicCookieOff = payloadOff + 4
+func stunBpfFilter(ctx context.Context, port uint16, protocol string) ([]bpf.RawInstruction, error) {
+	logger := zerolog.Ctx(ctx)
 
-		stunMagicCookie = 0x2112A442
+	const stunMagicCookie = 0x2112A442
+
+	var (
+		ipOff              uint32
+		udpOff             uint32
+		payloadOff         uint32
+		stunMagicCookieOff uint32
 	)
+
+	if protocol == "ipv6" {
+		// For raw IPv6 sockets (ip6:17), BPF filter sees packets without IP header
+		// (kernel strips it before BPF filter runs for IPv6)
+		udpOff = 0                          // UDP header starts at offset 0
+		payloadOff = udpOff + 8             // UDP header: always 8 bytes
+		stunMagicCookieOff = payloadOff + 4 // STUN magic cookie is at payload + 4
+	} else {
+		// For raw IPv4 sockets (ip4:17), BPF filter sees full packet with IP header
+		// (kernel strips IP header AFTER BPF filter runs for IPv4)
+		ipOff = 0
+		udpOff = ipOff + 20                 // IPv4 header: 20 bytes (no options)
+		payloadOff = udpOff + 8             // UDP header: always 8 bytes
+		stunMagicCookieOff = payloadOff + 4 // STUN transaction ID offset
+	}
+
 	r, e := bpf.Assemble([]bpf.Instruction{
 		bpf.LoadAbsolute{
 			// A = dst port
@@ -189,7 +285,6 @@ func stunBpfFilter(ctx context.Context, port uint16) ([]bpf.RawInstruction, erro
 		},
 	})
 
-	logger := zerolog.Ctx(ctx)
 	if e != nil {
 		logger.Error().Err(e).Msg("failed to assemble BPF filter")
 		return nil, e
