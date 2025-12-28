@@ -1,8 +1,19 @@
 # stunmesh-go
 
-STUNMESH is a Wireguard helper tool to get through Full-Cone NAT.
+STUNMESH is a Wireguard helper tool to establish peer-to-peer connections through NAT.
 
 Inspired by manuels' [wireguard-p2p](https://github.com/manuels/wireguard-p2p) project
+
+## NAT Type Support
+
+stunmesh-go supports the following NAT types:
+
+- ✅ **Full Cone NAT**: Fully supported
+- ✅ **Restricted Cone NAT**: Fully supported
+- ✅ **Port Restricted Cone NAT**: Fully supported
+- ⚠️ **Symmetric NAT**: May be difficult to support due to unpredictable port mapping
+
+For best results, ensure at least one peer is behind a cone NAT type.
 
 Supported Platform:
 - Linux (amd64, arm, arm64, mips)
