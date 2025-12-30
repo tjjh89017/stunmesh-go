@@ -54,6 +54,7 @@ func (d *Daemon) Run(ctx context.Context) {
 
 	defer func() {
 		d.logger.Info().Msg("shutting down")
+		d.queue.Close()
 		signal.Stop(signalChan)
 		close(signalChan)
 		cancel()
@@ -69,6 +70,7 @@ func (d *Daemon) Run(ctx context.Context) {
 	d.logger.Info().Msgf("daemon started with refresh interval %s", d.config.RefreshInterval)
 
 	ticker := time.NewTicker(d.config.RefreshInterval)
+	defer ticker.Stop()
 
 	for {
 		select {
