@@ -41,6 +41,7 @@ jobs:
       matrix:
         os: [linux, darwin, freebsd]
         arch: [amd64, arm64, arm, mipsle]
+        variant: [normal, upx]
         exclude:
           - os: darwin
             arch: arm
@@ -64,6 +65,7 @@ jobs:
           app-name: ${{ env.APP }}
           go-version: ${{ env.GO_VERSION }}
           tag: ${{ steps.tag.outputs.TAG }}
+          variant: ${{ matrix.variant }}
       - name: Release
         uses: softprops/action-gh-release@v2
         with:

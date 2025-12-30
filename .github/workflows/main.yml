@@ -56,6 +56,7 @@ jobs:
       matrix:
         os: [linux, darwin, freebsd]
         arch: [amd64, arm64, arm, mipsle]
+        variant: [normal, upx]
         exclude:
           - os: darwin
             arch: arm
@@ -75,6 +76,7 @@ jobs:
           arch: ${{ matrix.arch }}
           app-name: ${{ env.APP }}
           go-version: ${{ env.GO_VERSION }}
+          variant: ${{ matrix.variant }}
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.build.outputs.binary-name }}
