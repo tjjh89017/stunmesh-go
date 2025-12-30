@@ -13,7 +13,6 @@ import (
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
 	"github.com/tjjh89017/stunmesh-go/internal/logger"
 	"github.com/tjjh89017/stunmesh-go/internal/plugin"
-	"github.com/tjjh89017/stunmesh-go/internal/queue"
 	"github.com/tjjh89017/stunmesh-go/internal/repo"
 	"github.com/tjjh89017/stunmesh-go/internal/stun"
 	"github.com/tjjh89017/stunmesh-go/pluginapi"
@@ -29,10 +28,7 @@ func setup() (*daemon.Daemon, error) {
 		wire.Bind(new(entity.DevicePeerChecker), new(*repo.Peers)),
 		wire.Bind(new(ctrl.DeviceConfigProvider), new(*config.DeviceConfig)),
 		providePluginManager,
-		provideRefreshQueue,
 		ctrl.NewPingMonitorController,
-		wire.Bind(new(ctrl.RefreshQueue), new(*queue.Queue[entity.PeerId])),
-		wire.Bind(new(ctrl.EstablishQueue), new(*queue.Queue[entity.PeerId])),
 		config.DefaultSet,
 		logger.DefaultSet,
 		repo.DefaultSet,
@@ -64,8 +60,4 @@ func providePluginManager(config *config.Config) (*plugin.Manager, error) {
 	}
 
 	return manager, nil
-}
-
-func provideRefreshQueue() *queue.Queue[entity.PeerId] {
-	return queue.New[entity.PeerId]()
 }

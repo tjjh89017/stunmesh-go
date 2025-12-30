@@ -6,10 +6,12 @@ import (
 	"net"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
 	"github.com/tjjh89017/stunmesh-go/internal/plugin"
+	"github.com/tjjh89017/stunmesh-go/internal/queue"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
@@ -22,10 +24,10 @@ type EstablishController struct {
 	decryptor     EndpointDecryptor
 	logger        zerolog.Logger
 	mu            sync.Mutex
-	queue         EstablishQueue
+	queue         *queue.Queue[entity.PeerId]
 }
 
-func NewEstablishController(ctrl *wgctrl.Client, devices DeviceRepository, peers PeerRepository, pluginManager *plugin.Manager, decryptor EndpointDecryptor, queue EstablishQueue, logger *zerolog.Logger) *EstablishController {
+func NewEstablishController(ctrl *wgctrl.Client, devices DeviceRepository, peers PeerRepository, pluginManager *plugin.Manager, decryptor EndpointDecryptor, logger *zerolog.Logger) *EstablishController {
 	return &EstablishController{
 		wgCtrl:        ctrl,
 		devices:       devices,
@@ -33,7 +35,7 @@ func NewEstablishController(ctrl *wgctrl.Client, devices DeviceRepository, peers
 		pluginManager: pluginManager,
 		decryptor:     decryptor,
 		logger:        logger.With().Str("controller", "establish").Logger(),
-		queue:         queue,
+		queue:         queue.New[entity.PeerId](),
 	}
 }
 
@@ -196,6 +198,38 @@ func (c *EstablishController) Run(ctx context.Context) {
 			return
 		case peerId := <-c.queue.Dequeue():
 			c.Execute(ctx, peerId)
+		}
+	}
+}
+
+// Trigger lists all peers and enqueues them for establishment
+func (c *EstablishController) Trigger(ctx context.Context) {
+	peers, err := c.peers.List(ctx)
+	if err != nil {
+		c.logger.Error().Err(err).Msg("failed to list peers")
+		return
+	}
+
+	for _, peer := range peers {
+		c.queue.Enqueue(peer.Id())
+	}
+
+	c.logger.Debug().Int("count", len(peers)).Msg("peers enqueued")
+}
+
+// WaitForCompletion waits until the queue is empty or context is cancelled
+func (c *EstablishController) WaitForCompletion(ctx context.Context) {
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if c.queue.Len() == 0 {
+				return
+			}
 		}
 	}
 }

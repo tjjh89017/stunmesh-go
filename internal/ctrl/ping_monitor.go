@@ -63,7 +63,6 @@ type PingMonitorController struct {
 	peers          PeerRepository
 	publishCtrl    *PublishController
 	establishCtrl  *EstablishController
-	refreshCtrl    *RefreshController
 	deviceMonitors map[string]*DevicePingMonitor // deviceName -> monitor
 	logger         zerolog.Logger
 	mu             sync.RWMutex
@@ -75,7 +74,6 @@ func NewPingMonitorController(
 	peers PeerRepository,
 	publishCtrl *PublishController,
 	establishCtrl *EstablishController,
-	refreshCtrl *RefreshController,
 	logger *zerolog.Logger,
 ) *PingMonitorController {
 	return &PingMonitorController{
@@ -84,7 +82,6 @@ func NewPingMonitorController(
 		peers:          peers,
 		publishCtrl:    publishCtrl,
 		establishCtrl:  establishCtrl,
-		refreshCtrl:    refreshCtrl,
 		deviceMonitors: make(map[string]*DevicePingMonitor),
 		logger:         logger.With().Str("controller", "ping_monitor").Logger(),
 	}
