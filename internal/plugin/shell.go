@@ -9,6 +9,7 @@ import (
 
 	"github.com/mitchellh/mapstructure"
 	"github.com/rs/zerolog"
+	pluginapi "github.com/tjjh89017/stunmesh-go/pluginapi"
 )
 
 type ShellConfig struct {
@@ -21,7 +22,7 @@ type ShellPlugin struct {
 	args    []string
 }
 
-func NewShellPlugin(config PluginConfig) (Store, error) {
+func NewShellPlugin(config pluginapi.PluginConfig) (pluginapi.Store, error) {
 	var cfg ShellConfig
 	if err := mapstructure.Decode(config, &cfg); err != nil {
 		return nil, fmt.Errorf("failed to decode shell config: %w", err)
@@ -41,7 +42,7 @@ func (p *ShellPlugin) Get(ctx context.Context, key string) (string, error) {
 	logger := zerolog.Ctx(ctx)
 	logger.Info().Str("key", key).Msg("get data from shell plugin")
 
-	stdout, stderr, err := p.executeCommand(ctx, OpGet, key, "")
+	stdout, stderr, err := p.executeCommand(ctx, pluginapi.OpGet, key, "")
 	if err != nil {
 		if stderr != "" {
 			return "", fmt.Errorf("%w (stderr: %s)", err, stderr)
@@ -61,7 +62,7 @@ func (p *ShellPlugin) Set(ctx context.Context, key string, value string) error {
 	logger := zerolog.Ctx(ctx)
 	logger.Info().Str("key", key).Msg("set data to shell plugin")
 
-	_, stderr, err := p.executeCommand(ctx, OpSet, key, value)
+	_, stderr, err := p.executeCommand(ctx, pluginapi.OpSet, key, value)
 	if err != nil {
 		if stderr != "" {
 			return fmt.Errorf("%w (stderr: %s)", err, stderr)
@@ -84,7 +85,7 @@ func (p *ShellPlugin) executeCommand(ctx context.Context, action, key, value str
 	var stdinBuf bytes.Buffer
 	stdinBuf.WriteString(fmt.Sprintf("STUNMESH_ACTION=%s\n", action))
 	stdinBuf.WriteString(fmt.Sprintf("STUNMESH_KEY=%s\n", key))
-	if action == OpSet {
+	if action == pluginapi.OpSet {
 		stdinBuf.WriteString(fmt.Sprintf("STUNMESH_VALUE=%s\n", value))
 	}
 

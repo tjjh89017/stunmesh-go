@@ -14,10 +14,11 @@ import (
 	"github.com/tjjh89017/stunmesh-go/internal/daemon"
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
 	"github.com/tjjh89017/stunmesh-go/internal/logger"
+	"github.com/tjjh89017/stunmesh-go/internal/plugin"
 	"github.com/tjjh89017/stunmesh-go/internal/queue"
 	"github.com/tjjh89017/stunmesh-go/internal/repo"
 	"github.com/tjjh89017/stunmesh-go/internal/stun"
-	"github.com/tjjh89017/stunmesh-go/plugin"
+	"github.com/tjjh89017/stunmesh-go/pluginapi"
 	"golang.zx2c4.com/wireguard/wgctrl"
 )
 
@@ -59,11 +60,11 @@ func providePluginManager(config2 *config.Config) (*plugin.Manager, error) {
 	manager := plugin.NewManager()
 	ctx := context.Background()
 
-	pluginsMap := make(map[string]plugin.PluginDefinition)
+	pluginsMap := make(map[string]pluginapi.PluginDefinition)
 	for name, def := range config2.Plugins {
-		pluginsMap[name] = plugin.PluginDefinition{
+		pluginsMap[name] = pluginapi.PluginDefinition{
 			Type:   def.Type,
-			Config: plugin.PluginConfig(def.Config),
+			Config: pluginapi.PluginConfig(def.Config),
 		}
 	}
 

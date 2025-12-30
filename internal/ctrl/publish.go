@@ -9,7 +9,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
-	"github.com/tjjh89017/stunmesh-go/plugin"
+	"github.com/tjjh89017/stunmesh-go/internal/plugin"
 )
 
 type DeviceConfigProvider interface {
