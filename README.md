@@ -293,8 +293,8 @@ plugins:
   cf_builtin:
     type: builtin
     name: cloudflare
-    zone_name: example.com
-    api_token: your_api_token_here
+    zone: example.com
+    token: your_api_token_here
     subdomain: stunmesh  # Optional
 
 interfaces:

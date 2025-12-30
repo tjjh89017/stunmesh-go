@@ -14,7 +14,14 @@ import (
 	"github.com/rs/zerolog"
 )
 
-const cfAPI = "https://api.cloudflare.com/client/v4"
+const (
+	cfAPI = "https://api.cloudflare.com/client/v4"
+
+	// Configuration keys
+	configKeyZoneName  = "zone"
+	configKeyAPIToken  = "token"
+	configKeySubdomain = "subdomain"
+)
 
 // Store interface (copied to avoid import cycle)
 type Store interface {
@@ -72,17 +79,17 @@ func (c *BuiltinConfig) GetStringRequired(key string) (string, error) {
 func NewCloudflarePlugin(config PluginConfig) (Store, error) {
 	cfg := &BuiltinConfig{config: config}
 
-	zoneName, err := cfg.GetStringRequired("zone_name")
+	zoneName, err := cfg.GetStringRequired(configKeyZoneName)
 	if err != nil {
 		return nil, err
 	}
 
-	token, err := cfg.GetStringRequired("api_token")
+	token, err := cfg.GetStringRequired(configKeyAPIToken)
 	if err != nil {
 		return nil, err
 	}
 
-	subdomain, _ := cfg.GetString("subdomain")
+	subdomain, _ := cfg.GetString(configKeySubdomain)
 
 	client := &http.Client{
 		Timeout: 10 * time.Second,
