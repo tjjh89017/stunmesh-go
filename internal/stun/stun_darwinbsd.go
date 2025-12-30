@@ -91,7 +91,7 @@ func New(ctx context.Context, excludeInterface string, port uint16, protocol str
 	// Create pcap handle for each eligible interface
 	for _, ifaceName := range interfaceNames {
 		logger.Debug().Msgf("attempting to register OpenLive for interface: %s", ifaceName)
-		handle, err := pcap.OpenLive(ifaceName, PacketSize, false, 0, pcap.DefaultSyscalls)
+		handle, err := pcap.OpenLive(ctx, ifaceName, PacketSize, false, time.Duration(StunTimeout)*time.Second, pcap.DefaultSyscalls)
 		if err != nil {
 			logger.Debug().Msgf("failed to open interface %s: %v", ifaceName, err)
 			// Skip interfaces that can't be opened
@@ -216,7 +216,7 @@ func (s *Stun) Start(ctx context.Context) {
 							buf []byte
 							err error
 						)
-						buf, _, err = handle.handle.ReadPacketDataWithTimeout(time.Duration(StunTimeout) * time.Second)
+						buf, _, err = handle.handle.ReadPacketData()
 						if err != nil {
 							logger.Trace().Msgf("fail to read packet data from %s, err %v", handle.name, err)
 							continue

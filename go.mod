@@ -5,7 +5,7 @@ go 1.25
 require (
 	github.com/google/wire v0.7.0
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/packetcap/go-pcap v0.0.0-20251012111502-b21daddd9e00
+	github.com/packetcap/go-pcap v0.0.0-20251215121130-f2cf9f991e7c
 	github.com/pion/stun v0.6.1
 	github.com/rs/zerolog v1.34.0
 	github.com/spf13/viper v1.21.0
@@ -44,5 +44,3 @@ require (
 	golang.zx2c4.com/wireguard v0.0.0-20250521234502-f333402bd9cb // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 )
-
-replace github.com/packetcap/go-pcap v0.0.0-20251012111502-b21daddd9e00 => github.com/tjjh89017/go-pcap v0.0.0-20251108100324-8ec3d5f5a9f9
