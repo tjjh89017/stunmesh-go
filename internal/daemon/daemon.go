@@ -62,11 +62,18 @@ func (d *Daemon) Run(ctx context.Context) {
 
 	d.bootCtrl.Execute(daemonCtx)
 
+	// Start controller workers
+	go d.publishCtrl.Run(daemonCtx)
+	go d.refreshCtrl.Run(daemonCtx)
+	go d.establishCtrl.Run(daemonCtx)
+
 	// Initialize ping monitoring for all peers
 	go d.pingMonitor.Execute(daemonCtx)
 
-	go d.refreshCtrl.Execute(daemonCtx)
-	go d.publishCtrl.Execute(daemonCtx)
+	// Trigger initial publish and refresh
+	d.publishCtrl.Trigger()
+	d.refreshCtrl.Trigger()
+
 	d.logger.Info().Msgf("daemon started with refresh interval %s", d.config.RefreshInterval)
 
 	ticker := time.NewTicker(d.config.RefreshInterval)
@@ -78,15 +85,10 @@ func (d *Daemon) Run(ctx context.Context) {
 			return
 		case <-signalChan:
 			return
-		case peerId := <-d.queue.Dequeue():
-			d.logger.Info().Str("peer", peerId.String()).Msg("processing peer")
-
-			go d.establishCtrl.Execute(daemonCtx, peerId)
 		case <-ticker.C:
 			d.logger.Info().Msg("refreshing peers")
-
-			go d.publishCtrl.Execute(daemonCtx)
-			go d.refreshCtrl.Execute(daemonCtx)
+			d.publishCtrl.Trigger()
+			d.refreshCtrl.Trigger()
 		}
 	}
 }

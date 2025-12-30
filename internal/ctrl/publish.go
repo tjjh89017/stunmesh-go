@@ -10,7 +10,9 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
 	"github.com/tjjh89017/stunmesh-go/internal/plugin"
+	"github.com/tjjh89017/stunmesh-go/internal/queue"
 )
+
 
 type DeviceConfigProvider interface {
 	GetInterfaceProtocol(deviceName string) string
@@ -24,6 +26,8 @@ type PublishController struct {
 	encryptor     EndpointEncryptor
 	deviceConfig  DeviceConfigProvider
 	logger        zerolog.Logger
+	triggerQueue  *queue.Queue[struct{}]      // Trigger queue for full publish
+	peerQueue     *queue.Queue[entity.PeerId] // Trigger queue for specific peer
 }
 
 func NewPublishController(devices DeviceRepository, peers PeerRepository, pluginManager *plugin.Manager, resolver StunResolver, encryptor EndpointEncryptor, deviceConfig DeviceConfigProvider, logger *zerolog.Logger) *PublishController {
@@ -35,6 +39,8 @@ func NewPublishController(devices DeviceRepository, peers PeerRepository, plugin
 		encryptor:     encryptor,
 		deviceConfig:  deviceConfig,
 		logger:        logger.With().Str("controller", "publish").Logger(),
+		triggerQueue:  queue.NewBuffered[struct{}](queue.TriggerQueueSize), // Buffered trigger queue
+		peerQueue:     queue.NewBuffered[entity.PeerId](queue.PeerQueueSize), // Buffered peer queue
 	}
 }
 
@@ -257,4 +263,38 @@ func (c *PublishController) ExecuteForPeer(ctx context.Context, peerId entity.Pe
 	}
 
 	logger.Info().Msg("successfully published endpoint for specific peer")
+}
+
+// Run starts the worker goroutine that processes publish triggers
+func (c *PublishController) Run(ctx context.Context) {
+	c.logger.Info().Msg("publish controller worker started")
+	for {
+		select {
+		case <-ctx.Done():
+			c.logger.Info().Msg("publish controller worker stopped")
+			return
+		case <-c.triggerQueue.Dequeue():
+			c.Execute(ctx)
+		case peerId := <-c.peerQueue.Dequeue():
+			c.ExecuteForPeer(ctx, peerId)
+		}
+	}
+}
+
+// Trigger requests a full publish operation (non-blocking)
+func (c *PublishController) Trigger() {
+	if c.triggerQueue.TryEnqueue(struct{}{}) {
+		c.logger.Debug().Msg("publish triggered")
+	} else {
+		c.logger.Debug().Msg("publish queue full, skipping trigger")
+	}
+}
+
+// TriggerForPeer requests a publish operation for a specific peer (non-blocking)
+func (c *PublishController) TriggerForPeer(peerId entity.PeerId) {
+	if c.peerQueue.TryEnqueue(peerId) {
+		c.logger.Debug().Str("peer", peerId.String()).Msg("publish triggered for peer")
+	} else {
+		c.logger.Warn().Str("peer", peerId.String()).Msg("peer publish queue full, dropping trigger")
+	}
 }
