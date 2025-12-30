@@ -47,6 +47,8 @@ jobs:
             arch: arm
           - os: darwin
             arch: mipsle
+          - os: darwin
+            variant: upx
           - os: freebsd
             arch: arm
           - os: freebsd
