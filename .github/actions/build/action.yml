@@ -76,15 +76,12 @@ runs:
 
     - name: Build (FreeBSD)
       if: inputs.os == 'freebsd'
-      uses: vmactions/freebsd-vm@v1.2.4
+      uses: vmactions/freebsd-vm@v1
       with:
         arch: ${{ inputs.arch }}
         sync: sshfs
         prepare: |
           pkg install -y gmake go
-          if [ "${{ inputs.variant }}" = "extra-min" ]; then
-            pkg install -y upx
-          fi
         run: |
           cd $GITHUB_WORKSPACE
-          gmake APP=${{ steps.build-info.outputs.binary-name }} EXTRA_MIN=${{ steps.build-info.outputs.extra-min }}
+          gmake APP=${{ steps.build-info.outputs.binary-name }}
