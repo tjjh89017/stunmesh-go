@@ -89,6 +89,9 @@ func (d *Daemon) RunOneshot(ctx context.Context) {
 	// Bootstrap first
 	d.bootCtrl.Execute(ctx)
 
+	// Start establish controller worker
+	go d.establishCtrl.Run(ctx)
+
 	// Run publish and establish 3 times
 	for i := 1; i <= 3; i++ {
 		d.logger.Info().Msgf("oneshot iteration %d/3", i)
