@@ -53,6 +53,8 @@ jobs:
             arch: arm
           - os: freebsd
             arch: mipsle
+          - os: freebsd
+            variant: extra-min
     steps:
       - uses: actions/checkout@v4
       - name: tag
