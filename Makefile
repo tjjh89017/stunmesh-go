@@ -4,32 +4,56 @@ APP ?= stunmesh-go
 GO_FLAGS ?=
 GOOS ?= $(shell go env GOOS)
 STRIP ?= 0
+TRIMPATH ?= 0
+UPX ?= 0
+EXTRA_MIN ?= 0
 PREFIX ?= /usr/local
 BINDIR ?= $(PREFIX)/bin
 
 # Platforms that require CGO_ENABLED=1
 CGO_REQUIRED_PLATFORMS := freebsd openbsd
 
+ifneq ($(EXTRA_MIN),0)
+	STRIP = 1
+	TRIMPATH = 1
+	UPX = 1
+endif
+
 LDFLAGS =
 ifneq ($(STRIP),0)
 	LDFLAGS := "-s -w"
 endif
 
+TRIMPATH_FLAGS =
+ifneq ($(TRIMPATH),0)
+	TRIMPATH_FLAGS := "-trimpath"
+endif
+
+UPX_TARGET =
+ifneq ($(UPX),0)
+	UPX_TARGET = upx
+endif
+
 # Set CGO_ENABLED based on OS
 ifeq ($(GOOS),$(filter $(GOOS),$(CGO_REQUIRED_PLATFORMS)))
 	CGO_ENABLED = 1
-	GO_FLAGS := ${GO_FLAGS} -ldflags ${LDFLAGS} -extldflags="-static"
+	GO_FLAGS := ${GO_FLAGS} -ldflags ${LDFLAGS} ${TRIMPATH_FLAGS} -extldflags="-static"
 else
 	CGO_ENABLED = 0
-	GO_FLAGS := ${GO_FLAGS} -ldflags ${LDFLAGS}
+	GO_FLAGS := ${GO_FLAGS} -ldflags ${LDFLAGS} ${TRIMPATH_FLAGS}
 endif
 
 .PHONY: all
-all: clean build
+all: clean build $(UPX_TARGET)
 
 .PHONY: build
 build:
 	CGO_ENABLED=${CGO_ENABLED} go build ${GO_FLAGS} -v -o ${APP}
+
+.PHONY: upx
+upx:
+	upx --lzma --best ${APP}
+
 
 .PHONY: clean
 clean:
