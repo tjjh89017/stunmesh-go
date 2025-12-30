@@ -8,11 +8,7 @@ import (
 
 	"github.com/mitchellh/mapstructure"
 	"github.com/rs/zerolog"
-)
-
-const (
-	OpSet = "set"
-	OpGet = "get"
+	pluginapi "github.com/tjjh89017/stunmesh-go/pluginapi"
 )
 
 type ExecConfig struct {
@@ -25,19 +21,7 @@ type ExecPlugin struct {
 	args    []string
 }
 
-type ExecRequest struct {
-	Action string `json:"action"`
-	Key    string `json:"key"`
-	Value  string `json:"value,omitempty"`
-}
-
-type ExecResponse struct {
-	Success bool   `json:"success"`
-	Value   string `json:"value,omitempty"`
-	Error   string `json:"error,omitempty"`
-}
-
-func NewExecPlugin(config PluginConfig) (Store, error) {
+func NewExecPlugin(config pluginapi.PluginConfig) (pluginapi.Store, error) {
 	var cfg ExecConfig
 	if err := mapstructure.Decode(config, &cfg); err != nil {
 		return nil, fmt.Errorf("failed to decode exec config: %w", err)
@@ -57,8 +41,8 @@ func (p *ExecPlugin) Get(ctx context.Context, key string) (string, error) {
 	logger := zerolog.Ctx(ctx)
 	logger.Info().Str("key", key).Msg("get data from exec plugin")
 
-	request := ExecRequest{
-		Action: "get",
+	request := pluginapi.ExecRequest{
+		Action: pluginapi.OpGet,
 		Key:    key,
 	}
 
@@ -78,8 +62,8 @@ func (p *ExecPlugin) Set(ctx context.Context, key string, value string) error {
 	logger := zerolog.Ctx(ctx)
 	logger.Info().Str("key", key).Str("value", value).Msg("set data to exec plugin")
 
-	request := ExecRequest{
-		Action: "set",
+	request := pluginapi.ExecRequest{
+		Action: pluginapi.OpSet,
 		Key:    key,
 		Value:  value,
 	}
@@ -96,7 +80,7 @@ func (p *ExecPlugin) Set(ctx context.Context, key string, value string) error {
 	return nil
 }
 
-func (p *ExecPlugin) executeCommand(ctx context.Context, request ExecRequest) (*ExecResponse, error) {
+func (p *ExecPlugin) executeCommand(ctx context.Context, request pluginapi.ExecRequest) (*pluginapi.ExecResponse, error) {
 	cmd := exec.CommandContext(ctx, p.command, p.args...)
 
 	stdin, err := cmd.StdinPipe()
@@ -126,7 +110,7 @@ func (p *ExecPlugin) executeCommand(ctx context.Context, request ExecRequest) (*
 	}
 
 	// Read response from stdout
-	var response ExecResponse
+	var response pluginapi.ExecResponse
 	decoder := json.NewDecoder(stdout)
 	if err := decoder.Decode(&response); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)

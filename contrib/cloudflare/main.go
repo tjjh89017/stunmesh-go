@@ -10,7 +10,7 @@ import (
 	"os"
 
 	"github.com/cloudflare/cloudflare-go"
-	"github.com/tjjh89017/stunmesh-go/plugin"
+	"github.com/tjjh89017/stunmesh-go/pluginapi"
 )
 
 // CloudflarePlugin manages DNS TXT records in Cloudflare
@@ -146,7 +146,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	var req plugin.ExecRequest
+	var req pluginapi.ExecRequest
 	if err := json.Unmarshal(data, &req); err != nil {
 		respondError(fmt.Errorf("failed to parse request: %w", err))
 		os.Exit(1)
@@ -156,7 +156,7 @@ func main() {
 
 	// Handle action
 	switch req.Action {
-	case plugin.OpGet:
+	case pluginapi.OpGet:
 		value, err := cloudflarePlugin.Get(ctx, req.Key)
 		if err != nil {
 			respondError(err)
@@ -164,7 +164,7 @@ func main() {
 		}
 		respondSuccess(value)
 
-	case plugin.OpSet:
+	case pluginapi.OpSet:
 		if err := cloudflarePlugin.Set(ctx, req.Key, req.Value); err != nil {
 			respondError(err)
 			os.Exit(1)
@@ -178,7 +178,7 @@ func main() {
 }
 
 func respondSuccess(value string) {
-	resp := plugin.ExecResponse{
+	resp := pluginapi.ExecResponse{
 		Success: true,
 		Value:   value,
 	}
@@ -186,7 +186,7 @@ func respondSuccess(value string) {
 }
 
 func respondError(err error) {
-	resp := plugin.ExecResponse{
+	resp := pluginapi.ExecResponse{
 		Success: false,
 		Error:   err.Error(),
 	}

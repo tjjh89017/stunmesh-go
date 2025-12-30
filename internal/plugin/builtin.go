@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"sync"
+
+	pluginapi "github.com/tjjh89017/stunmesh-go/pluginapi"
 )
 
 // BuiltinFactory creates a new Store instance from configuration
-type BuiltinFactory func(config PluginConfig) (Store, error)
+type BuiltinFactory func(config pluginapi.PluginConfig) (pluginapi.Store, error)
 
 // builtinRegistry holds all registered built-in plugins
 var (
@@ -29,7 +31,7 @@ func RegisterBuiltin(name string, factory BuiltinFactory) {
 }
 
 // NewBuiltinPlugin creates a built-in plugin instance
-func NewBuiltinPlugin(config PluginConfig) (Store, error) {
+func NewBuiltinPlugin(config pluginapi.PluginConfig) (pluginapi.Store, error) {
 	// Get the builtin plugin name from config
 	nameInterface, ok := config["name"]
 	if !ok {
@@ -68,11 +70,11 @@ func GetRegisteredBuiltins() []string {
 
 // BuiltinConfig wraps the config and provides helper methods
 type BuiltinConfig struct {
-	config PluginConfig
+	config pluginapi.PluginConfig
 }
 
 // NewBuiltinConfig creates a new BuiltinConfig wrapper
-func NewBuiltinConfig(config PluginConfig) *BuiltinConfig {
+func NewBuiltinConfig(config pluginapi.PluginConfig) *BuiltinConfig {
 	return &BuiltinConfig{config: config}
 }
 
