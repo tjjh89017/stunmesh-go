@@ -35,7 +35,7 @@ func NewEstablishController(ctrl *wgctrl.Client, devices DeviceRepository, peers
 		pluginManager: pluginManager,
 		decryptor:     decryptor,
 		logger:        logger.With().Str("controller", "establish").Logger(),
-		queue:         queue.New[entity.PeerId](),
+		queue:         queue.NewBuffered[entity.PeerId](queue.PeerQueueSize),
 	}
 }
 
