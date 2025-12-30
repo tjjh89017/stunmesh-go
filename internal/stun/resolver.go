@@ -41,7 +41,9 @@ func (r *Resolver) Resolve(ctx context.Context, deviceName string, port uint16, 
 
 	stun.Start(stunCtx)
 	defer func() {
-		err = stun.Stop()
+		if stopErr := stun.Stop(); stopErr != nil {
+			r.logger.Warn().Err(stopErr).Msg("failed to stop STUN client")
+		}
 	}()
 
 	host, discoveredPort, err := stun.Connect(stunCtx, r.config.Stun.Address)
