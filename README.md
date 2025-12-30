@@ -15,20 +15,22 @@ stunmesh-go supports the following NAT types:
 
 For best results, ensure at least one peer is behind a cone NAT type.
 
-Supported Platform:
-- Linux (amd64, arm, arm64, mips)
-- MacOS* (amd64, arm64)
-- FreeBSD (amd64, arm64)
+## Supported Platforms
+
+- **Linux** (amd64, arm, arm64, mipsle) - Normal and UPX-compressed binaries
+- **macOS** (amd64, arm64) - Normal binaries only
+- **FreeBSD** (amd64, arm64) - Normal binaries only
 
 > [!NOTE]
 > We only support wireguard-go in MacOS, Wireguard App store version is not supported because of sandbox currently.
 
-Tested with
+## Tested With
+
 - VyOS 2025.07.14-0022-rolling (built-in Wireguard kernel module)
 - Ubuntu with Wireguard in Kernel module
-- MacOS Wireguard-go 0.0.20230223, Wireguard-tools 1.0.20210914
+- macOS Wireguard-go 0.0.20230223, Wireguard-tools 1.0.20210914
 - FreeBSD 14.3-RELEASE (built-in Wireguard)
-- OPNSense 25.1 (built-in Wireguard)
+- OPNsense 25.1 (built-in Wireguard)
 - EdgeRouter X (EdgeOS 3.0.0)
 
 ## Implementation
@@ -84,7 +86,11 @@ make all EXTRA_MIN=1
 - CGO is automatically enabled for FreeBSD and OpenBSD (required for these platforms)
 - CGO is disabled by default for Linux and Darwin (produces static binaries)
 - UPX compression significantly reduces binary size but requires the `upx` tool to be installed
-- The `-upx` suffix binaries in releases are built with `EXTRA_MIN=1`
+
+**Release Binaries:**
+- **Linux**: Both normal and `-upx` suffix binaries are provided (built with `EXTRA_MIN=1`)
+- **macOS**: Only normal binaries are provided (no UPX version)
+- **FreeBSD**: Only normal binaries are provided (no UPX version)
 
 ## Usage
 
