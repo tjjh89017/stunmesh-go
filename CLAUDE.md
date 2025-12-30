@@ -10,12 +10,17 @@ stunmesh-go is a WireGuard helper tool that enables peer-to-peer connections thr
 
 ### Building
 ```bash
-make build          # Build the main binary
+make build          # Build the main binary (includes all built-in plugins by default)
 make all           # Build everything (clean + build)
 make clean         # Clean build artifacts
 make plugin        # Build all contrib plugins
 make contrib       # Alias for 'make plugin'
 go build -o stunmesh-go  # Direct go build
+
+# Built-in plugin options
+make build BUILTIN=all                    # Build with all built-in plugins (default)
+make build BUILTIN=                       # Build without any built-in plugins (minimal)
+make build BUILTIN=builtin_cloudflare     # Build with specific built-in plugin only
 ```
 
 ### Testing
@@ -56,6 +61,7 @@ The plugin system supports multiple named storage backend instances:
 - Each peer can reference a different plugin instance
 
 **Supported Plugin Types**:
+- `builtin`: Compiled into the binary (default: includes all built-in plugins like cloudflare)
 - `exec`: External process communication via JSON stdin/stdout (for complex plugins)
 - `shell`: Simplified protocol using shell variables via stdin (for simple shell scripts)
 
@@ -68,18 +74,28 @@ The plugin system supports multiple named storage backend instances:
 **Configuration Structure**:
 ```yaml
 plugins:
-  plugin_name:
+  # Built-in plugin (compiled into binary, available by default)
+  cloudflare_builtin:
+    type: builtin
+    name: cloudflare
+    zone_name: example.com
+    api_token: ${CLOUDFLARE_API_TOKEN}
+    subdomain: stunmesh
+
+  # External exec plugin
+  cloudflare_exec:
     type: exec
-    command: /path/to/plugin
-    args: [...]
+    command: /usr/local/bin/stunmesh-cloudflare
+    args: ["-zone", "example.com", "-token", "${CLOUDFLARE_API_TOKEN}"]
+
 interfaces:
   wg0:
     protocol: "ipv4"  # Interface protocol: ipv4, ipv6, or dualstack
     peers:
       peer_name:
         public_key: "base64_encoded_key"
-        plugin: plugin_name  # References named plugin instance
-        protocol: "ipv4"     # Peer protocol: ipv4, ipv6, prefer_ipv4, prefer_ipv6
+        plugin: cloudflare_builtin  # References named plugin instance
+        protocol: "ipv4"             # Peer protocol: ipv4, ipv6, prefer_ipv4, prefer_ipv6
 ```
 
 ### Controller Architecture
