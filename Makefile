@@ -26,7 +26,7 @@ endif
 
 TRIMPATH_FLAGS =
 ifneq ($(TRIMPATH),0)
-	TRIMPATH_FLAGS := "-trimpath"
+	TRIMPATH_FLAGS := -trimpath
 endif
 
 UPX_TARGET =
