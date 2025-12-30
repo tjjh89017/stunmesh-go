@@ -21,7 +21,7 @@ endif
 
 LDFLAGS =
 ifneq ($(STRIP),0)
-	LDFLAGS := "-s -w"
+	LDFLAGS := -s -w
 endif
 
 TRIMPATH_FLAGS =
@@ -37,11 +37,12 @@ endif
 # Set CGO_ENABLED based on OS
 ifeq ($(GOOS),$(filter $(GOOS),$(CGO_REQUIRED_PLATFORMS)))
 	CGO_ENABLED = 1
-	GO_FLAGS := ${GO_FLAGS} -ldflags ${LDFLAGS} -extldflags="-static" ${TRIMPATH_FLAGS}
+	LDFLAGS := ${LDFLAGS} -extldflags="-static"
 else
 	CGO_ENABLED = 0
-	GO_FLAGS := ${GO_FLAGS} -ldflags ${LDFLAGS} ${TRIMPATH_FLAGS}
 endif
+
+GO_FLAGS := ${GO_FLAGS} -ldflags '${LDFLAGS}' ${TRIMPATH_FLAGS}
 
 .PHONY: all
 all: clean build $(UPX_TARGET)
