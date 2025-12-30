@@ -47,7 +47,7 @@ func setup() (*daemon.Daemon, error) {
 	resolver := stun.NewResolver(configConfig, deviceConfig, zerologLogger)
 	endpoint := crypto.NewEndpoint()
 	publishController := ctrl.NewPublishController(devices, peers, manager, resolver, endpoint, deviceConfig, zerologLogger)
-	establishController := ctrl.NewEstablishController(client, devices, peers, manager, endpoint, zerologLogger)
+	establishController := ctrl.NewEstablishController(client, devices, peers, manager, endpoint, queue, zerologLogger)
 	refreshController := ctrl.NewRefreshController(peers, queue, zerologLogger)
 	pingMonitorController := ctrl.NewPingMonitorController(configConfig, devices, peers, publishController, establishController, refreshController, zerologLogger)
 	daemonDaemon := daemon.New(configConfig, queue, bootstrapController, publishController, establishController, refreshController, pingMonitorController, zerologLogger)

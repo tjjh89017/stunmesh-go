@@ -22,9 +22,10 @@ type EstablishController struct {
 	decryptor     EndpointDecryptor
 	logger        zerolog.Logger
 	mu            sync.Mutex
+	queue         EstablishQueue
 }
 
-func NewEstablishController(ctrl *wgctrl.Client, devices DeviceRepository, peers PeerRepository, pluginManager *plugin.Manager, decryptor EndpointDecryptor, logger *zerolog.Logger) *EstablishController {
+func NewEstablishController(ctrl *wgctrl.Client, devices DeviceRepository, peers PeerRepository, pluginManager *plugin.Manager, decryptor EndpointDecryptor, queue EstablishQueue, logger *zerolog.Logger) *EstablishController {
 	return &EstablishController{
 		wgCtrl:        ctrl,
 		devices:       devices,
@@ -32,6 +33,7 @@ func NewEstablishController(ctrl *wgctrl.Client, devices DeviceRepository, peers
 		pluginManager: pluginManager,
 		decryptor:     decryptor,
 		logger:        logger.With().Str("controller", "establish").Logger(),
+		queue:         queue,
 	}
 }
 
@@ -182,4 +184,18 @@ func (c *EstablishController) ConfigureDevice(ctx context.Context, peer *entity.
 	}
 	c.logger.Debug().Str("peer", peer.LocalId()).Str("device", peer.DeviceName()).Msg("device configured for peer")
 	return nil
+}
+
+// Run starts the worker goroutine that processes establish triggers
+func (c *EstablishController) Run(ctx context.Context) {
+	c.logger.Info().Msg("establish controller worker started")
+	for {
+		select {
+		case <-ctx.Done():
+			c.logger.Info().Msg("establish controller worker stopped")
+			return
+		case peerId := <-c.queue.Dequeue():
+			c.Execute(ctx, peerId)
+		}
+	}
 }
