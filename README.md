@@ -68,14 +68,21 @@ The Makefile supports several options for customizing the build:
 - `EXTRA_MIN=1` - Enable all minimization options above (STRIP + TRIMPATH + UPX)
 
 **Built-in Plugin Options:**
-- `BUILTIN=builtin_cloudflare` - Compile with built-in Cloudflare plugin (no external plugin binary needed)
+- `BUILTIN=all` - (Default) Compile with all available built-in plugins (cloudflare)
+- `BUILTIN=` - Build without any built-in plugins (minimal binary)
+- `BUILTIN=builtin_cloudflare` - Compile with specific built-in Cloudflare plugin only
 - `BUILTIN="builtin_cloudflare builtin_xxx"` - Multiple plugins (quote required, space-separated)
-- `BUILTIN=all` - Compile with all available built-in plugins
+
+**Available Built-in Plugins:**
+- `builtin_cloudflare` - Cloudflare DNS plugin for peer endpoint storage
 
 **Build Examples:**
 ```bash
-# Normal build
+# Normal build (includes all built-in plugins by default)
 make build
+
+# Build without any built-in plugins (minimal binary)
+make build BUILTIN=
 
 # Build with stripped symbols
 make build STRIP=1
@@ -83,17 +90,14 @@ make build STRIP=1
 # Build with all minimizations (strip, trimpath, and UPX compression)
 make build EXTRA_MIN=1
 
-# Clean and build with extra minimization
+# Clean and build with extra minimization (includes all built-ins by default)
 make all EXTRA_MIN=1
 
-# Build with built-in Cloudflare plugin (reduces deployment size by 83%)
+# Build minimal binary without built-in plugins
+make all BUILTIN= EXTRA_MIN=1
+
+# Build with specific built-in plugin only
 make all BUILTIN=builtin_cloudflare EXTRA_MIN=1
-
-# Build with all available built-in plugins
-make all BUILTIN=all EXTRA_MIN=1
-
-# Build with multiple specific built-in plugins (future)
-make all BUILTIN="builtin_cloudflare builtin_xxx" EXTRA_MIN=1
 ```
 
 **Platform-Specific Notes:**
