@@ -40,6 +40,10 @@ func (q *Queue[T]) Dequeue() <-chan T {
 	return q.stack
 }
 
+func (q *Queue[T]) Len() int {
+	return len(q.stack)
+}
+
 func (q *Queue[T]) Close() {
 	close(q.stack)
 }

@@ -10,37 +10,29 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/tjjh89017/stunmesh-go/internal/config"
 	"github.com/tjjh89017/stunmesh-go/internal/ctrl"
-	"github.com/tjjh89017/stunmesh-go/internal/entity"
-	"github.com/tjjh89017/stunmesh-go/internal/queue"
 )
 
 type Daemon struct {
 	config        *config.Config
-	queue         *queue.Queue[entity.PeerId]
 	bootCtrl      *ctrl.BootstrapController
 	publishCtrl   *ctrl.PublishController
 	establishCtrl *ctrl.EstablishController
-	refreshCtrl   *ctrl.RefreshController
 	pingMonitor   *ctrl.PingMonitorController
 	logger        zerolog.Logger
 }
 
 func New(
 	config *config.Config,
-	queue *queue.Queue[entity.PeerId],
 	boot *ctrl.BootstrapController,
 	publish *ctrl.PublishController,
 	establish *ctrl.EstablishController,
-	refresh *ctrl.RefreshController,
 	pingMonitor *ctrl.PingMonitorController,
 	logger *zerolog.Logger) *Daemon {
 	return &Daemon{
 		config:        config,
-		queue:         queue,
 		bootCtrl:      boot,
 		publishCtrl:   publish,
 		establishCtrl: establish,
-		refreshCtrl:   refresh,
 		pingMonitor:   pingMonitor,
 		logger:        logger.With().Str("component", "daemon").Logger(),
 	}
@@ -54,7 +46,6 @@ func (d *Daemon) Run(ctx context.Context) {
 
 	defer func() {
 		d.logger.Info().Msg("shutting down")
-		d.queue.Close()
 		signal.Stop(signalChan)
 		close(signalChan)
 		cancel()
@@ -64,7 +55,6 @@ func (d *Daemon) Run(ctx context.Context) {
 
 	// Start controller workers
 	go d.publishCtrl.Run(daemonCtx)
-	go d.refreshCtrl.Run(daemonCtx)
 	go d.establishCtrl.Run(daemonCtx)
 
 	// Initialize ping monitoring for all peers
@@ -72,7 +62,7 @@ func (d *Daemon) Run(ctx context.Context) {
 
 	// Trigger initial publish and refresh
 	d.publishCtrl.Trigger()
-	d.refreshCtrl.Trigger()
+	d.establishCtrl.Trigger(daemonCtx)
 
 	d.logger.Info().Msgf("daemon started with refresh interval %s", d.config.RefreshInterval)
 
@@ -88,7 +78,7 @@ func (d *Daemon) Run(ctx context.Context) {
 		case <-ticker.C:
 			d.logger.Info().Msg("refreshing peers")
 			d.publishCtrl.Trigger()
-			d.refreshCtrl.Trigger()
+			d.establishCtrl.Trigger(daemonCtx)
 		}
 	}
 }
@@ -110,10 +100,10 @@ func (d *Daemon) RunOneshot(ctx context.Context) {
 		time.Sleep(2 * time.Second)
 
 		// Refresh to get peer information
-		d.refreshCtrl.Execute(ctx)
+		d.establishCtrl.Trigger(ctx)
 
-		// Process all peers in queue
-		d.processAllPeers(ctx)
+		// Wait for peers to be processed
+		time.Sleep(2 * time.Second)
 
 		// Wait between iterations
 		if i < 3 {
@@ -121,21 +111,8 @@ func (d *Daemon) RunOneshot(ctx context.Context) {
 		}
 	}
 
-	d.logger.Info().Msg("oneshot mode completed")
-}
+	// Wait for all peers to be processed
+	d.establishCtrl.WaitForCompletion(ctx)
 
-func (d *Daemon) processAllPeers(ctx context.Context) {
-	// Process all peers currently in the queue
-	for {
-		select {
-		case peerId := <-d.queue.Dequeue():
-			d.logger.Info().Str("peer", peerId.String()).Msg("processing peer in oneshot mode")
-			d.establishCtrl.Execute(ctx, peerId)
-		case <-time.After(1 * time.Second):
-			// No more peers to process
-			return
-		case <-ctx.Done():
-			return
-		}
-	}
+	d.logger.Info().Msg("oneshot mode completed")
 }

@@ -15,7 +15,6 @@ import (
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
 	"github.com/tjjh89017/stunmesh-go/internal/logger"
 	"github.com/tjjh89017/stunmesh-go/internal/plugin"
-	"github.com/tjjh89017/stunmesh-go/internal/queue"
 	"github.com/tjjh89017/stunmesh-go/internal/repo"
 	"github.com/tjjh89017/stunmesh-go/internal/stun"
 	"github.com/tjjh89017/stunmesh-go/pluginapi"
@@ -29,7 +28,6 @@ func setup() (*daemon.Daemon, error) {
 	if err != nil {
 		return nil, err
 	}
-	queue := provideRefreshQueue()
 	client, err := wgctrl.New()
 	if err != nil {
 		return nil, err
@@ -47,10 +45,9 @@ func setup() (*daemon.Daemon, error) {
 	resolver := stun.NewResolver(configConfig, deviceConfig, zerologLogger)
 	endpoint := crypto.NewEndpoint()
 	publishController := ctrl.NewPublishController(devices, peers, manager, resolver, endpoint, deviceConfig, zerologLogger)
-	establishController := ctrl.NewEstablishController(client, devices, peers, manager, endpoint, queue, zerologLogger)
-	refreshController := ctrl.NewRefreshController(peers, queue, zerologLogger)
-	pingMonitorController := ctrl.NewPingMonitorController(configConfig, devices, peers, publishController, establishController, refreshController, zerologLogger)
-	daemonDaemon := daemon.New(configConfig, queue, bootstrapController, publishController, establishController, refreshController, pingMonitorController, zerologLogger)
+	establishController := ctrl.NewEstablishController(client, devices, peers, manager, endpoint, zerologLogger)
+	pingMonitorController := ctrl.NewPingMonitorController(configConfig, devices, peers, publishController, establishController, zerologLogger)
+	daemonDaemon := daemon.New(configConfig, bootstrapController, publishController, establishController, pingMonitorController, zerologLogger)
 	return daemonDaemon, nil
 }
 
@@ -73,8 +70,4 @@ func providePluginManager(config2 *config.Config) (*plugin.Manager, error) {
 	}
 
 	return manager, nil
-}
-
-func provideRefreshQueue() *queue.Queue[entity.PeerId] {
-	return queue.New[entity.PeerId]()
 }
