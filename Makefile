@@ -37,7 +37,7 @@ endif
 # Set CGO_ENABLED based on OS
 ifeq ($(GOOS),$(filter $(GOOS),$(CGO_REQUIRED_PLATFORMS)))
 	CGO_ENABLED = 1
-	GO_FLAGS := ${GO_FLAGS} -ldflags ${LDFLAGS} ${TRIMPATH_FLAGS} -extldflags="-static"
+	GO_FLAGS := ${GO_FLAGS} -ldflags ${LDFLAGS} -extldflags="-static" ${TRIMPATH_FLAGS}
 else
 	CGO_ENABLED = 0
 	GO_FLAGS := ${GO_FLAGS} -ldflags ${LDFLAGS} ${TRIMPATH_FLAGS}
