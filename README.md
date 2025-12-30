@@ -67,6 +67,11 @@ The Makefile supports several options for customizing the build:
 - `UPX=1` - Compress binary with UPX (requires UPX to be installed)
 - `EXTRA_MIN=1` - Enable all minimization options above (STRIP + TRIMPATH + UPX)
 
+**Built-in Plugin Options:**
+- `BUILTIN=builtin_cloudflare` - Compile with built-in Cloudflare plugin (no external plugin binary needed)
+- `BUILTIN="builtin_cloudflare builtin_xxx"` - Multiple plugins (quote required, space-separated)
+- `BUILTIN=all` - Compile with all available built-in plugins
+
 **Build Examples:**
 ```bash
 # Normal build
@@ -80,6 +85,15 @@ make build EXTRA_MIN=1
 
 # Clean and build with extra minimization
 make all EXTRA_MIN=1
+
+# Build with built-in Cloudflare plugin (reduces deployment size by 83%)
+make all BUILTIN=builtin_cloudflare EXTRA_MIN=1
+
+# Build with all available built-in plugins
+make all BUILTIN=all EXTRA_MIN=1
+
+# Build with multiple specific built-in plugins (future)
+make all BUILTIN="builtin_cloudflare builtin_xxx" EXTRA_MIN=1
 ```
 
 **Platform-Specific Notes:**
@@ -240,6 +254,19 @@ stunmesh-go now supports a flexible plugin system that allows you to:
 
 #### Supported Plugin Types
 
+**Built-in Plugin (`type: builtin`)** ⚡
+- Compiled directly into the stunmesh-go binary using build tags
+- Configuration:
+  - `name`: Built-in plugin name (e.g., `cloudflare`)
+  - Additional plugin-specific configuration fields
+- Benefits:
+  - **83% smaller deployment size** (2.2 MB vs 13.6 MB with external plugins)
+  - Single binary deployment
+  - No external plugin processes (reduced memory usage)
+  - No IPC overhead
+- Available built-in plugins: `cloudflare`
+- Build with: `make all BUILTIN=builtin_cloudflare EXTRA_MIN=1`
+
 **Exec Plugin (`type: exec`)**
 - Executes external scripts/programs for storage operations
 - Configuration:
@@ -255,6 +282,26 @@ stunmesh-go now supports a flexible plugin system that allows you to:
   - `args`: Command line arguments (optional)
 - Protocol: Shell variables over stdin, plain text over stdout
 - Best for: Simple shell scripts without JSON parsing requirements
+
+**Built-in Plugin Configuration Example:**
+```yaml
+plugins:
+  cf_builtin:
+    type: builtin
+    name: cloudflare
+    zone_name: example.com
+    api_token: your_api_token_here
+    subdomain: stunmesh  # Optional
+
+interfaces:
+  wg0:
+    protocol: ipv4
+    peers:
+      peer1:
+        public_key: "base64_encoded_key"
+        plugin: cf_builtin
+        protocol: ipv4
+```
 
 **Contrib Plugins**
 

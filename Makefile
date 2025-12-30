@@ -7,7 +7,8 @@ STRIP ?= 0
 TRIMPATH ?= 0
 UPX ?= 0
 EXTRA_MIN ?= 0
-BUILTIN_TAGS ?=
+BUILTIN ?=
+ALL_BUILTINS := builtin_cloudflare
 PREFIX ?= /usr/local
 BINDIR ?= $(PREFIX)/bin
 
@@ -30,9 +31,14 @@ ifneq ($(TRIMPATH),0)
 	TRIMPATH_FLAGS := -trimpath
 endif
 
+# Expand BUILTIN=all to all available built-in plugins
+ifeq ($(BUILTIN),all)
+	override BUILTIN := $(ALL_BUILTINS)
+endif
+
 TAGS_FLAGS =
-ifneq ($(BUILTIN_TAGS),)
-	TAGS_FLAGS := -tags '$(BUILTIN_TAGS)'
+ifneq ($(BUILTIN),)
+	TAGS_FLAGS := -tags '$(BUILTIN)'
 endif
 
 UPX_TARGET =
