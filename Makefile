@@ -7,6 +7,7 @@ STRIP ?= 0
 TRIMPATH ?= 0
 UPX ?= 0
 EXTRA_MIN ?= 0
+BUILTIN_TAGS ?=
 PREFIX ?= /usr/local
 BINDIR ?= $(PREFIX)/bin
 
@@ -29,6 +30,11 @@ ifneq ($(TRIMPATH),0)
 	TRIMPATH_FLAGS := -trimpath
 endif
 
+TAGS_FLAGS =
+ifneq ($(BUILTIN_TAGS),)
+	TAGS_FLAGS := -tags '$(BUILTIN_TAGS)'
+endif
+
 UPX_TARGET =
 ifneq ($(UPX),0)
 	UPX_TARGET = upx
@@ -42,7 +48,7 @@ else
 	CGO_ENABLED = 0
 endif
 
-GO_FLAGS := ${GO_FLAGS} -ldflags '${LDFLAGS}' ${TRIMPATH_FLAGS}
+GO_FLAGS := ${GO_FLAGS} -ldflags '${LDFLAGS}' ${TRIMPATH_FLAGS} ${TAGS_FLAGS}
 
 .PHONY: all
 all: clean build $(UPX_TARGET)

@@ -8,8 +8,9 @@ import (
 type PluginType string
 
 const (
-	PluginTypeExec  PluginType = "exec"
-	PluginTypeShell PluginType = "shell"
+	PluginTypeExec    PluginType = "exec"
+	PluginTypeShell   PluginType = "shell"
+	PluginTypeBuiltin PluginType = "builtin"
 )
 
 type PluginConfig map[string]interface{}
@@ -54,6 +55,8 @@ func (m *Manager) createPlugin(ctx context.Context, def PluginDefinition) (Store
 		return NewExecPlugin(def.Config)
 	case PluginTypeShell:
 		return NewShellPlugin(def.Config)
+	case PluginTypeBuiltin:
+		return NewBuiltinPlugin(def.Config)
 	default:
 		return nil, fmt.Errorf("unsupported plugin type: %s", def.Type)
 	}
