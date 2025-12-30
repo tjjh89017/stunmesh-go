@@ -20,7 +20,7 @@ inputs:
     required: false
     default: ''
   variant:
-    description: 'Build variant (normal or upx)'
+    description: 'Build variant (normal or extra-min)'
     required: false
     default: 'normal'
 
@@ -37,7 +37,7 @@ runs:
       shell: bash
       run: |
         SUFFIX=""
-        if [ "${{ inputs.variant }}" = "upx" ]; then
+        if [ "${{ inputs.variant }}" = "extra-min" ]; then
           SUFFIX="-upx"
         fi
 
@@ -49,7 +49,7 @@ runs:
         echo "binary-name=$BINARY_NAME" >> "$GITHUB_OUTPUT"
 
         # Set EXTRA_MIN flag
-        if [ "${{ inputs.variant }}" = "upx" ]; then
+        if [ "${{ inputs.variant }}" = "extra-min" ]; then
           echo "extra-min=1" >> "$GITHUB_OUTPUT"
         else
           echo "extra-min=0" >> "$GITHUB_OUTPUT"
@@ -60,7 +60,7 @@ runs:
         go-version: ${{ inputs.go-version }}
 
     - name: Install UPX (Linux/Darwin)
-      if: inputs.os != 'freebsd'
+      if: inputs.os != 'freebsd' && inputs.variant == 'extra-min'
       shell: bash
       run: |
         sudo apt-get update
@@ -81,7 +81,10 @@ runs:
         arch: ${{ inputs.arch }}
         sync: sshfs
         prepare: |
-          pkg install -y gmake go upx
+          pkg install -y gmake go
+          if [ "${{ inputs.variant }}" = "extra-min" ]; then
+            pkg install -y upx
+          fi
         run: |
           cd $GITHUB_WORKSPACE
           gmake APP=${{ steps.build-info.outputs.binary-name }} EXTRA_MIN=${{ steps.build-info.outputs.extra-min }}

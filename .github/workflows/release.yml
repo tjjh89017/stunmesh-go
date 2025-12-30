@@ -41,14 +41,14 @@ jobs:
       matrix:
         os: [linux, darwin, freebsd]
         arch: [amd64, arm64, arm, mipsle]
-        variant: [normal, upx]
+        variant: [normal, extra-min]
         exclude:
           - os: darwin
             arch: arm
           - os: darwin
             arch: mipsle
           - os: darwin
-            variant: upx
+            variant: extra-min
           - os: freebsd
             arch: arm
           - os: freebsd
