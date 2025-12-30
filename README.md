@@ -55,6 +55,37 @@ make all
 > [!NOTE]
 > For FreeBSD and MacOS, please use GNU Makefile `gmake` to build.
 
+### Build Options
+
+The Makefile supports several options for customizing the build:
+
+**Binary Minimization Options:**
+- `STRIP=1` - Strip debug symbols from binary (reduces size)
+- `TRIMPATH=1` - Remove file system paths from binary (improves reproducibility)
+- `UPX=1` - Compress binary with UPX (requires UPX to be installed)
+- `EXTRA_MIN=1` - Enable all minimization options above (STRIP + TRIMPATH + UPX)
+
+**Build Examples:**
+```bash
+# Normal build
+make build
+
+# Build with stripped symbols
+make build STRIP=1
+
+# Build with all minimizations (strip, trimpath, and UPX compression)
+make build EXTRA_MIN=1
+
+# Clean and build with extra minimization
+make all EXTRA_MIN=1
+```
+
+**Platform-Specific Notes:**
+- CGO is automatically enabled for FreeBSD and OpenBSD (required for these platforms)
+- CGO is disabled by default for Linux and Darwin (produces static binaries)
+- UPX compression significantly reduces binary size but requires the `upx` tool to be installed
+- The `-upx` suffix binaries in releases are built with `EXTRA_MIN=1`
+
 ## Usage
 
 ```
