@@ -258,7 +258,10 @@ stunmesh-go now supports a flexible plugin system that allows you to:
 
 #### Supported Plugin Types
 
+stunmesh-go supports three plugin types. **All are fully supported and production-ready** - choose based on your deployment needs:
+
 **Built-in Plugin (`type: builtin`)** ⚡
+- **Use when**: You want single binary deployment with minimal size
 - Compiled directly into the stunmesh-go binary using build tags
 - Configuration:
   - `name`: Built-in plugin name (e.g., `cloudflare`)
@@ -268,24 +271,36 @@ stunmesh-go now supports a flexible plugin system that allows you to:
   - Single binary deployment
   - No external plugin processes (reduced memory usage)
   - No IPC overhead
+  - Faster startup
 - Available built-in plugins: `cloudflare`
 - Build with: `make all BUILTIN=builtin_cloudflare EXTRA_MIN=1`
 
 **Exec Plugin (`type: exec`)**
+- **Use when**: You need independent plugin updates or custom implementations
 - Executes external scripts/programs for storage operations
 - Configuration:
   - `command`: Command to execute
   - `args`: Command line arguments (optional)
 - Protocol: JSON over stdin/stdout
+- Benefits:
+  - Independent plugin updates without recompiling main binary
+  - Custom plugin implementations in any language
+  - Plugin sharing across projects
+  - Easier debugging and testing
 - Best for: Complex plugins requiring structured data handling
 
 **Shell Plugin (`type: shell`)**
+- **Use when**: You need simple shell script plugins
 - Simplified plugin type for shell scripts
 - Configuration:
   - `command`: Command to execute
   - `args`: Command line arguments (optional)
 - Protocol: Shell variables over stdin, plain text over stdout
-- Best for: Simple shell scripts without JSON parsing requirements
+- Benefits:
+  - No JSON parsing required
+  - Quick prototyping
+  - Simple integration with existing shell tools
+- Best for: Simple shell scripts without complex data handling
 
 **Built-in Plugin Configuration Example:**
 ```yaml
