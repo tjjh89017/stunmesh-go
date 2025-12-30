@@ -210,11 +210,17 @@ func (c *EstablishController) Trigger(ctx context.Context) {
 		return
 	}
 
+	enqueued := 0
 	for _, peer := range peers {
-		c.queue.Enqueue(peer.Id())
+		if c.queue.TryEnqueue(peer.Id()) {
+			enqueued++
+		} else {
+			c.logger.Warn().Str("peer", peer.Id().String()).Msg("queue full, peer dropped")
+		}
 	}
 
-	c.logger.Debug().Int("count", len(peers)).Msg("peers enqueued")
+	c.logger.Debug().Int("enqueued", enqueued).Int("total", len(peers)).Msg("peers enqueued")
+	c.logger.Debug().Int("queue_len", c.queue.Len()).Msg("current queue length")
 }
 
 // WaitForCompletion waits until the queue is empty or context is cancelled
