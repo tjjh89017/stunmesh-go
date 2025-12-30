@@ -19,6 +19,10 @@ inputs:
     description: 'Tag to append to binary name'
     required: false
     default: ''
+  variant:
+    description: 'Build variant (normal or upx)'
+    required: false
+    default: 'normal'
 
 outputs:
   binary-name:
@@ -32,21 +36,40 @@ runs:
       id: build-info
       shell: bash
       run: |
+        SUFFIX=""
+        if [ "${{ inputs.variant }}" = "upx" ]; then
+          SUFFIX="-upx"
+        fi
+
         if [ -n "${{ inputs.tag }}" ]; then
-          BINARY_NAME="${{ inputs.app-name }}-${{ inputs.os }}-${{ inputs.arch }}-${{ inputs.tag }}"
+          BINARY_NAME="${{ inputs.app-name }}-${{ inputs.os }}-${{ inputs.arch }}-${{ inputs.tag }}${SUFFIX}"
         else
-          BINARY_NAME="${{ inputs.app-name }}-${{ inputs.os }}-${{ inputs.arch }}"
+          BINARY_NAME="${{ inputs.app-name }}-${{ inputs.os }}-${{ inputs.arch }}${SUFFIX}"
         fi
         echo "binary-name=$BINARY_NAME" >> "$GITHUB_OUTPUT"
+
+        # Set EXTRA_MIN flag
+        if [ "${{ inputs.variant }}" = "upx" ]; then
+          echo "extra-min=1" >> "$GITHUB_OUTPUT"
+        else
+          echo "extra-min=0" >> "$GITHUB_OUTPUT"
+        fi
     
     - uses: actions/setup-go@v5
       with:
         go-version: ${{ inputs.go-version }}
 
+    - name: Install UPX (Linux/Darwin)
+      if: inputs.os != 'freebsd'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y upx-ucl
+
     - name: Build (Linux/Darwin)
       if: inputs.os != 'freebsd'
       shell: bash
-      run: make APP=${{ steps.build-info.outputs.binary-name }}
+      run: make APP=${{ steps.build-info.outputs.binary-name }} EXTRA_MIN=${{ steps.build-info.outputs.extra-min }}
       env:
         GOARCH: ${{ inputs.arch }}
         GOOS: ${{ inputs.os }}
@@ -58,7 +81,7 @@ runs:
         arch: ${{ inputs.arch }}
         sync: sshfs
         prepare: |
-          pkg install -y gmake go
+          pkg install -y gmake go upx
         run: |
           cd $GITHUB_WORKSPACE
-          gmake APP=${{ steps.build-info.outputs.binary-name }}
+          gmake APP=${{ steps.build-info.outputs.binary-name }} EXTRA_MIN=${{ steps.build-info.outputs.extra-min }}
