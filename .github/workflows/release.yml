@@ -74,6 +74,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ steps.build.outputs.binary-name }}
+          draft: true
           prerelease: >-
             ${{
               contains(steps.tag.outputs.TAG, 'RC') ||
@@ -126,6 +127,7 @@ jobs:
           files: |
             ${{ steps.archive.outputs.zip-file }}
             ${{ steps.archive.outputs.tar-file }}
+          draft: true
           prerelease: >-
             ${{
               contains(steps.tag.outputs.TAG, 'RC') ||
