@@ -61,6 +61,11 @@ runs:
         arch: ${{ inputs.arch }}
         sync: sshfs
         prepare: |
+          # use latest instead of quarterly
+          cat /etc/pkg/FreeBSD.conf
+          pkg update -f
+          pkg upgrade -y
+
           pkg install -y gmake go
         run: |
           cd $GITHUB_WORKSPACE
