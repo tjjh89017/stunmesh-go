@@ -6,12 +6,8 @@
 version: 2
 updates:
   - package-ecosystem: "gomod" # See documentation for possible values
-    directory: "/" # Location of package manifests
+    directories:
+      - "/"
+      - "/contrib/**"
     schedule:
       interval: "weekly"
-
-  - package-ecosystem: "gomod" # See documentation for possible values
-    directory: "/contrib/cloudflare" # Location of package manifests
-    schedule:
-      interval: "weekly"
-
