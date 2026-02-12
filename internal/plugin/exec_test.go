@@ -139,7 +139,7 @@ func TestExecPlugin_Get_Success(t *testing.T) {
 
 	// Cleanup
 	storageDir := "/tmp/stunmesh-test-plugin"
-	os.RemoveAll(storageDir)
+	_ = os.RemoveAll(storageDir)
 }
 
 func TestExecPlugin_Get_NotFound(t *testing.T) {
@@ -151,7 +151,7 @@ func TestExecPlugin_Get_NotFound(t *testing.T) {
 
 	// Cleanup before test
 	storageDir := "/tmp/stunmesh-test-plugin"
-	os.RemoveAll(storageDir)
+	_ = os.RemoveAll(storageDir)
 
 	config := pluginapi.PluginConfig{
 		"command": pluginPath,
@@ -171,7 +171,7 @@ func TestExecPlugin_Get_NotFound(t *testing.T) {
 	}
 
 	// Cleanup
-	os.RemoveAll(storageDir)
+	_ = os.RemoveAll(storageDir)
 }
 
 func TestExecPlugin_Set_Success(t *testing.T) {
@@ -202,7 +202,7 @@ func TestExecPlugin_Set_Success(t *testing.T) {
 
 	// Cleanup
 	storageDir := "/tmp/stunmesh-test-plugin"
-	os.RemoveAll(storageDir)
+	_ = os.RemoveAll(storageDir)
 }
 
 func TestExecPlugin_CommandNotFound(t *testing.T) {
