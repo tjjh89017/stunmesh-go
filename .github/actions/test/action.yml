@@ -13,7 +13,7 @@ runs:
     - uses: actions/setup-go@v5
       with:
         go-version: ${{ inputs.go-version }}
-    
+
     - name: Test
       shell: bash
-      run: go test -cover -v ./...
+      run: make test

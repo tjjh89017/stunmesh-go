@@ -72,6 +72,10 @@ upx:
 clean:
 	go clean
 
+.PHONY: test
+test:
+	go test -cover -v ${TAGS_FLAGS} ./...
+
 .PHONY: install
 install: build
 	install -d $(BINDIR)
