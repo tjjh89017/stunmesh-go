@@ -20,6 +20,7 @@ import (
 type MockWireGuardClient struct {
 	ctrl     *gomock.Controller
 	recorder *MockWireGuardClientMockRecorder
+	isgomock struct{}
 }
 
 // MockWireGuardClientMockRecorder is the mock recorder for MockWireGuardClient.
@@ -39,17 +40,31 @@ func (m *MockWireGuardClient) EXPECT() *MockWireGuardClientMockRecorder {
 	return m.recorder
 }
 
-// Device mocks base method.
-func (m *MockWireGuardClient) Device(arg0 string) (*wgtypes.Device, error) {
+// ConfigureDevice mocks base method.
+func (m *MockWireGuardClient) ConfigureDevice(deviceName string, cfg wgtypes.Config) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Device", arg0)
+	ret := m.ctrl.Call(m, "ConfigureDevice", deviceName, cfg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ConfigureDevice indicates an expected call of ConfigureDevice.
+func (mr *MockWireGuardClientMockRecorder) ConfigureDevice(deviceName, cfg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ConfigureDevice", reflect.TypeOf((*MockWireGuardClient)(nil).ConfigureDevice), deviceName, cfg)
+}
+
+// Device mocks base method.
+func (m *MockWireGuardClient) Device(deviceName string) (*wgtypes.Device, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Device", deviceName)
 	ret0, _ := ret[0].(*wgtypes.Device)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Device indicates an expected call of Device.
-func (mr *MockWireGuardClientMockRecorder) Device(arg0 any) *gomock.Call {
+func (mr *MockWireGuardClientMockRecorder) Device(deviceName any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Device", reflect.TypeOf((*MockWireGuardClient)(nil).Device), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Device", reflect.TypeOf((*MockWireGuardClient)(nil).Device), deviceName)
 }
