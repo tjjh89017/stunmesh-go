@@ -1,0 +1,7 @@
+interfaces:
+  wg0:
+    protocol: ipv4
+    peers:
+      peer1:
+        public_key: "test"
+        - invalid yaml syntax here

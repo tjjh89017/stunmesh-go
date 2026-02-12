@@ -1,0 +1,27 @@
+interfaces:
+  wg0:
+    protocol: ipv4
+    peers:
+      peer1:
+        public_key: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+        plugin: test_plugin
+        protocol: ipv4
+
+plugins:
+  test_plugin:
+    type: builtin
+    name: test
+    key: value
+
+refresh_interval: 5m
+
+log:
+  level: info
+
+stun:
+  address: stun.example.com:3478
+
+ping_monitor:
+  interval: 2s
+  timeout: 1s
+  fixed_retries: 5
