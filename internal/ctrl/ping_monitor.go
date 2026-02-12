@@ -48,7 +48,7 @@ type PeerPingState struct {
 
 type DevicePingMonitor struct {
 	deviceName   string
-	conn         *ICMPConn
+	conn         ICMPConnection
 	peerStates   map[entity.PeerId]*PeerPingState
 	usedIcmpIds  map[uint16]bool          // Track used ICMP IDs
 	icmpIdToPeer map[uint16]entity.PeerId // Map ICMP ID to peer ID
