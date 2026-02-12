@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	pluginapi "github.com/tjjh89017/stunmesh-go/pluginapi"
 )
 
 const (
@@ -22,15 +23,6 @@ const (
 	configKeyAPIToken  = "token"
 	configKeySubdomain = "subdomain"
 )
-
-// Store interface (copied to avoid import cycle)
-type Store interface {
-	Get(ctx context.Context, key string) (string, error)
-	Set(ctx context.Context, key string, value string) error
-}
-
-// PluginConfig type
-type PluginConfig map[string]interface{}
 
 // CloudflarePlugin implements the Store interface
 type CloudflarePlugin struct {
@@ -55,7 +47,7 @@ type cfError struct {
 
 // BuiltinConfig helper
 type BuiltinConfig struct {
-	config PluginConfig
+	config pluginapi.PluginConfig
 }
 
 func (c *BuiltinConfig) GetString(key string) (string, bool) {
@@ -76,7 +68,7 @@ func (c *BuiltinConfig) GetStringRequired(key string) (string, error) {
 }
 
 // NewCloudflarePlugin creates a new Cloudflare plugin instance
-func NewCloudflarePlugin(config PluginConfig) (Store, error) {
+func NewCloudflarePlugin(config pluginapi.PluginConfig) (pluginapi.Store, error) {
 	cfg := &BuiltinConfig{config: config}
 
 	zoneName, err := cfg.GetStringRequired(configKeyZoneName)

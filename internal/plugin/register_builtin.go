@@ -11,6 +11,6 @@ func init() {
 	// Register built-in plugins
 	// This file is only compiled when build tags are present
 	RegisterBuiltin("cloudflare", func(config pluginapi.PluginConfig) (pluginapi.Store, error) {
-		return cloudflare.NewCloudflarePlugin(cloudflare.PluginConfig(config))
+		return cloudflare.NewCloudflarePlugin(config)
 	})
 }
