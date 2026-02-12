@@ -1,3 +1,5 @@
+//go:generate mockgen -destination=./mock/mock_stun.go -package=mock_ctrl . StunResolver
+
 package ctrl
 
 import "context"

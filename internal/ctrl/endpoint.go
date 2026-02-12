@@ -1,3 +1,5 @@
+//go:generate mockgen -destination=./mock/mock_endpoint.go -package=mock_ctrl . EndpointEncryptor,EndpointDecryptor
+
 package ctrl
 
 import "context"
