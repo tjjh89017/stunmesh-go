@@ -8,4 +8,5 @@ import (
 
 type WireGuardClient interface {
 	Device(deviceName string) (*wgtypes.Device, error)
+	ConfigureDevice(deviceName string, cfg wgtypes.Config) error
 }

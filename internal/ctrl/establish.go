@@ -12,12 +12,11 @@ import (
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
 	"github.com/tjjh89017/stunmesh-go/internal/plugin"
 	"github.com/tjjh89017/stunmesh-go/internal/queue"
-	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 type EstablishController struct {
-	wgCtrl        *wgctrl.Client
+	wgCtrl        WireGuardClient
 	devices       DeviceRepository
 	peers         PeerRepository
 	pluginManager *plugin.Manager
@@ -27,7 +26,7 @@ type EstablishController struct {
 	queue         *queue.Queue[entity.PeerId]
 }
 
-func NewEstablishController(ctrl *wgctrl.Client, devices DeviceRepository, peers PeerRepository, pluginManager *plugin.Manager, decryptor EndpointDecryptor, logger *zerolog.Logger) *EstablishController {
+func NewEstablishController(ctrl WireGuardClient, devices DeviceRepository, peers PeerRepository, pluginManager *plugin.Manager, decryptor EndpointDecryptor, logger *zerolog.Logger) *EstablishController {
 	return &EstablishController{
 		wgCtrl:        ctrl,
 		devices:       devices,
