@@ -1,3 +1,5 @@
+//go:generate mockgen -destination=./mock/mock_device_config.go -package=mock_ctrl . DeviceConfigProvider
+
 package ctrl
 
 import (
