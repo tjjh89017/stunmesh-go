@@ -447,6 +447,7 @@ func TestNewBuiltinConfig(t *testing.T) {
 
 	if bc == nil {
 		t.Fatal("NewBuiltinConfig() returned nil")
+		return
 	}
 
 	if bc.config == nil {

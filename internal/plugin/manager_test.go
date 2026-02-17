@@ -12,6 +12,7 @@ func TestNewManager(t *testing.T) {
 
 	if m == nil {
 		t.Fatal("NewManager() returned nil")
+		return
 	}
 
 	if m.plugins == nil {
