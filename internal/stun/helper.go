@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/pion/stun"
+	stun "github.com/pion/stun/v3"
 	"github.com/rs/zerolog"
 )
 
