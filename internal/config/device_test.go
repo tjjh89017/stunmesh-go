@@ -363,6 +363,7 @@ func TestNewDeviceConfig(t *testing.T) {
 
 	if dc == nil {
 		t.Fatal("NewDeviceConfig() returned nil")
+		return
 	}
 
 	if dc.interfaces == nil {

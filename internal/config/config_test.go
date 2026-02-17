@@ -55,6 +55,7 @@ refresh_interval: 5m
 
 	if cfg == nil {
 		t.Fatal("Load() returned nil config")
+		return
 	}
 
 	// Verify basic config values
@@ -89,6 +90,7 @@ func TestLoad_FileNotFound(t *testing.T) {
 
 	if cfg == nil {
 		t.Fatal("Load() returned nil config")
+		return
 	}
 
 	// Should have default values
