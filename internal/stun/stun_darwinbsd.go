@@ -11,7 +11,7 @@ import (
 	"time"
 
 	pcap "github.com/packetcap/go-pcap"
-	"github.com/pion/stun"
+	stun "github.com/pion/stun/v3"
 	"github.com/rs/zerolog"
 	"golang.org/x/net/bpf"
 	"golang.org/x/net/ipv4"
@@ -297,11 +297,11 @@ func (s *Stun) Read(ctx context.Context) (*stun.Message, error) {
 }
 
 func createStunBindingPacket(srcPort, dstPort uint16) ([]byte, error) {
+	// stun.TransactionID setter automatically generates a random transaction ID
 	msg, err := stun.Build(stun.TransactionID, stun.BindingRequest)
 	if err != nil {
 		return nil, err
 	}
-	_ = msg.NewTransactionID()
 
 	packetLength := uint16(BindingPacketHeaderSize + len(msg.Raw))
 	checksum := uint16(0)
