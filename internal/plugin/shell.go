@@ -83,10 +83,10 @@ func (p *ShellPlugin) executeCommand(ctx context.Context, action, key, value str
 
 	// Prepare stdin with shell variable assignments
 	var stdinBuf bytes.Buffer
-	stdinBuf.WriteString(fmt.Sprintf("STUNMESH_ACTION=%s\n", action))
-	stdinBuf.WriteString(fmt.Sprintf("STUNMESH_KEY=%s\n", key))
+	fmt.Fprintf(&stdinBuf, "STUNMESH_ACTION=%s\n", action)
+	fmt.Fprintf(&stdinBuf, "STUNMESH_KEY=%s\n", key)
 	if action == pluginapi.OpSet {
-		stdinBuf.WriteString(fmt.Sprintf("STUNMESH_VALUE=%s\n", value))
+		fmt.Fprintf(&stdinBuf, "STUNMESH_VALUE=%s\n", value)
 	}
 
 	cmd.Stdin = &stdinBuf
