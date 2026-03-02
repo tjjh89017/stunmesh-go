@@ -4,6 +4,10 @@ STUNMESH is a Wireguard helper tool to establish peer-to-peer connections throug
 
 Inspired by manuels' [wireguard-p2p](https://github.com/manuels/wireguard-p2p) project
 
+## Talks & Presentations
+
+- [FOSDEM 2026 - Building P2P WireGuard Mesh Without Self-Hosted Infrastructure](https://speakerdeck.com/tjjh89017/fosdem-2026-stunmesh-go-building-p2p-wireguard-mesh-without-self-hosted-infrastructure)
+
 ## NAT Type Support
 
 stunmesh-go supports the following NAT types:
