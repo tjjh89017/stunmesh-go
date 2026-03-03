@@ -1,6 +1,6 @@
 module github.com/tjjh89017/stunmesh-go
 
-go 1.25
+go 1.25.0
 
 require (
 	github.com/google/wire v0.7.0
@@ -11,7 +11,7 @@ require (
 	github.com/spf13/viper v1.21.0
 	go.uber.org/mock v0.6.0
 	golang.org/x/crypto v0.48.0
-	golang.org/x/net v0.50.0
+	golang.org/x/net v0.51.0
 	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20241231184526-a9ab2273dd10
 )
 
