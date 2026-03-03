@@ -6,7 +6,9 @@ Inspired by manuels' [wireguard-p2p](https://github.com/manuels/wireguard-p2p) p
 
 ## Talks & Presentations
 
-- [FOSDEM 2026 - Building P2P WireGuard Mesh Without Self-Hosted Infrastructure](https://speakerdeck.com/tjjh89017/fosdem-2026-stunmesh-go-building-p2p-wireguard-mesh-without-self-hosted-infrastructure)
+- [FOSDEM 2026 - STUNEMSH-go: Building P2P WireGuard Mesh Without Self-Hosted Infrastructure](https://fosdem.org/2026/schedule/event/YQWEDC-stunmesh-go_building_p2p_wireguard_mesh_without_self-hosted_infrastructure/)
+- [Slides](https://speakerdeck.com/tjjh89017/fosdem-2026-stunmesh-go-building-p2p-wireguard-mesh-without-self-hosted-infrastructure)
+- [Recording Video](https://video.fosdem.org/2026/h1302/YQWEDC-stunmesh-go_building_p2p_wireguard_mesh_without_self-hosted_infrastructure.av1.webm)
 
 ## NAT Type Support
 
