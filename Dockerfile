@@ -1,13 +1,16 @@
-FROM golang:latest AS builder
+FROM --platform=$BUILDPLATFORM golang:latest AS builder
+
+ARG TARGETOS
+ARG TARGETARCH
 
 WORKDIR /work
 COPY . .
 
-# Build main application
-RUN make
+# Build main application (cross-compile on build platform)
+RUN GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} make
 
-# Build all plugins
-RUN make plugin
+# Build all plugins (cross-compile on build platform)
+RUN GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} make plugin
 
 FROM scratch
 

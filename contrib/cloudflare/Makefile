@@ -8,7 +8,7 @@ all: clean build
 
 .PHONY: build
 build:
-	CGO_ENABLED=$(CGO_ENABLED) go build -o $(PLUGIN)
+	CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) GOARCH=$(GOARCH) go build -o $(PLUGIN)
 
 .PHONY: clean
 clean:

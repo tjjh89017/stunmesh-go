@@ -3,6 +3,7 @@
 APP ?= stunmesh-go
 GO_FLAGS ?=
 GOOS ?= $(shell go env GOOS)
+GOARCH ?= $(shell go env GOARCH)
 STRIP ?= 0
 TRIMPATH ?= 0
 UPX ?= 0
@@ -61,7 +62,7 @@ all: clean build $(UPX_TARGET)
 
 .PHONY: build
 build:
-	CGO_ENABLED=${CGO_ENABLED} go build ${GO_FLAGS} -v -o ${APP}
+	CGO_ENABLED=${CGO_ENABLED} GOOS=${GOOS} GOARCH=${GOARCH} go build ${GO_FLAGS} -v -o ${APP}
 
 .PHONY: upx
 upx:
