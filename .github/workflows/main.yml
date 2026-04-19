@@ -14,8 +14,8 @@ jobs:
     name: Codegen
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
@@ -30,7 +30,7 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Lint
         uses: ./.github/actions/lint
         with:
@@ -40,7 +40,7 @@ jobs:
     name: Test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Test
         uses: ./.github/actions/test
         with:
@@ -71,7 +71,7 @@ jobs:
           - os: freebsd
             variant: extra-min
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Build
         uses: ./.github/actions/build
         id: build
@@ -81,7 +81,7 @@ jobs:
           app-name: ${{ env.APP }}
           go-version: ${{ env.GO_VERSION }}
           variant: ${{ matrix.variant }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.build.outputs.binary-name }}
           path: ${{ steps.build.outputs.binary-name }}
@@ -106,7 +106,7 @@ jobs:
           - os: freebsd
             arch: mipsle
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Build All Plugins
         uses: ./.github/actions/build-all-plugins
         id: build-plugins
@@ -114,7 +114,7 @@ jobs:
           os: ${{ matrix.os }}
           arch: ${{ matrix.arch }}
           go-version: ${{ env.GO_VERSION }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.build-plugins.outputs.artifact-name }}
           path: plugins_dist/*
@@ -128,7 +128,7 @@ jobs:
       - lint
       - test
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Build and Push Docker
         uses: ./.github/actions/docker
         with:

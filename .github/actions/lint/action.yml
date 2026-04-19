@@ -10,12 +10,12 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    - uses: actions/setup-go@v5
+    - uses: actions/setup-go@v6
       with:
         go-version: ${{ inputs.go-version }}
         cache: false
-    
+
     - name: golangci-lint
-      uses: golangci/golangci-lint-action@v8
+      uses: golangci/golangci-lint-action@v9
       with:
         version: latest
