@@ -120,10 +120,10 @@ make all BUILTIN=builtin_cloudflare EXTRA_MIN=1
 
 stunmesh-go supports two WireGuard backends, selectable at build time via the `BACKEND` variable:
 
-- `ctrl` (default): Uses [`wgctrl-go`](https://github.com/WireGuard/wgctrl-go) to talk to the kernel WireGuard interface directly. Requires CGO on FreeBSD.
-- `cli`: Shells out to the `wg` command-line tool. Builds with `CGO_ENABLED=0` on all platforms, including FreeBSD cross-compilation from Linux without a sysroot.
+- `wgctrl` (default): Uses [`wgctrl-go`](https://github.com/WireGuard/wgctrl-go) to talk to the kernel WireGuard interface directly. Requires CGO on FreeBSD.
+- `wgcli`: Shells out to the `wg` command-line tool. Builds with `CGO_ENABLED=0` on all platforms, including FreeBSD cross-compilation from Linux without a sysroot.
 
-**When to choose `BACKEND=cli`:**
+**When to choose `BACKEND=wgcli`:**
 
 - Cross-compiling for FreeBSD from any host without setting up CGO toolchains
 - Running userspace wireguard-go where direct `wgctrl` socket access is restricted
@@ -132,17 +132,17 @@ stunmesh-go supports two WireGuard backends, selectable at build time via the `B
 **Build examples:**
 
 ```bash
-make build BACKEND=cli
-make build BACKEND=cli GOOS=freebsd GOARCH=amd64   # FreeBSD cross-compile from Linux, no sysroot
+make build BACKEND=wgcli
+make build BACKEND=wgcli GOOS=freebsd GOARCH=amd64   # FreeBSD cross-compile from Linux, no sysroot
 ```
 
-**Runtime requirement for `BACKEND=cli`:** the `wg` command must be installed and available in `PATH`:
+**Runtime requirement for `BACKEND=wgcli`:** the `wg` command must be installed and available in `PATH`:
 
 - Linux: install the `wireguard-tools` package
 - FreeBSD: `pkg install wireguard-tools`
 - macOS: `brew install wireguard-tools`
 
-The default remains `ctrl`, so existing users do not need to change anything.
+The default remains `wgctrl`, so existing users do not need to change anything.
 
 ## Usage
 
