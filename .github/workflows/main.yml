@@ -57,6 +57,7 @@ jobs:
         os: [linux, darwin, freebsd]
         arch: [amd64, arm64, arm, mipsle]
         variant: [normal, extra-min]
+        backend: [wgctrl, wgcli]
         exclude:
           - os: darwin
             arch: arm
@@ -70,6 +71,11 @@ jobs:
             arch: mipsle
           - os: freebsd
             variant: extra-min
+          # wgcli backend only applies to freebsd
+          - os: linux
+            backend: wgcli
+          - os: darwin
+            backend: wgcli
     steps:
       - uses: actions/checkout@v6
       - name: Build
@@ -81,6 +87,7 @@ jobs:
           app-name: ${{ env.APP }}
           go-version: ${{ env.GO_VERSION }}
           variant: ${{ matrix.variant }}
+          backend: ${{ matrix.backend }}
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.build.outputs.binary-name }}
