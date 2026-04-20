@@ -12,14 +12,15 @@ package mock_repo
 import (
 	reflect "reflect"
 
+	wg "github.com/tjjh89017/stunmesh-go/internal/wg"
 	gomock "go.uber.org/mock/gomock"
-	wgtypes "golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 // MockWireGuardClient is a mock of WireGuardClient interface.
 type MockWireGuardClient struct {
 	ctrl     *gomock.Controller
 	recorder *MockWireGuardClientMockRecorder
+	isgomock struct{}
 }
 
 // MockWireGuardClientMockRecorder is the mock recorder for MockWireGuardClient.
@@ -40,16 +41,16 @@ func (m *MockWireGuardClient) EXPECT() *MockWireGuardClientMockRecorder {
 }
 
 // Device mocks base method.
-func (m *MockWireGuardClient) Device(arg0 string) (*wgtypes.Device, error) {
+func (m *MockWireGuardClient) Device(deviceName string) (*wg.DeviceInfo, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Device", arg0)
-	ret0, _ := ret[0].(*wgtypes.Device)
+	ret := m.ctrl.Call(m, "Device", deviceName)
+	ret0, _ := ret[0].(*wg.DeviceInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Device indicates an expected call of Device.
-func (mr *MockWireGuardClientMockRecorder) Device(arg0 any) *gomock.Call {
+func (mr *MockWireGuardClientMockRecorder) Device(deviceName any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Device", reflect.TypeOf((*MockWireGuardClient)(nil).Device), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Device", reflect.TypeOf((*MockWireGuardClient)(nil).Device), deviceName)
 }

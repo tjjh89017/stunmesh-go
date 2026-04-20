@@ -3,9 +3,9 @@
 package repo
 
 import (
-	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
+	"github.com/tjjh89017/stunmesh-go/internal/wg"
 )
 
 type WireGuardClient interface {
-	Device(deviceName string) (*wgtypes.Device, error)
+	Device(deviceName string) (*wg.DeviceInfo, error)
 }
