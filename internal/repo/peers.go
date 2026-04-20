@@ -76,9 +76,8 @@ func (r *Peers) GetDevicePeerMap(ctx context.Context, deviceName string) (map[st
 	}
 
 	peerMap := make(map[string]bool)
-	for _, peer := range device.Peers {
-		peerKeyStr := string(peer.PublicKey[:])
-		peerMap[peerKeyStr] = true
+	for _, k := range device.PeerKeys {
+		peerMap[string(k[:])] = true
 	}
 
 	return peerMap, nil
