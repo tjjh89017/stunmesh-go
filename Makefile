@@ -77,6 +77,14 @@ clean:
 test:
 	go test -cover -v ${TAGS_FLAGS} ./...
 
+.PHONY: fmt
+fmt:
+	go fmt ./...
+
+.PHONY: vet
+vet:
+	go vet ${TAGS_FLAGS} ./...
+
 .PHONY: install
 install: build
 	install -d $(BINDIR)
