@@ -13,10 +13,10 @@ import (
 	"strings"
 )
 
-type runner func(ctx context.Context, name string, args ...string) ([]byte, error)
+type Runner func(ctx context.Context, name string, args ...string) ([]byte, error)
 
 type cliClient struct {
-	runner runner
+	runner Runner
 }
 
 func defaultRunner(ctx context.Context, name string, args ...string) ([]byte, error) {

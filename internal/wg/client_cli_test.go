@@ -12,7 +12,7 @@ import (
 	"testing"
 )
 
-func fakeRunner(output []byte, err error) runner {
+func fakeRunner(output []byte, err error) Runner {
 	return func(ctx context.Context, name string, args ...string) ([]byte, error) {
 		return output, err
 	}
@@ -23,7 +23,7 @@ type capturedCall struct {
 	args []string
 }
 
-func capturingRunner(output []byte, err error, captured *[]capturedCall) runner {
+func capturingRunner(output []byte, err error, captured *[]capturedCall) Runner {
 	return func(ctx context.Context, name string, args ...string) ([]byte, error) {
 		*captured = append(*captured, capturedCall{name: name, args: append([]string(nil), args...)})
 		return output, err

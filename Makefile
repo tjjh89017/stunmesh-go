@@ -10,16 +10,16 @@ UPX ?= 0
 EXTRA_MIN ?= 0
 BUILTIN ?= all
 ALL_BUILTINS := builtin_cloudflare
-BACKEND ?= ctrl
+BACKEND ?= wgctrl
 PREFIX ?= /usr/local
 BINDIR ?= $(PREFIX)/bin
 
 # Validate BACKEND value
-ifeq ($(filter $(BACKEND),ctrl cli),)
-    $(error BACKEND must be 'ctrl' or 'cli', got '$(BACKEND)')
+ifeq ($(filter $(BACKEND),wgctrl wgcli),)
+    $(error BACKEND must be 'wgctrl' or 'wgcli', got '$(BACKEND)')
 endif
 
-# Platforms that require CGO_ENABLED=1 (only ctrl backend on freebsd)
+# Platforms that require CGO_ENABLED=1 (only wgctrl backend on freebsd)
 CGO_REQUIRED_PLATFORMS := freebsd
 
 ifneq ($(EXTRA_MIN),0)
@@ -45,7 +45,7 @@ endif
 
 # Backend build tag: wgcli selects the wg-CLI shelling backend
 BACKEND_TAG :=
-ifeq ($(BACKEND),cli)
+ifeq ($(BACKEND),wgcli)
 	BACKEND_TAG := wgcli
 endif
 
@@ -58,8 +58,8 @@ ifneq ($(UPX),0)
 	UPX_TARGET = upx
 endif
 
-# Set CGO_ENABLED: forced off when BACKEND=cli; otherwise platform default
-ifeq ($(BACKEND),cli)
+# Set CGO_ENABLED: forced off when BACKEND=wgcli; otherwise platform default
+ifeq ($(BACKEND),wgcli)
 	CGO_ENABLED = 0
 else ifeq ($(GOOS),$(filter $(GOOS),$(CGO_REQUIRED_PLATFORMS)))
 	CGO_ENABLED = 1
