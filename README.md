@@ -107,7 +107,7 @@ make all BUILTIN=builtin_cloudflare EXTRA_MIN=1
 ```
 
 **Platform-Specific Notes:**
-- CGO is automatically enabled for FreeBSD and OpenBSD (required for these platforms)
+- CGO is automatically enabled for FreeBSD (required for this platform)
 - CGO is disabled by default for Linux and Darwin (produces static binaries)
 - UPX compression significantly reduces binary size but requires the `upx` tool to be installed
 
@@ -198,7 +198,11 @@ interfaces:
         # protocol defaults to "ipv4" if not specified
         # ping configuration is completely optional
 stun:
-  address: "stun.l.google.com:19302"
+  address: "stun.l.google.com:19302"   # Single server (backward compatible)
+  addresses:                             # Optional: list of servers for fallback
+    - "stun.l.google.com:19302"
+    - "stun1.l.google.com:19302"
+    - "stun2.l.google.com:19302"
 ping_monitor:
   interval: "5s"
   timeout: "2s"
@@ -217,6 +221,36 @@ plugins:
     command: "python3"
     args: ["/path/to/script.py", "--config", "/path/to/config"]
 ```
+
+### STUN Server Configuration
+
+stunmesh-go supports configuring one or more STUN servers. When multiple servers are provided, they are tried in order and the resolver falls back to the next server automatically on failure. If all servers fail, the endpoint is not published for that cycle.
+
+#### Fields
+
+- **`stun.address`** (string): A single STUN server address. Kept for backward compatibility — existing configurations that only set this field continue to work without any changes.
+- **`stun.addresses`** (list of strings): A list of STUN servers to try in order. Servers are attempted sequentially; the first successful response is used.
+
+Both fields can be used together. Duplicate entries across `address` and `addresses` are removed automatically, so listing the same server in both fields is safe.
+
+#### Example
+
+```yaml
+stun:
+  address: "stun.l.google.com:19302"   # Single server (backward compatible)
+  addresses:                             # Additional servers for fallback
+    - "stun.l.google.com:19302"
+    - "stun1.l.google.com:19302"
+    - "stun2.l.google.com:19302"
+```
+
+In this example the effective server list (after deduplication) is:
+
+1. `stun.l.google.com:19302`
+2. `stun1.l.google.com:19302`
+3. `stun2.l.google.com:19302`
+
+The resolver tries each in turn and uses the first one that returns a valid response. If every server fails, no endpoint is published and the next refresh cycle will retry.
 
 ### Protocol Configuration
 
