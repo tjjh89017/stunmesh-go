@@ -10,11 +10,17 @@ UPX ?= 0
 EXTRA_MIN ?= 0
 BUILTIN ?= all
 ALL_BUILTINS := builtin_cloudflare
+BACKEND ?= ctrl
 PREFIX ?= /usr/local
 BINDIR ?= $(PREFIX)/bin
 
-# Platforms that require CGO_ENABLED=1
-CGO_REQUIRED_PLATFORMS := freebsd openbsd
+# Validate BACKEND value
+ifeq ($(filter $(BACKEND),ctrl cli),)
+    $(error BACKEND must be 'ctrl' or 'cli', got '$(BACKEND)')
+endif
+
+# Platforms that require CGO_ENABLED=1 (only ctrl backend on freebsd)
+CGO_REQUIRED_PLATFORMS := freebsd
 
 ifneq ($(EXTRA_MIN),0)
 	STRIP = 1
@@ -37,18 +43,25 @@ ifeq ($(BUILTIN),all)
 	override BUILTIN := $(ALL_BUILTINS)
 endif
 
-TAGS_FLAGS =
-ifneq ($(BUILTIN),)
-	TAGS_FLAGS := -tags '$(BUILTIN)'
+# Backend build tag: wgcli selects the wg-CLI shelling backend
+BACKEND_TAG :=
+ifeq ($(BACKEND),cli)
+	BACKEND_TAG := wgcli
 endif
+
+# Combine BUILTIN and BACKEND tags
+ALL_TAGS := $(strip $(BUILTIN) $(BACKEND_TAG))
+TAGS_FLAGS = $(if $(ALL_TAGS),-tags '$(ALL_TAGS)',)
 
 UPX_TARGET =
 ifneq ($(UPX),0)
 	UPX_TARGET = upx
 endif
 
-# Set CGO_ENABLED based on OS
-ifeq ($(GOOS),$(filter $(GOOS),$(CGO_REQUIRED_PLATFORMS)))
+# Set CGO_ENABLED: forced off when BACKEND=cli; otherwise platform default
+ifeq ($(BACKEND),cli)
+	CGO_ENABLED = 0
+else ifeq ($(GOOS),$(filter $(GOOS),$(CGO_REQUIRED_PLATFORMS)))
 	CGO_ENABLED = 1
 	LDFLAGS := ${LDFLAGS} -extldflags="-static"
 else
