@@ -11,8 +11,8 @@ import (
 	mock "github.com/tjjh89017/stunmesh-go/internal/ctrl/mock"
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
 	mockEntity "github.com/tjjh89017/stunmesh-go/internal/entity/mock"
+	"github.com/tjjh89017/stunmesh-go/internal/wg"
 	gomock "go.uber.org/mock/gomock"
-	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 func TestBootstrap_WithError(t *testing.T) {
@@ -90,28 +90,22 @@ func TestBootstrap_WithMultipleInterfaces(t *testing.T) {
 	deviceConfig := config.NewDeviceConfig(cfg)
 	peerFilterService := entity.NewFilterPeerService(mockDevicePeerChecker, deviceConfig)
 
-	mockDevice0 := &wgtypes.Device{
+	mockDevice0 := &wg.DeviceInfo{
 		Name:       "wg0",
 		ListenPort: 51820,
 		PrivateKey: [32]byte{},
-		Peers: []wgtypes.Peer{
-			{
-				PublicKey: [32]byte{94, 3, 209, 178, 141, 248, 150, 122, 210, 3, 31, 39, 38, 215, 99, 215, 252, 229, 23, 176, 168, 54, 62, 193, 235, 130, 207, 18, 86, 29, 56, 107},
-			},
+		PeerKeys: []wg.Key{
+			{94, 3, 209, 178, 141, 248, 150, 122, 210, 3, 31, 39, 38, 215, 99, 215, 252, 229, 23, 176, 168, 54, 62, 193, 235, 130, 207, 18, 86, 29, 56, 107},
 		},
 	}
 
-	mockDevice1 := &wgtypes.Device{
+	mockDevice1 := &wg.DeviceInfo{
 		Name:       "wg1",
 		ListenPort: 51821,
 		PrivateKey: [32]byte{},
-		Peers: []wgtypes.Peer{
-			{
-				PublicKey: [32]byte{21, 15, 127, 218, 95, 45, 227, 25, 144, 65, 187, 58, 72, 29, 55, 248, 184, 118, 86, 40, 201, 95, 190, 43, 197, 21, 14, 191, 182, 19, 211, 121},
-			},
-			{
-				PublicKey: [32]byte{10, 231, 121, 30, 136, 9, 36, 176, 169, 166, 133, 46, 30, 117, 171, 74, 241, 9, 184, 142, 61, 15, 77, 108, 65, 199, 226, 15, 118, 61, 69, 21},
-			},
+		PeerKeys: []wg.Key{
+			{21, 15, 127, 218, 95, 45, 227, 25, 144, 65, 187, 58, 72, 29, 55, 248, 184, 118, 86, 40, 201, 95, 190, 43, 197, 21, 14, 191, 182, 19, 211, 121},
+			{10, 231, 121, 30, 136, 9, 36, 176, 169, 166, 133, 46, 30, 117, 171, 74, 241, 9, 184, 142, 61, 15, 77, 108, 65, 199, 226, 15, 118, 61, 69, 21},
 		},
 	}
 
@@ -122,11 +116,11 @@ func TestBootstrap_WithMultipleInterfaces(t *testing.T) {
 
 	// Mock device peer map expectations - the new approach uses GetDevicePeerMap
 	wg0PeerMap := map[string]bool{
-		string(mockDevice0.Peers[0].PublicKey[:]): true,
+		string(mockDevice0.PeerKeys[0][:]): true,
 	}
 	wg1PeerMap := map[string]bool{
-		string(mockDevice1.Peers[0].PublicKey[:]): true,
-		string(mockDevice1.Peers[1].PublicKey[:]): true,
+		string(mockDevice1.PeerKeys[0][:]): true,
+		string(mockDevice1.PeerKeys[1][:]): true,
 	}
 	mockDevicePeerChecker.EXPECT().GetDevicePeerMap(gomock.Any(), "wg0").Return(wg0PeerMap, nil)
 	mockDevicePeerChecker.EXPECT().GetDevicePeerMap(gomock.Any(), "wg1").Return(wg1PeerMap, nil)
