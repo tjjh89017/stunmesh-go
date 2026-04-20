@@ -216,6 +216,15 @@ func (c *EstablishController) Trigger(ctx context.Context) {
 	c.logger.Debug().Int("queue_len", c.queue.Len()).Msg("current queue length")
 }
 
+// TriggerForPeer enqueues a specific peer for establishment (non-blocking)
+func (c *EstablishController) TriggerForPeer(peerId entity.PeerId) {
+	if c.queue.TryEnqueue(peerId) {
+		c.logger.Debug().Str("peer", peerId.String()).Msg("establish triggered for peer")
+	} else {
+		c.logger.Warn().Str("peer", peerId.String()).Msg("establish queue full, dropping trigger for peer")
+	}
+}
+
 // WaitForCompletion waits until the queue is empty or context is cancelled
 func (c *EstablishController) WaitForCompletion(ctx context.Context) {
 	ticker := time.NewTicker(1 * time.Second)

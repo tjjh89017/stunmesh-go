@@ -293,7 +293,7 @@ func (m *DevicePingMonitor) deviceReaderLoop(ctx context.Context) {
 		}
 
 		// Parse and dispatch reply to correct peer
-		m.dispatchReply(ctx, reply[:n], addr)
+		m.dispatchReply(reply[:n], addr)
 	}
 }
 
@@ -315,12 +315,12 @@ func (m *DevicePingMonitor) deviceTimeoutChecker(ctx context.Context, timeout ti
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			m.checkForTimeouts(ctx)
+			m.checkForTimeouts()
 		}
 	}
 }
 
-func (m *DevicePingMonitor) checkForTimeouts(ctx context.Context) {
+func (m *DevicePingMonitor) checkForTimeouts() {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -344,7 +344,7 @@ func (m *DevicePingMonitor) checkForTimeouts(ctx context.Context) {
 			state.lastSentTime = time.Time{}
 			state.mu.Unlock()
 
-			m.handlePingResult(ctx, state, false)
+			m.handlePingResult(state, false)
 		}
 	}
 }
@@ -390,7 +390,7 @@ func (m *DevicePingMonitor) sendPingForPeer(state *PeerPingState) {
 		Msg("sent ping")
 }
 
-func (m *DevicePingMonitor) dispatchReply(ctx context.Context, reply []byte, addr net.Addr) {
+func (m *DevicePingMonitor) dispatchReply(reply []byte, addr net.Addr) {
 	// Parse ICMP reply (reply starts from ICMP header)
 	replyMsg, err := icmp.ParseMessage(ipv4.ICMPTypeEchoReply.Protocol(), reply)
 	if err != nil {
@@ -438,7 +438,7 @@ func (m *DevicePingMonitor) dispatchReply(ctx context.Context, reply []byte, add
 			Str("peer", state.peerId.String()).
 			Str("target", state.target).
 			Msg("ping success")
-		m.handlePingResult(ctx, state, true)
+		m.handlePingResult(state, true)
 	}
 }
 
@@ -480,7 +480,7 @@ func (m *DevicePingMonitor) validateReply(addr net.Addr, state *PeerPingState, i
 	return true
 }
 
-func (m *DevicePingMonitor) handlePingResult(ctx context.Context, state *PeerPingState, success bool) {
+func (m *DevicePingMonitor) handlePingResult(state *PeerPingState, success bool) {
 	state.mu.Lock()
 	defer state.mu.Unlock()
 
@@ -512,8 +512,8 @@ func (m *DevicePingMonitor) handlePingResult(ctx context.Context, state *PeerPin
 		now := time.Now()
 		if m.shouldRetryPublishEstablish(state, now) {
 			// Always run publish to update our endpoint, then establish the specific peer
-			go m.controller.publishCtrl.ExecuteForPeer(ctx, state.peerId)
-			go m.controller.establishCtrl.Execute(ctx, state.peerId)
+			m.controller.publishCtrl.TriggerForPeer(state.peerId)
+			m.controller.establishCtrl.TriggerForPeer(state.peerId)
 
 			if state.retryCount < PeerSpecificRetryThreshold {
 				logger.Info().Msg("triggered publish and establish for specific peer (early retry)")
