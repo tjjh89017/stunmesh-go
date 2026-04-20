@@ -14,8 +14,8 @@ import (
 	reflect "reflect"
 	time "time"
 
+	wg "github.com/tjjh89017/stunmesh-go/internal/wg"
 	gomock "go.uber.org/mock/gomock"
-	wgtypes "golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 // MockWireGuardClient is a mock of WireGuardClient interface.
@@ -42,25 +42,11 @@ func (m *MockWireGuardClient) EXPECT() *MockWireGuardClientMockRecorder {
 	return m.recorder
 }
 
-// ConfigureDevice mocks base method.
-func (m *MockWireGuardClient) ConfigureDevice(deviceName string, cfg wgtypes.Config) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ConfigureDevice", deviceName, cfg)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// ConfigureDevice indicates an expected call of ConfigureDevice.
-func (mr *MockWireGuardClientMockRecorder) ConfigureDevice(deviceName, cfg any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ConfigureDevice", reflect.TypeOf((*MockWireGuardClient)(nil).ConfigureDevice), deviceName, cfg)
-}
-
 // Device mocks base method.
-func (m *MockWireGuardClient) Device(deviceName string) (*wgtypes.Device, error) {
+func (m *MockWireGuardClient) Device(deviceName string) (*wg.DeviceInfo, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Device", deviceName)
-	ret0, _ := ret[0].(*wgtypes.Device)
+	ret0, _ := ret[0].(*wg.DeviceInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -69,6 +55,20 @@ func (m *MockWireGuardClient) Device(deviceName string) (*wgtypes.Device, error)
 func (mr *MockWireGuardClientMockRecorder) Device(deviceName any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Device", reflect.TypeOf((*MockWireGuardClient)(nil).Device), deviceName)
+}
+
+// UpdatePeerEndpoint mocks base method.
+func (m *MockWireGuardClient) UpdatePeerEndpoint(u wg.PeerEndpointUpdate) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdatePeerEndpoint", u)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdatePeerEndpoint indicates an expected call of UpdatePeerEndpoint.
+func (mr *MockWireGuardClientMockRecorder) UpdatePeerEndpoint(u any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdatePeerEndpoint", reflect.TypeOf((*MockWireGuardClient)(nil).UpdatePeerEndpoint), u)
 }
 
 // MockICMPConnection is a mock of ICMPConnection interface.

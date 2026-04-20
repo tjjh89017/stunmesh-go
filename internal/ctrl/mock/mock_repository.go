@@ -21,6 +21,7 @@ import (
 type MockDeviceRepository struct {
 	ctrl     *gomock.Controller
 	recorder *MockDeviceRepositoryMockRecorder
+	isgomock struct{}
 }
 
 // MockDeviceRepositoryMockRecorder is the mock recorder for MockDeviceRepository.
@@ -41,51 +42,52 @@ func (m *MockDeviceRepository) EXPECT() *MockDeviceRepositoryMockRecorder {
 }
 
 // Find mocks base method.
-func (m *MockDeviceRepository) Find(arg0 context.Context, arg1 entity.DeviceId) (*entity.Device, error) {
+func (m *MockDeviceRepository) Find(ctx context.Context, name entity.DeviceId) (*entity.Device, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Find", arg0, arg1)
+	ret := m.ctrl.Call(m, "Find", ctx, name)
 	ret0, _ := ret[0].(*entity.Device)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Find indicates an expected call of Find.
-func (mr *MockDeviceRepositoryMockRecorder) Find(arg0, arg1 any) *gomock.Call {
+func (mr *MockDeviceRepositoryMockRecorder) Find(ctx, name any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Find", reflect.TypeOf((*MockDeviceRepository)(nil).Find), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Find", reflect.TypeOf((*MockDeviceRepository)(nil).Find), ctx, name)
 }
 
 // List mocks base method.
-func (m *MockDeviceRepository) List(arg0 context.Context) ([]*entity.Device, error) {
+func (m *MockDeviceRepository) List(ctx context.Context) ([]*entity.Device, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "List", arg0)
+	ret := m.ctrl.Call(m, "List", ctx)
 	ret0, _ := ret[0].([]*entity.Device)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // List indicates an expected call of List.
-func (mr *MockDeviceRepositoryMockRecorder) List(arg0 any) *gomock.Call {
+func (mr *MockDeviceRepositoryMockRecorder) List(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockDeviceRepository)(nil).List), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockDeviceRepository)(nil).List), ctx)
 }
 
 // Save mocks base method.
-func (m *MockDeviceRepository) Save(arg0 context.Context, arg1 *entity.Device) {
+func (m *MockDeviceRepository) Save(ctx context.Context, device *entity.Device) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "Save", arg0, arg1)
+	m.ctrl.Call(m, "Save", ctx, device)
 }
 
 // Save indicates an expected call of Save.
-func (mr *MockDeviceRepositoryMockRecorder) Save(arg0, arg1 any) *gomock.Call {
+func (mr *MockDeviceRepositoryMockRecorder) Save(ctx, device any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Save", reflect.TypeOf((*MockDeviceRepository)(nil).Save), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Save", reflect.TypeOf((*MockDeviceRepository)(nil).Save), ctx, device)
 }
 
 // MockPeerRepository is a mock of PeerRepository interface.
 type MockPeerRepository struct {
 	ctrl     *gomock.Controller
 	recorder *MockPeerRepositoryMockRecorder
+	isgomock struct{}
 }
 
 // MockPeerRepositoryMockRecorder is the mock recorder for MockPeerRepository.
@@ -106,58 +108,58 @@ func (m *MockPeerRepository) EXPECT() *MockPeerRepositoryMockRecorder {
 }
 
 // Find mocks base method.
-func (m *MockPeerRepository) Find(arg0 context.Context, arg1 entity.PeerId) (*entity.Peer, error) {
+func (m *MockPeerRepository) Find(ctx context.Context, id entity.PeerId) (*entity.Peer, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Find", arg0, arg1)
+	ret := m.ctrl.Call(m, "Find", ctx, id)
 	ret0, _ := ret[0].(*entity.Peer)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Find indicates an expected call of Find.
-func (mr *MockPeerRepositoryMockRecorder) Find(arg0, arg1 any) *gomock.Call {
+func (mr *MockPeerRepositoryMockRecorder) Find(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Find", reflect.TypeOf((*MockPeerRepository)(nil).Find), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Find", reflect.TypeOf((*MockPeerRepository)(nil).Find), ctx, id)
 }
 
 // List mocks base method.
-func (m *MockPeerRepository) List(arg0 context.Context) ([]*entity.Peer, error) {
+func (m *MockPeerRepository) List(ctx context.Context) ([]*entity.Peer, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "List", arg0)
+	ret := m.ctrl.Call(m, "List", ctx)
 	ret0, _ := ret[0].([]*entity.Peer)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // List indicates an expected call of List.
-func (mr *MockPeerRepositoryMockRecorder) List(arg0 any) *gomock.Call {
+func (mr *MockPeerRepositoryMockRecorder) List(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockPeerRepository)(nil).List), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockPeerRepository)(nil).List), ctx)
 }
 
 // ListByDevice mocks base method.
-func (m *MockPeerRepository) ListByDevice(arg0 context.Context, arg1 entity.DeviceId) ([]*entity.Peer, error) {
+func (m *MockPeerRepository) ListByDevice(ctx context.Context, deviceName entity.DeviceId) ([]*entity.Peer, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListByDevice", arg0, arg1)
+	ret := m.ctrl.Call(m, "ListByDevice", ctx, deviceName)
 	ret0, _ := ret[0].([]*entity.Peer)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListByDevice indicates an expected call of ListByDevice.
-func (mr *MockPeerRepositoryMockRecorder) ListByDevice(arg0, arg1 any) *gomock.Call {
+func (mr *MockPeerRepositoryMockRecorder) ListByDevice(ctx, deviceName any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListByDevice", reflect.TypeOf((*MockPeerRepository)(nil).ListByDevice), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListByDevice", reflect.TypeOf((*MockPeerRepository)(nil).ListByDevice), ctx, deviceName)
 }
 
 // Save mocks base method.
-func (m *MockPeerRepository) Save(arg0 context.Context, arg1 *entity.Peer) {
+func (m *MockPeerRepository) Save(ctx context.Context, peer *entity.Peer) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "Save", arg0, arg1)
+	m.ctrl.Call(m, "Save", ctx, peer)
 }
 
 // Save indicates an expected call of Save.
-func (mr *MockPeerRepositoryMockRecorder) Save(arg0, arg1 any) *gomock.Call {
+func (mr *MockPeerRepositoryMockRecorder) Save(ctx, peer any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Save", reflect.TypeOf((*MockPeerRepository)(nil).Save), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Save", reflect.TypeOf((*MockPeerRepository)(nil).Save), ctx, peer)
 }

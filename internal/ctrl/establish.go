@@ -12,7 +12,7 @@ import (
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
 	"github.com/tjjh89017/stunmesh-go/internal/plugin"
 	"github.com/tjjh89017/stunmesh-go/internal/queue"
-	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
+	"github.com/tjjh89017/stunmesh-go/internal/wg"
 )
 
 type EstablishController struct {
@@ -167,17 +167,11 @@ func (c *EstablishController) ConfigureDevice(ctx context.Context, peer *entity.
 	remoteEndpoint := host + ":" + strconv.FormatInt(int64(port), 10)
 	c.logger.Debug().Str("peer", peer.LocalId()).Str("remote", remoteEndpoint).Msg("configuring device for peer")
 
-	err := c.wgCtrl.ConfigureDevice(peer.DeviceName(), wgtypes.Config{
-		Peers: []wgtypes.PeerConfig{
-			{
-				PublicKey:  peer.PublicKey(),
-				UpdateOnly: UpdateOnly,
-				Endpoint: &net.UDPAddr{
-					IP:   net.ParseIP(host),
-					Port: port,
-				},
-			},
-		},
+	err := c.wgCtrl.UpdatePeerEndpoint(wg.PeerEndpointUpdate{
+		DeviceName: peer.DeviceName(),
+		PublicKey:  peer.PublicKey(),
+		Host:       host,
+		Port:       port,
 	})
 	if err != nil {
 		c.logger.Error().Err(err).Str("peer", peer.LocalId()).Str("device", peer.DeviceName()).Msg("failed to configure device for peer")

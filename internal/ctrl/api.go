@@ -6,12 +6,12 @@ import (
 	"net"
 	"time"
 
-	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
+	"github.com/tjjh89017/stunmesh-go/internal/wg"
 )
 
 type WireGuardClient interface {
-	Device(deviceName string) (*wgtypes.Device, error)
-	ConfigureDevice(deviceName string, cfg wgtypes.Config) error
+	Device(deviceName string) (*wg.DeviceInfo, error)
+	UpdatePeerEndpoint(u wg.PeerEndpointUpdate) error
 }
 
 // ICMPConnection defines the interface for ICMP connections
