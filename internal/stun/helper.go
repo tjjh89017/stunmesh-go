@@ -9,9 +9,8 @@ import (
 )
 
 var (
-	ErrResponseMessage  = errors.New("error reading from response message channel")
-	ErrTimeout          = errors.New("timed out waiting for response")
-	ErrInvalidEndpoint  = errors.New("STUN returned invalid endpoint (port is 0 or host is empty)")
+	ErrResponseMessage = errors.New("error reading from response message channel")
+	ErrTimeout         = errors.New("timed out waiting for response")
 )
 
 const BindingPacketHeaderSize = 8
