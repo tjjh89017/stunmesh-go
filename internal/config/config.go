@@ -36,6 +36,31 @@ type Stun struct {
 	Addresses []string `mapstructure:"addresses"`
 }
 
+// GetServers returns the final merged and deduplicated list of STUN server addresses.
+// It prepends the deprecated Address field (if non-empty) to Addresses, deduplicates
+// while preserving order, and falls back to the Google STUN server if the result is empty.
+func (s *Stun) GetServers() []string {
+	seen := make(map[string]struct{})
+	var servers []string
+
+	for _, addr := range append([]string{s.Address}, s.Addresses...) {
+		if addr == "" {
+			continue
+		}
+		if _, ok := seen[addr]; ok {
+			continue
+		}
+		seen[addr] = struct{}{}
+		servers = append(servers, addr)
+	}
+
+	if len(servers) == 0 {
+		return []string{"stun.l.google.com:19302"}
+	}
+
+	return servers
+}
+
 type PingMonitor struct {
 	Interval     time.Duration `mapstructure:"interval"`
 	Timeout      time.Duration `mapstructure:"timeout"`
@@ -82,6 +107,10 @@ func Load() (*Config, error) {
 	if err := viper.Unmarshal(&cfg); err != nil {
 		return nil, errors.Join(ErrUnmarshalConfig, err)
 	}
+
+	// Merge deprecated Address into Addresses: prepend Address if non-empty, then deduplicate.
+	cfg.Stun.Addresses = cfg.Stun.GetServers()
+	cfg.Stun.Address = ""
 
 	// Validate protocol configurations
 	if err := validateConfig(&cfg); err != nil {
