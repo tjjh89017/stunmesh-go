@@ -32,7 +32,8 @@ type Logger struct {
 }
 
 type Stun struct {
-	Address string `mapstructure:"address"`
+	Address   string   `mapstructure:"address"`
+	Addresses []string `mapstructure:"addresses"`
 }
 
 type PingMonitor struct {
@@ -65,7 +66,8 @@ func Load() (*Config, error) {
 	viper.AutomaticEnv()
 
 	viper.SetDefault("refresh_interval", time.Duration(10)*time.Minute)
-	viper.SetDefault("stun.addr", "stun.l.google.com:19302")
+	viper.SetDefault("stun.address", "stun.l.google.com:19302")
+	viper.SetDefault("stun.addresses", []string{})
 	viper.SetDefault("ping_monitor.interval", time.Duration(1)*time.Second)
 	viper.SetDefault("ping_monitor.timeout", time.Duration(1)*time.Second)
 	viper.SetDefault("ping_monitor.fixed_retries", 3)
