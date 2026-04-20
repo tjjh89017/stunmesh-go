@@ -11,11 +11,19 @@ import (
 
 var ErrAllServersFailed = errors.New("all STUN servers failed")
 
+// StunClient is the interface for a STUN client instance.
+type StunClient interface {
+	Start(ctx context.Context)
+	Stop() error
+	Connect(ctx context.Context, addr string) (string, int, error)
+}
+
 type Resolver struct {
 	config       *config.Config
 	deviceConfig *config.DeviceConfig
 	logger       zerolog.Logger
 	mu           sync.Mutex
+	newClient    func(ctx context.Context, deviceName string, port uint16, protocol string) (StunClient, error)
 }
 
 func NewResolver(config *config.Config, deviceConfig *config.DeviceConfig, logger *zerolog.Logger) *Resolver {
@@ -23,6 +31,9 @@ func NewResolver(config *config.Config, deviceConfig *config.DeviceConfig, logge
 		config:       config,
 		deviceConfig: deviceConfig,
 		logger:       logger.With().Str("component", "stun").Logger(),
+		newClient: func(ctx context.Context, deviceName string, port uint16, protocol string) (StunClient, error) {
+			return New(ctx, deviceName, port, protocol)
+		},
 	}
 }
 
@@ -37,7 +48,7 @@ func (r *Resolver) Resolve(ctx context.Context, deviceName string, port uint16, 
 
 	r.logger.Debug().Str("device", deviceName).Str("protocol", protocol).Msg("resolving with protocol")
 
-	stun, err := New(stunCtx, deviceName, port, protocol)
+	stun, err := r.newClient(stunCtx, deviceName, port, protocol)
 	if err != nil {
 		return "", 0, err
 	}
