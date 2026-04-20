@@ -17,8 +17,8 @@ import (
 	"github.com/tjjh89017/stunmesh-go/internal/plugin"
 	"github.com/tjjh89017/stunmesh-go/internal/repo"
 	"github.com/tjjh89017/stunmesh-go/internal/stun"
+	"github.com/tjjh89017/stunmesh-go/internal/wg"
 	"github.com/tjjh89017/stunmesh-go/pluginapi"
-	"golang.zx2c4.com/wireguard/wgctrl"
 )
 
 // Injectors from wire.go:
@@ -28,7 +28,7 @@ func setup() (*daemon.Daemon, error) {
 	if err != nil {
 		return nil, err
 	}
-	client, err := wgctrl.New()
+	client, err := wg.New()
 	if err != nil {
 		return nil, err
 	}
