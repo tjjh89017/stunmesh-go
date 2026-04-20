@@ -2,11 +2,14 @@ package stun
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	"github.com/rs/zerolog"
 	"github.com/tjjh89017/stunmesh-go/internal/config"
 )
+
+var ErrAllServersFailed = errors.New("all STUN servers failed")
 
 type Resolver struct {
 	config       *config.Config
@@ -46,20 +49,27 @@ func (r *Resolver) Resolve(ctx context.Context, deviceName string, port uint16, 
 		}
 	}()
 
-	host, discoveredPort, err := stun.Connect(stunCtx, r.config.Stun.Address)
-	if err != nil {
-		return "", 0, err
+	servers := r.config.Stun.GetServers()
+	for _, server := range servers {
+		host, discoveredPort, connectErr := stun.Connect(stunCtx, server)
+		if connectErr != nil {
+			r.logger.Warn().Err(connectErr).Str("server", server).Msg("STUN server failed, trying next")
+			continue
+		}
+
+		// Validate the discovered endpoint
+		if discoveredPort == 0 || host == "" {
+			r.logger.Warn().
+				Str("server", server).
+				Str("host", host).
+				Int("port", discoveredPort).
+				Str("protocol", protocol).
+				Msg("STUN returned invalid endpoint, trying next server")
+			continue
+		}
+
+		return host, discoveredPort, nil
 	}
 
-	// Validate the discovered endpoint
-	if discoveredPort == 0 || host == "" {
-		r.logger.Warn().
-			Str("host", host).
-			Int("port", discoveredPort).
-			Str("protocol", protocol).
-			Msg("STUN returned invalid endpoint")
-		return "", 0, ErrInvalidEndpoint
-	}
-
-	return host, discoveredPort, nil
+	return "", 0, ErrAllServersFailed
 }
