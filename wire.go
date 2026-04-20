@@ -15,15 +15,15 @@ import (
 	"github.com/tjjh89017/stunmesh-go/internal/plugin"
 	"github.com/tjjh89017/stunmesh-go/internal/repo"
 	"github.com/tjjh89017/stunmesh-go/internal/stun"
+	"github.com/tjjh89017/stunmesh-go/internal/wg"
 	"github.com/tjjh89017/stunmesh-go/pluginapi"
-	"golang.zx2c4.com/wireguard/wgctrl"
 )
 
 func setup() (*daemon.Daemon, error) {
 	wire.Build(
-		wgctrl.New,
-		wire.Bind(new(ctrl.WireGuardClient), new(*wgctrl.Client)),
-		wire.Bind(new(repo.WireGuardClient), new(*wgctrl.Client)),
+		wg.New,
+		wire.Bind(new(ctrl.WireGuardClient), new(wg.Client)),
+		wire.Bind(new(repo.WireGuardClient), new(wg.Client)),
 		wire.Bind(new(entity.ConfigPeerProvider), new(*config.DeviceConfig)),
 		wire.Bind(new(entity.DevicePeerChecker), new(*repo.Peers)),
 		wire.Bind(new(ctrl.DeviceConfigProvider), new(*config.DeviceConfig)),
