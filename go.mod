@@ -7,7 +7,7 @@ require (
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/packetcap/go-pcap v0.0.0-20251215121130-f2cf9f991e7c
 	github.com/pion/stun/v3 v3.1.2
-	github.com/rs/zerolog v1.35.0
+	github.com/rs/zerolog v1.35.1
 	github.com/spf13/viper v1.21.0
 	go.uber.org/mock v0.6.0
 	golang.org/x/crypto v0.50.0
