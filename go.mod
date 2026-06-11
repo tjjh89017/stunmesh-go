@@ -6,7 +6,7 @@ require (
 	github.com/google/wire v0.7.0
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/packetcap/go-pcap v0.0.0-20251215121130-f2cf9f991e7c
-	github.com/pion/stun/v3 v3.1.4
+	github.com/pion/stun/v3 v3.1.5
 	github.com/rs/zerolog v1.35.1
 	github.com/spf13/viper v1.21.0
 	go.uber.org/mock v0.6.0
@@ -26,7 +26,7 @@ require (
 	github.com/mdlayher/netlink v1.8.0 // indirect
 	github.com/mdlayher/socket v0.5.1 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
-	github.com/pion/dtls/v3 v3.1.3 // indirect
+	github.com/pion/dtls/v3 v3.1.4 // indirect
 	github.com/pion/logging v0.2.4 // indirect
 	github.com/pion/transport/v4 v4.0.2 // indirect
 	github.com/sagikazarmark/locafero v0.12.0 // indirect
