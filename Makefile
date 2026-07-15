@@ -10,16 +10,22 @@ UPX ?= 0
 EXTRA_MIN ?= 0
 BUILTIN ?= all
 ALL_BUILTINS := builtin_cloudflare
-BACKEND ?= wgctrl
+# Empty selects the per-platform default from the internal/wg build constraints:
+# wgcli on freebsd, wgctrl elsewhere. Set to override.
+BACKEND ?=
 PREFIX ?= /usr/local
 BINDIR ?= $(PREFIX)/bin
 
-# Validate BACKEND value
-ifeq ($(filter $(BACKEND),wgctrl wgcli),)
-    $(error BACKEND must be 'wgctrl' or 'wgcli', got '$(BACKEND)')
+# Validate BACKEND value. filter-out rejects unknown words, and the word count
+# rejects a contradictory 'wgctrl wgcli', which filter alone would accept.
+ifneq ($(BACKEND),)
+    ifneq ($(filter-out wgctrl wgcli,$(BACKEND))$(filter-out 1,$(words $(BACKEND))),)
+        $(error BACKEND must be 'wgctrl' or 'wgcli', got '$(BACKEND)')
+    endif
 endif
 
-# Platforms that require CGO_ENABLED=1 (only wgctrl backend on freebsd)
+# Platforms whose wgctrl backend requires CGO_ENABLED=1. They default to wgcli,
+# so this only applies when wgctrl is explicitly requested.
 CGO_REQUIRED_PLATFORMS := freebsd
 
 ifneq ($(EXTRA_MIN),0)
@@ -43,14 +49,9 @@ ifeq ($(BUILTIN),all)
 	override BUILTIN := $(ALL_BUILTINS)
 endif
 
-# Backend build tag: wgcli selects the wg-CLI shelling backend
-BACKEND_TAG :=
-ifeq ($(BACKEND),wgcli)
-	BACKEND_TAG := wgcli
-endif
-
-# Combine BUILTIN and BACKEND tags
-ALL_TAGS := $(strip $(BUILTIN) $(BACKEND_TAG))
+# Combine BUILTIN and BACKEND tags. An empty BACKEND adds no tag, leaving the
+# backend choice to the build constraints in internal/wg.
+ALL_TAGS := $(strip $(BUILTIN) $(BACKEND))
 TAGS_FLAGS = $(if $(ALL_TAGS),-tags '$(ALL_TAGS)',)
 
 UPX_TARGET =
@@ -58,12 +59,15 @@ ifneq ($(UPX),0)
 	UPX_TARGET = upx
 endif
 
-# Set CGO_ENABLED: forced off when BACKEND=wgcli; otherwise platform default
-ifeq ($(BACKEND),wgcli)
-	CGO_ENABLED = 0
-else ifeq ($(GOOS),$(filter $(GOOS),$(CGO_REQUIRED_PLATFORMS)))
-	CGO_ENABLED = 1
-	LDFLAGS := ${LDFLAGS} -extldflags="-static"
+# Set CGO_ENABLED: only an explicit wgctrl on CGO_REQUIRED_PLATFORMS needs it,
+# so every default build is CGO-free.
+ifeq ($(BACKEND),wgctrl)
+	ifeq ($(GOOS),$(filter $(GOOS),$(CGO_REQUIRED_PLATFORMS)))
+		CGO_ENABLED = 1
+		LDFLAGS := ${LDFLAGS} -extldflags="-static"
+	else
+		CGO_ENABLED = 0
+	endif
 else
 	CGO_ENABLED = 0
 endif

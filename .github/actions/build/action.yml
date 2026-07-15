@@ -23,10 +23,6 @@ inputs:
     description: 'Build variant (normal or extra-min)'
     required: false
     default: 'normal'
-  backend:
-    description: 'WireGuard backend (wgctrl or wgcli)'
-    required: false
-    default: 'wgctrl'
 
 outputs:
   binary-name:
@@ -43,9 +39,6 @@ runs:
         SUFFIX=""
         if [ "${{ inputs.variant }}" = "extra-min" ]; then
           SUFFIX="-upx"
-        fi
-        if [ "${{ inputs.backend }}" = "wgcli" ]; then
-          SUFFIX="${SUFFIX}-wgcli"
         fi
 
         if [ -n "${{ inputs.tag }}" ]; then
@@ -66,42 +59,16 @@ runs:
       with:
         go-version: ${{ inputs.go-version }}
 
-    - name: Install UPX (Linux/Darwin)
-      if: inputs.os != 'freebsd' && inputs.variant == 'extra-min'
+    - name: Install UPX
+      if: inputs.variant == 'extra-min'
       shell: bash
       run: |
         sudo apt-get update
         sudo apt-get install -y upx-ucl
 
-    - name: Build (Linux/Darwin)
-      if: inputs.os != 'freebsd'
+    - name: Build
       shell: bash
       run: make APP=${{ steps.build-info.outputs.binary-name }} EXTRA_MIN=${{ steps.build-info.outputs.extra-min }}
       env:
         GOARCH: ${{ inputs.arch }}
         GOOS: ${{ inputs.os }}
-
-    - name: Build (FreeBSD wgctrl, CGO=1)
-      if: inputs.os == 'freebsd' && inputs.backend != 'wgcli'
-      uses: vmactions/freebsd-vm@v1
-      with:
-        arch: ${{ inputs.arch }}
-        sync: sshfs
-        prepare: |
-          # use latest instead of quarterly
-          cat /etc/pkg/FreeBSD.conf
-          pkg update -f
-          pkg upgrade -y
-
-          pkg install -y gmake go
-        run: |
-          cd $GITHUB_WORKSPACE
-          gmake APP=${{ steps.build-info.outputs.binary-name }}
-
-    - name: Build (FreeBSD wgcli, CGO=0)
-      if: inputs.os == 'freebsd' && inputs.backend == 'wgcli'
-      shell: bash
-      run: make APP=${{ steps.build-info.outputs.binary-name }} BACKEND=wgcli
-      env:
-        GOARCH: ${{ inputs.arch }}
-        GOOS: freebsd

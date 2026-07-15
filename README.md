@@ -25,7 +25,12 @@ For best results, ensure at least one peer is behind a cone NAT type.
 
 - **Linux** (amd64, arm, arm64, mipsle) - Normal and UPX-compressed binaries
 - **macOS** (amd64, arm64) - Normal binaries only
-- **FreeBSD** (amd64, arm64) - Normal binaries only
+- **FreeBSD** (amd64, arm64) - Normal binaries only, requires `wireguard-tools`
+
+> [!IMPORTANT]
+> FreeBSD binaries use the `wgcli` backend, which invokes `wg(8)`. The base system ships the
+> `if_wg` kernel module but not that tool, so `pkg install wireguard-tools` is required.
+> See [Backend Selection](#backend-selection).
 
 > [!NOTE]
 > We only support wireguard-go in MacOS, Wireguard App store version is not supported because of sandbox currently.
@@ -35,7 +40,7 @@ For best results, ensure at least one peer is behind a cone NAT type.
 - VyOS 2025.07.14-0022-rolling (built-in Wireguard kernel module)
 - Ubuntu with Wireguard in Kernel module
 - macOS Wireguard-go 0.0.20230223, Wireguard-tools 1.0.20210914
-- FreeBSD 14.3-RELEASE (built-in Wireguard)
+- FreeBSD 14.3-RELEASE (built-in Wireguard kernel module, with wireguard-tools installed)
 - OPNsense 25.1 (built-in Wireguard)
 - EdgeRouter X (EdgeOS 3.0.0)
 
@@ -107,8 +112,7 @@ make all BUILTIN=builtin_cloudflare EXTRA_MIN=1
 ```
 
 **Platform-Specific Notes:**
-- CGO is automatically enabled for FreeBSD (required for this platform)
-- CGO is disabled by default for Linux and Darwin (produces static binaries)
+- CGO is disabled for all default builds, on every platform (produces static binaries). See [Backend Selection](#backend-selection) for the one case that needs it
 - UPX compression significantly reduces binary size but requires the `upx` tool to be installed
 
 **Release Binaries:**
@@ -118,31 +122,41 @@ make all BUILTIN=builtin_cloudflare EXTRA_MIN=1
 
 ### Backend Selection
 
-stunmesh-go supports two WireGuard backends, selectable at build time via the `BACKEND` variable:
+stunmesh-go supports two WireGuard backends:
 
-- `wgctrl` (default): Uses [`wgctrl-go`](https://github.com/WireGuard/wgctrl-go) to talk to the kernel WireGuard interface directly. Requires CGO on FreeBSD.
-- `wgcli`: Shells out to the `wg` command-line tool. Builds with `CGO_ENABLED=0` on all platforms, including FreeBSD cross-compilation from Linux without a sysroot.
+- `wgctrl`: Uses [`wgctrl-go`](https://github.com/WireGuard/wgctrl-go) to talk to the kernel WireGuard interface directly. Requires CGO on FreeBSD.
+- `wgcli`: Shells out to the `wg` command-line tool. Builds with `CGO_ENABLED=0` on all platforms.
 
-**When to choose `BACKEND=wgcli`:**
+Each platform selects its own default, so a plain `make build` or `go build` needs no configuration:
 
-- Cross-compiling for FreeBSD from any host without setting up CGO toolchains
-- Running userspace wireguard-go where direct `wgctrl` socket access is restricted
-- Any environment where invoking the `wg` binary is preferable to direct kernel ioctl calls
+| Platform | Default backend | CGO |
+| --- | --- | --- |
+| Linux, macOS | `wgctrl` | disabled |
+| FreeBSD | `wgcli` | disabled |
 
-**Build examples:**
+FreeBSD defaults to `wgcli` because its `wgctrl` support requires CGO, which cannot be cross-compiled without a sysroot. Every released binary is therefore `CGO_ENABLED=0`.
 
-```bash
-make build BACKEND=wgcli
-make build BACKEND=wgcli GOOS=freebsd GOARCH=amd64   # FreeBSD cross-compile from Linux, no sysroot
+**Runtime requirement on FreeBSD:** because the default backend is `wgcli`, the `wg` command must be installed and available in `PATH`:
+
+```console
+# pkg install wireguard-tools
 ```
 
-**Runtime requirement for `BACKEND=wgcli`:** the `wg` command must be installed and available in `PATH`:
+On Linux and macOS the default needs no such tool: `wgctrl` speaks netlink on Linux and the
+userspace wireguard-go socket protocol on macOS, both in pure Go. There is no reason to select
+`wgcli` on those platforms, and it is neither tested nor supported there.
 
-- Linux: install the `wireguard-tools` package
-- FreeBSD: `pkg install wireguard-tools`
-- macOS: `brew install wireguard-tools`
+**Overriding the default** with the `BACKEND` variable:
 
-The default remains `wgctrl`, so existing users do not need to change anything.
+```bash
+make build BACKEND=wgctrl    # force wgctrl; on FreeBSD this needs CGO and a native toolchain
+```
+
+Building `BACKEND=wgctrl` on FreeBSD must be done natively (`gmake BACKEND=wgctrl`) — it cannot be
+cross-compiled from Linux, and it is not part of any release.
+
+If you build directly with `go build` instead of `make`, the same defaults apply; override with
+`-tags wgctrl`.
 
 ## Usage
 
