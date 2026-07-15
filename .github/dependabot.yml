@@ -11,3 +11,12 @@ updates:
       - "/contrib/**"
     schedule:
       interval: "weekly"
+
+  # "/" only covers .github/workflows. The composite actions each need their own
+  # directory, and that is where golangci-lint-action and the docker actions live.
+  - package-ecosystem: "github-actions"
+    directories:
+      - "/"
+      - "/.github/actions/**"
+    schedule:
+      interval: "weekly"

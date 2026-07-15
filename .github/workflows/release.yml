@@ -13,7 +13,7 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Lint
         uses: ./.github/actions/lint
         with:
@@ -23,7 +23,7 @@ jobs:
     name: Test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Test
         uses: ./.github/actions/test
         with:
@@ -56,7 +56,7 @@ jobs:
           - os: freebsd
             variant: extra-min
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: tag
         id: tag
         run: echo "TAG=$(git describe --tags --dirty)" >> "$GITHUB_OUTPUT"
@@ -103,7 +103,7 @@ jobs:
           - os: freebsd
             arch: mipsle
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: tag
         id: tag
         run: echo "TAG=$(git describe --tags --dirty)" >> "$GITHUB_OUTPUT"
@@ -141,7 +141,7 @@ jobs:
       - lint
       - test
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Build and Push Docker
         uses: ./.github/actions/docker
         with:
