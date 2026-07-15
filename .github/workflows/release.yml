@@ -29,12 +29,38 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
-  release:
-    name: Release
+  # Creates the draft up front so the upload jobs below only ever find it.
+  # A draft is invisible to the get-release-by-tag API, so every uploader falls
+  # back to listing releases; without this barrier the ones that start together
+  # all miss it and each create their own draft for the same tag.
+  create-release:
+    name: Create Release
     runs-on: ubuntu-latest
     needs:
       - lint
       - test
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: tag
+        id: tag
+        run: echo "TAG=$(git describe --tags --dirty)" >> "$GITHUB_OUTPUT"
+      - name: Create draft release
+        uses: softprops/action-gh-release@v3
+        with:
+          draft: true
+          prerelease: >-
+            ${{
+              contains(steps.tag.outputs.TAG, 'RC') ||
+              contains(steps.tag.outputs.TAG, 'rc')
+            }}
+
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    needs:
+      - create-release
     permissions:
       contents: write
     strategy:
@@ -85,8 +111,7 @@ jobs:
     name: Release Plugins
     runs-on: ubuntu-latest
     needs:
-      - lint
-      - test
+      - create-release
     permissions:
       contents: write
     strategy:
@@ -138,8 +163,7 @@ jobs:
     name: Build Docker container
     runs-on: ubuntu-latest
     needs:
-      - lint
-      - test
+      - create-release
     steps:
       - uses: actions/checkout@v7
       - name: Build and Push Docker
