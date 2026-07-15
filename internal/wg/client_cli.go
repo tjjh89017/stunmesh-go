@@ -1,4 +1,4 @@
-//go:build wgcli
+//go:build wgcli || (freebsd && !wgctrl)
 
 package wg
 
@@ -34,6 +34,11 @@ func defaultRunner(ctx context.Context, name string, args ...string) ([]byte, er
 }
 
 func New() (Client, error) {
+	// Fail at startup rather than once per refresh: this backend is useless
+	// without wg(8), and the bootstrap controller only logs device errors.
+	if _, err := exec.LookPath("wg"); err != nil {
+		return nil, fmt.Errorf("wg command not found in PATH, install wireguard-tools: %w", err)
+	}
 	return &cliClient{runner: defaultRunner}, nil
 }
 

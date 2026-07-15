@@ -25,8 +25,7 @@ runs:
       with:
         go-version: ${{ inputs.go-version }}
 
-    - name: Build All Plugins (Linux/Darwin)
-      if: inputs.os != 'freebsd'
+    - name: Build All Plugins
       shell: bash
       run: |
         # Unset APP to avoid conflicts with workflow-level env.APP
@@ -53,33 +52,3 @@ runs:
       env:
         GOARCH: ${{ inputs.arch }}
         GOOS: ${{ inputs.os }}
-
-    - name: Build All Plugins (FreeBSD)
-      if: inputs.os == 'freebsd'
-      uses: vmactions/freebsd-vm@v1
-      with:
-        arch: ${{ inputs.arch }}
-        sync: sshfs
-        prepare: |
-          # use latest instead of quarterly
-          cat /etc/pkg/FreeBSD.conf
-          pkg update -f
-          pkg upgrade -y
-
-          pkg install -y gmake go
-        run: |
-          cd $GITHUB_WORKSPACE
-          # Unset APP to avoid conflicts with workflow-level env.APP
-          unset APP
-          mkdir -p plugins_dist
-          for plugin_dir in contrib/*/; do
-            if [ -f "${plugin_dir}Makefile" ]; then
-              plugin_name=$(basename "$plugin_dir")
-              echo "Building plugin: $plugin_name"
-              cd "$plugin_dir"
-              gmake build
-              # Move built binary to output directory
-              mv stunmesh-* ../../plugins_dist/ 2>/dev/null || true
-              cd ../..
-            fi
-          done

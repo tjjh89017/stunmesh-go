@@ -1,4 +1,4 @@
-//go:build wgcli
+//go:build wgcli || (freebsd && !wgctrl)
 
 package wg
 
