@@ -33,11 +33,12 @@ func (cc *ctrlClient) Device(name string) (*DeviceInfo, error) {
 	}
 
 	return &DeviceInfo{
-		Name:       d.Name,
-		ListenPort: d.ListenPort,
-		PrivateKey: Key(d.PrivateKey),
-		PublicKey:  Key(d.PublicKey),
-		PeerKeys:   peerKeys,
+		Name:         d.Name,
+		ListenPort:   d.ListenPort,
+		PrivateKey:   Key(d.PrivateKey),
+		PublicKey:    Key(d.PublicKey),
+		PeerKeys:     peerKeys,
+		FirewallMark: d.FirewallMark,
 	}, nil
 }
 

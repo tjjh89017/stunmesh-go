@@ -73,6 +73,10 @@ func parseDeviceDump(name string, output []byte) (*DeviceInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("wg show dump: failed to parse listen-port")
 	}
+	fwmark, err := parseFwmark(devFields[3])
+	if err != nil {
+		return nil, fmt.Errorf("wg show dump: failed to parse fwmark")
+	}
 
 	var peerKeys []Key
 	for _, raw := range lines[1:] {
@@ -92,12 +96,31 @@ func parseDeviceDump(name string, output []byte) (*DeviceInfo, error) {
 	}
 
 	return &DeviceInfo{
-		Name:       name,
-		ListenPort: port,
-		PrivateKey: priv,
-		PublicKey:  pub,
-		PeerKeys:   peerKeys,
+		Name:         name,
+		ListenPort:   port,
+		PrivateKey:   priv,
+		PublicKey:    pub,
+		PeerKeys:     peerKeys,
+		FirewallMark: fwmark,
 	}, nil
+}
+
+// parseFwmark reads the fwmark field of a `wg show dump` device line, which
+// wg(8) prints as "off" or 0x%x. Anything else means the format moved, and
+// reporting no mark would silently cost STUN path parity.
+func parseFwmark(s string) (int, error) {
+	if s == "off" {
+		return 0, nil
+	}
+	hex, ok := strings.CutPrefix(s, "0x")
+	if !ok {
+		return 0, fmt.Errorf(`expected "off" or a 0x-prefixed hex value`)
+	}
+	v, err := strconv.ParseUint(hex, 16, 32)
+	if err != nil {
+		return 0, err
+	}
+	return int(uint32(v)), nil
 }
 
 func decodeKey(s string) (Key, error) {
