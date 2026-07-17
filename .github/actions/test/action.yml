@@ -14,6 +14,10 @@ runs:
       with:
         go-version: ${{ inputs.go-version }}
 
+    # Run as root so the tests that need CAP_NET_RAW / CAP_NET_ADMIN actually
+    # execute instead of skipping themselves. `sudo -E env "PATH=$PATH"` rather
+    # than a bare `sudo`, because sudo's secure_path drops the Go that
+    # setup-go put on PATH.
     - name: Test
       shell: bash
-      run: make test
+      run: sudo -E env "PATH=$PATH" make test
