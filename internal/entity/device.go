@@ -9,18 +9,20 @@ var (
 type DeviceId string
 
 type Device struct {
-	name       DeviceId
-	listenPort int
-	privateKey []byte
-	protocol   string
+	name         DeviceId
+	listenPort   int
+	privateKey   []byte
+	protocol     string
+	firewallMark int
 }
 
-func NewDevice(name DeviceId, listenPort int, privateKey []byte, protocol string) *Device {
+func NewDevice(name DeviceId, listenPort int, privateKey []byte, protocol string, firewallMark int) *Device {
 	return &Device{
-		name:       name,
-		listenPort: listenPort,
-		privateKey: privateKey,
-		protocol:   protocol,
+		name:         name,
+		listenPort:   listenPort,
+		privateKey:   privateKey,
+		protocol:     protocol,
+		firewallMark: firewallMark,
 	}
 }
 
@@ -40,4 +42,8 @@ func (d *Device) ListenPort() int {
 
 func (d *Device) Protocol() string {
 	return d.protocol
+}
+
+func (d *Device) FirewallMark() int {
+	return d.firewallMark
 }

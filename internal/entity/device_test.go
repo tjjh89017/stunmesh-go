@@ -12,8 +12,9 @@ func TestNewDevice(t *testing.T) {
 	privateKey := make([]byte, 32)
 	privateKey[0] = 1
 	protocol := "ipv4"
+	firewallMark := 0xca6c
 
-	device := entity.NewDevice(name, listenPort, privateKey, protocol)
+	device := entity.NewDevice(name, listenPort, privateKey, protocol, firewallMark)
 
 	if device == nil {
 		t.Fatal("Expected device to be created")
@@ -29,6 +30,10 @@ func TestNewDevice(t *testing.T) {
 
 	if device.Protocol() != protocol {
 		t.Errorf("Expected protocol %s, got %s", protocol, device.Protocol())
+	}
+
+	if device.FirewallMark() != firewallMark {
+		t.Errorf("Expected firewall mark %#x, got %#x", firewallMark, device.FirewallMark())
 	}
 
 	// Check private key
@@ -51,7 +56,7 @@ func TestDevice_Name(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			device := entity.NewDevice(tt.deviceName, 51820, make([]byte, 32), "ipv4")
+			device := entity.NewDevice(tt.deviceName, 51820, make([]byte, 32), "ipv4", 0)
 
 			if device.Name() != tt.deviceName {
 				t.Errorf("Expected name %s, got %s", tt.deviceName, device.Name())
@@ -73,7 +78,7 @@ func TestDevice_ListenPort(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			device := entity.NewDevice("wg0", tt.listenPort, make([]byte, 32), "ipv4")
+			device := entity.NewDevice("wg0", tt.listenPort, make([]byte, 32), "ipv4", 0)
 
 			if device.ListenPort() != tt.listenPort {
 				t.Errorf("Expected listen port %d, got %d", tt.listenPort, device.ListenPort())
@@ -88,7 +93,7 @@ func TestDevice_PrivateKey(t *testing.T) {
 		privateKey[i] = byte(i)
 	}
 
-	device := entity.NewDevice("wg0", 51820, privateKey, "ipv4")
+	device := entity.NewDevice("wg0", 51820, privateKey, "ipv4", 0)
 	retrievedKey := device.PrivateKey()
 
 	// Verify key is copied correctly
@@ -118,7 +123,7 @@ func TestDevice_Protocol(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			device := entity.NewDevice("wg0", 51820, make([]byte, 32), tt.protocol)
+			device := entity.NewDevice("wg0", 51820, make([]byte, 32), tt.protocol, 0)
 
 			if device.Protocol() != tt.protocol {
 				t.Errorf("Expected protocol %s, got %s", tt.protocol, device.Protocol())
@@ -129,7 +134,7 @@ func TestDevice_Protocol(t *testing.T) {
 
 func TestDevice_GettersImmutability(t *testing.T) {
 	// Test that getters return values, not references that can be modified
-	device := entity.NewDevice("wg0", 51820, make([]byte, 32), "ipv4")
+	device := entity.NewDevice("wg0", 51820, make([]byte, 32), "ipv4", 0)
 
 	// Get private key twice and modify first
 	key1 := device.PrivateKey()
