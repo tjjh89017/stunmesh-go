@@ -384,6 +384,25 @@ Common parameters to remember:
 4. GitHub Actions will automatically build and release the plugin for all supported platforms
 5. See `contrib/README.md` for detailed plugin development guide
 
+### Adding New Built-in Plugins
+1. Create `internal/plugin/builtin/<name>/<name>.go`, guarded by `//go:build builtin_<name>`
+   - Implement `Store`, plus a constructor matching `registry.Factory`
+   - Register it from `init()`: `registry.Register("<name>", New<Name>Plugin)`
+2. Create `internal/plugin/builtin/<name>/stub.go`, guarded by `//go:build !builtin_<name>`, declaring nothing but `package <name>`
+   - **Required, not optional.** `internal/plugin/imports.go` imports every built-in unconditionally, so without a stub a build that omits the tag fails with `build constraints exclude all Go files`
+3. Add a blank import to `internal/plugin/imports.go`
+   - That file carries no build tag, and must not: a blank import names no symbol, so importing a built-in that is tagged out (leaving only its stub) is fine. The tag belongs on the implementation, once
+4. Add `builtin_<name>` to `ALL_BUILTINS` in the `Makefile`
+5. Update the built-in plugin list and configuration example in README.md
+
+Verify every tag combination, since a built-in must be able to compile
+both alone and alongside the others:
+```bash
+for t in "" builtin_cloudflare builtin_<name> "builtin_cloudflare builtin_<name>"; do
+  go build -tags "$t" -o /dev/null . || echo "FAILED: '$t'"
+done
+```
+
 ### Adding New Plugin Types to Core
 1. Add new `PluginType` constant in `plugin/manager.go`
 2. Implement `Store` interface in new plugin file
