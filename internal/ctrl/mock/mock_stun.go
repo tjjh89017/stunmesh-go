@@ -41,9 +41,9 @@ func (m *MockStunResolver) EXPECT() *MockStunResolverMockRecorder {
 }
 
 // Resolve mocks base method.
-func (m *MockStunResolver) Resolve(ctx context.Context, deviceName string, port uint16, protocol string) (string, int, error) {
+func (m *MockStunResolver) Resolve(ctx context.Context, deviceName string, port uint16, protocol string, firewallMark int) (string, int, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Resolve", ctx, deviceName, port, protocol)
+	ret := m.ctrl.Call(m, "Resolve", ctx, deviceName, port, protocol, firewallMark)
 	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(int)
 	ret2, _ := ret[2].(error)
@@ -51,7 +51,7 @@ func (m *MockStunResolver) Resolve(ctx context.Context, deviceName string, port 
 }
 
 // Resolve indicates an expected call of Resolve.
-func (mr *MockStunResolverMockRecorder) Resolve(ctx, deviceName, port, protocol any) *gomock.Call {
+func (mr *MockStunResolverMockRecorder) Resolve(ctx, deviceName, port, protocol, firewallMark any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Resolve", reflect.TypeOf((*MockStunResolver)(nil).Resolve), ctx, deviceName, port, protocol)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Resolve", reflect.TypeOf((*MockStunResolver)(nil).Resolve), ctx, deviceName, port, protocol, firewallMark)
 }

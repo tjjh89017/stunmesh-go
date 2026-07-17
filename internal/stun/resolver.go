@@ -23,7 +23,7 @@ type Resolver struct {
 	deviceConfig *config.DeviceConfig
 	logger       zerolog.Logger
 	mu           sync.Mutex
-	newClient    func(ctx context.Context, deviceName string, port uint16, protocol string) (StunClient, error)
+	newClient    func(ctx context.Context, deviceName string, port uint16, protocol string, firewallMark int) (StunClient, error)
 }
 
 func NewResolver(config *config.Config, deviceConfig *config.DeviceConfig, logger *zerolog.Logger) *Resolver {
@@ -31,16 +31,18 @@ func NewResolver(config *config.Config, deviceConfig *config.DeviceConfig, logge
 		config:       config,
 		deviceConfig: deviceConfig,
 		logger:       logger.With().Str("component", "stun").Logger(),
-		newClient: func(ctx context.Context, deviceName string, port uint16, protocol string) (StunClient, error) {
-			return New(ctx, deviceName, port, protocol)
+		newClient: func(ctx context.Context, deviceName string, port uint16, protocol string, firewallMark int) (StunClient, error) {
+			return New(ctx, deviceName, port, protocol, firewallMark)
 		},
 	}
 }
 
 // Resolve performs STUN discovery for the specified device and protocol
 // protocol must be "ipv4" or "ipv6" (not "dualstack")
+// firewallMark is the device's fwmark, mirrored onto the probe socket so it
+// follows the same routing path as the traffic it measures (Linux only)
 // Returns error if STUN discovery fails or returns invalid endpoint (port=0 or empty host)
-func (r *Resolver) Resolve(ctx context.Context, deviceName string, port uint16, protocol string) (_ string, _ int, err error) {
+func (r *Resolver) Resolve(ctx context.Context, deviceName string, port uint16, protocol string, firewallMark int) (_ string, _ int, err error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -48,7 +50,7 @@ func (r *Resolver) Resolve(ctx context.Context, deviceName string, port uint16, 
 
 	r.logger.Debug().Str("device", deviceName).Str("protocol", protocol).Msg("resolving with protocol")
 
-	stun, err := r.newClient(stunCtx, deviceName, port, protocol)
+	stun, err := r.newClient(stunCtx, deviceName, port, protocol, firewallMark)
 	if err != nil {
 		return "", 0, err
 	}
