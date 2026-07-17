@@ -15,7 +15,6 @@ import (
 	"github.com/tjjh89017/stunmesh-go/internal/queue"
 )
 
-
 type DeviceConfigProvider interface {
 	GetInterfaceProtocol(deviceName string) string
 }
@@ -47,7 +46,7 @@ func NewPublishController(devices DeviceRepository, peers PeerRepository, plugin
 		encryptor:     encryptor,
 		deviceConfig:  deviceConfig,
 		logger:        logger.With().Str("controller", "publish").Logger(),
-		triggerQueue:  queue.NewBuffered[struct{}](queue.TriggerQueueSize), // Buffered trigger queue
+		triggerQueue:  queue.NewBuffered[struct{}](queue.TriggerQueueSize),   // Buffered trigger queue
 		peerQueue:     queue.NewBuffered[entity.PeerId](queue.PeerQueueSize), // Buffered peer queue
 		lastPublished: make(map[string]string),
 	}
