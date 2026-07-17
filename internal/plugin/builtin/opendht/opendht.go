@@ -14,8 +14,13 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"github.com/tjjh89017/stunmesh-go/internal/plugin/registry"
 	pluginapi "github.com/tjjh89017/stunmesh-go/pluginapi"
 )
+
+func init() {
+	registry.Register("opendht", NewOpenDHTPlugin)
+}
 
 const (
 	defaultEndpoint = "https://dhtproxy.jami.net"

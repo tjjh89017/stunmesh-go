@@ -12,6 +12,7 @@ import (
 	mock "github.com/tjjh89017/stunmesh-go/internal/ctrl/mock"
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
 	"github.com/tjjh89017/stunmesh-go/internal/plugin"
+	"github.com/tjjh89017/stunmesh-go/internal/plugin/registry"
 	"github.com/tjjh89017/stunmesh-go/pluginapi"
 	"go.uber.org/mock/gomock"
 )
@@ -54,7 +55,7 @@ var testPluginOnce sync.Once
 func registerTestPlugin() {
 	testPluginOnce.Do(func() {
 		testStoreInstance = newTestStore()
-		plugin.RegisterBuiltin("test_storage", func(cfg pluginapi.PluginConfig) (pluginapi.Store, error) {
+		registry.Register("test_storage", func(cfg pluginapi.PluginConfig) (pluginapi.Store, error) {
 			return testStoreInstance, nil
 		})
 	})
