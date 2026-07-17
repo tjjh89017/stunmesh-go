@@ -20,6 +20,11 @@ import (
 type fakeDedupStore struct {
 	setCalls int
 	getCalls int
+
+	// setErr, if non-nil, is returned by the next Set call and then cleared,
+	// so it simulates a single transient storage failure without affecting
+	// subsequent calls.
+	setErr error
 }
 
 func (f *fakeDedupStore) Get(ctx context.Context, key string) (string, error) {
@@ -29,6 +34,11 @@ func (f *fakeDedupStore) Get(ctx context.Context, key string) (string, error) {
 
 func (f *fakeDedupStore) Set(ctx context.Context, key string, value string) error {
 	f.setCalls++
+	if f.setErr != nil {
+		err := f.setErr
+		f.setErr = nil
+		return err
+	}
 	return nil
 }
 
@@ -761,6 +771,173 @@ func TestPublishController_Execute_Dedup_OffByDefault_AlwaysPublishes(t *testing
 
 	if store.setCalls != 2 {
 		t.Errorf("store.Set call count = %d, want 2 (dedup disabled, default behavior unchanged)", store.setCalls)
+	}
+}
+
+// Test ExecuteForPeer with dedup ON and an unchanged endpoint - second call
+// should skip both encryption and storage.
+func TestPublishController_ExecuteForPeer_Dedup_UnchangedEndpoint_Skips(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+
+	mockDevices := mock.NewMockDeviceRepository(mockCtrl)
+	mockPeers := mock.NewMockPeerRepository(mockCtrl)
+	mockResolver := mock.NewMockStunResolver(mockCtrl)
+	mockEncryptor := mock.NewMockEndpointEncryptor(mockCtrl)
+	logger := zerolog.Nop()
+
+	ctx := context.Background()
+	pluginManager, store := newDedupTestManager(t, "dedup_test_peer_unchanged", true)
+
+	device := createTestDevice("wg0", 51820, "ipv4")
+	peer := createTestPeer("wg0", "test_plugin", "ipv4")
+	publicKey := peer.PublicKey()
+	peerId := entity.NewPeerId(make([]byte, 32), publicKey[:])
+
+	mockPeers.EXPECT().Find(ctx, peerId).Return(peer, nil).Times(2)
+	mockDevices.EXPECT().Find(ctx, entity.DeviceId("wg0")).Return(device, nil).Times(2)
+
+	// Same endpoint resolved both times.
+	mockResolver.EXPECT().
+		Resolve(ctx, "wg0", uint16(51820), "ipv4").
+		Return("1.2.3.4", 51820, nil).
+		Times(2)
+
+	// Encrypt must only happen on the first (non-duplicate) publish; a
+	// second Encrypt call would fail the test via gomock's unmet/overrun
+	// expectation check.
+	mockEncryptor.EXPECT().
+		Encrypt(ctx, gomock.Any()).
+		Return(&ctrl.EndpointEncryptResponse{Data: "encrypted_data"}, nil).
+		Times(1)
+
+	controller := ctrl.NewPublishController(
+		mockDevices,
+		mockPeers,
+		pluginManager,
+		mockResolver,
+		mockEncryptor,
+		nil,
+		&logger,
+	)
+
+	controller.ExecuteForPeer(ctx, peerId)
+	controller.ExecuteForPeer(ctx, peerId)
+
+	if store.setCalls != 1 {
+		t.Errorf("store.Set call count = %d, want 1 (second publish should be deduped)", store.setCalls)
+	}
+}
+
+// Test ExecuteForPeer with dedup ON and a changed endpoint - should publish
+// every time.
+func TestPublishController_ExecuteForPeer_Dedup_ChangedEndpoint_Publishes(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+
+	mockDevices := mock.NewMockDeviceRepository(mockCtrl)
+	mockPeers := mock.NewMockPeerRepository(mockCtrl)
+	mockResolver := mock.NewMockStunResolver(mockCtrl)
+	mockEncryptor := mock.NewMockEndpointEncryptor(mockCtrl)
+	logger := zerolog.Nop()
+
+	ctx := context.Background()
+	pluginManager, store := newDedupTestManager(t, "dedup_test_peer_changed", true)
+
+	device := createTestDevice("wg0", 51820, "ipv4")
+	peer := createTestPeer("wg0", "test_plugin", "ipv4")
+	publicKey := peer.PublicKey()
+	peerId := entity.NewPeerId(make([]byte, 32), publicKey[:])
+
+	mockPeers.EXPECT().Find(ctx, peerId).Return(peer, nil).Times(2)
+	mockDevices.EXPECT().Find(ctx, entity.DeviceId("wg0")).Return(device, nil).Times(2)
+
+	// Two calls, two different resolved endpoints.
+	gomock.InOrder(
+		mockResolver.EXPECT().
+			Resolve(ctx, "wg0", uint16(51820), "ipv4").
+			Return("1.2.3.4", 51820, nil),
+		mockResolver.EXPECT().
+			Resolve(ctx, "wg0", uint16(51820), "ipv4").
+			Return("5.6.7.8", 51820, nil),
+	)
+
+	mockEncryptor.EXPECT().
+		Encrypt(ctx, gomock.Any()).
+		Return(&ctrl.EndpointEncryptResponse{Data: "encrypted_data"}, nil).
+		Times(2)
+
+	controller := ctrl.NewPublishController(
+		mockDevices,
+		mockPeers,
+		pluginManager,
+		mockResolver,
+		mockEncryptor,
+		nil,
+		&logger,
+	)
+
+	controller.ExecuteForPeer(ctx, peerId)
+	controller.ExecuteForPeer(ctx, peerId)
+
+	if store.setCalls != 2 {
+		t.Errorf("store.Set call count = %d, want 2 (endpoint changed between calls)", store.setCalls)
+	}
+}
+
+// Test that a failed store.Set is not cached as a successful publish, so a
+// retry with the identical endpoint still attempts to store again instead
+// of being deduped.
+func TestPublishController_Execute_Dedup_FailedStore_DoesNotCacheAndRetries(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+
+	mockDevices := mock.NewMockDeviceRepository(mockCtrl)
+	mockPeers := mock.NewMockPeerRepository(mockCtrl)
+	mockResolver := mock.NewMockStunResolver(mockCtrl)
+	mockEncryptor := mock.NewMockEndpointEncryptor(mockCtrl)
+	logger := zerolog.Nop()
+
+	ctx := context.Background()
+	pluginManager, store := newDedupTestManager(t, "dedup_test_failed_store", true)
+	// The first Set call fails; the second (retry) succeeds.
+	store.setErr = errors.New("store unavailable")
+
+	device := createTestDevice("wg0", 51820, "ipv4")
+	peer := createTestPeer("wg0", "test_plugin", "ipv4")
+
+	mockDevices.EXPECT().List(ctx).Return([]*entity.Device{device}, nil).Times(2)
+	mockPeers.EXPECT().ListByDevice(ctx, entity.DeviceId("wg0")).Return([]*entity.Peer{peer}, nil).Times(2)
+
+	// Same endpoint resolved both times.
+	mockResolver.EXPECT().
+		Resolve(ctx, "wg0", uint16(51820), "ipv4").
+		Return("1.2.3.4", 51820, nil).
+		Times(2)
+
+	// Encrypt runs on both attempts: since the first store.Set failed,
+	// lastPublished was never updated, so the second Execute call (with the
+	// identical endpoint) is not deduped and retries the full publish.
+	mockEncryptor.EXPECT().
+		Encrypt(ctx, gomock.Any()).
+		Return(&ctrl.EndpointEncryptResponse{Data: "encrypted_data"}, nil).
+		Times(2)
+
+	controller := ctrl.NewPublishController(
+		mockDevices,
+		mockPeers,
+		pluginManager,
+		mockResolver,
+		mockEncryptor,
+		nil,
+		&logger,
+	)
+
+	controller.Execute(ctx)
+	controller.Execute(ctx)
+
+	if store.setCalls != 2 {
+		t.Errorf("store.Set call count = %d, want 2 (failed publish must not be cached as success)", store.setCalls)
 	}
 }
 
