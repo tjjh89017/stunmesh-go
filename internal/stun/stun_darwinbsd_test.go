@@ -88,12 +88,13 @@ func TestResolveListenInterfaces(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:      "naming the wg interface itself is skipped",
-			exclude:   "wg0",
-			listen:    []string{"wg0", "em0"},
-			ifaces:    ifaceList("em0", "wg0"),
-			route:     constRoute("", nil),
-			wantNames: []string{"em0"},
+			name:         "naming the wg interface itself is skipped",
+			exclude:      "wg0",
+			listen:       []string{"wg0", "em0"},
+			ifaces:       ifaceList("em0", "wg0"),
+			route:        constRoute("", nil),
+			wantNames:    []string{"em0"},
+			wantRequired: []string{"em0"}, // em0 is explicitly listed, so still required
 		},
 		{
 			name:         "default route interface is added (best effort, not required)",
