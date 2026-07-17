@@ -132,7 +132,7 @@ func TestPublishController_Execute_STUNError(t *testing.T) {
 	// Setup expectations
 	mockDevices.EXPECT().List(ctx).Return([]*entity.Device{device}, nil)
 	mockResolver.EXPECT().
-		Resolve(ctx, "wg0", uint16(51820), "ipv4").
+		Resolve(ctx, "wg0", uint16(51820), "ipv4", gomock.Any()).
 		Return("", 0, errors.New("STUN failed"))
 
 	controller := ctrl.NewPublishController(
@@ -146,6 +146,43 @@ func TestPublishController_Execute_STUNError(t *testing.T) {
 	)
 
 	// Should continue without panic
+	controller.Execute(ctx)
+}
+
+// The device's fwmark has to reach the resolver, or the STUN probe leaves
+// unmarked and takes a different route than the WireGuard traffic it is
+// measuring. gomock fails the exact-value expectation if it does not.
+func TestPublishController_Execute_ForwardsDeviceFirewallMark(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+
+	mockDevices := mock.NewMockDeviceRepository(mockCtrl)
+	mockResolver := mock.NewMockStunResolver(mockCtrl)
+	logger := zerolog.Nop()
+
+	ctx := context.Background()
+	pluginManager := plugin.NewManager()
+
+	const mark = 0xca6c
+	device := entity.NewDevice(entity.DeviceId("wg0"), 51820, make([]byte, 32), "ipv4", mark)
+
+	mockDevices.EXPECT().List(ctx).Return([]*entity.Device{device}, nil)
+	// Exact value, not gomock.Any(): this is the assertion. Erroring out here
+	// keeps the test to the one thing it is about.
+	mockResolver.EXPECT().
+		Resolve(ctx, "wg0", uint16(51820), "ipv4", mark).
+		Return("", 0, errors.New("stop after the resolver call"))
+
+	controller := ctrl.NewPublishController(
+		mockDevices,
+		nil,
+		pluginManager,
+		mockResolver,
+		nil,
+		nil,
+		&logger,
+	)
+
 	controller.Execute(ctx)
 }
 
@@ -167,7 +204,7 @@ func TestPublishController_Execute_PeerListError(t *testing.T) {
 	// Setup expectations
 	mockDevices.EXPECT().List(ctx).Return([]*entity.Device{device}, nil)
 	mockResolver.EXPECT().
-		Resolve(ctx, "wg0", uint16(51820), "ipv4").
+		Resolve(ctx, "wg0", uint16(51820), "ipv4", gomock.Any()).
 		Return("1.2.3.4", 51820, nil)
 	mockPeers.EXPECT().ListByDevice(ctx, entity.DeviceId("wg0")).
 		Return(nil, errors.New("failed to list peers"))
@@ -207,7 +244,7 @@ func TestPublishController_Execute_EncryptionError(t *testing.T) {
 	mockDevices.EXPECT().List(ctx).Return([]*entity.Device{device}, nil)
 	mockPeers.EXPECT().ListByDevice(ctx, entity.DeviceId("wg0")).Return([]*entity.Peer{peer}, nil)
 	mockResolver.EXPECT().
-		Resolve(ctx, "wg0", uint16(51820), "ipv4").
+		Resolve(ctx, "wg0", uint16(51820), "ipv4", gomock.Any()).
 		Return("1.2.3.4", 51820, nil)
 
 	// Expect encryption to fail
@@ -250,7 +287,7 @@ func TestPublishController_Execute_SuccessfulEncryption(t *testing.T) {
 	mockDevices.EXPECT().List(ctx).Return([]*entity.Device{device}, nil)
 	mockPeers.EXPECT().ListByDevice(ctx, entity.DeviceId("wg0")).Return([]*entity.Peer{peer}, nil)
 	mockResolver.EXPECT().
-		Resolve(ctx, "wg0", uint16(51820), "ipv4").
+		Resolve(ctx, "wg0", uint16(51820), "ipv4", gomock.Any()).
 		Return("1.2.3.4", 51820, nil)
 
 	// Verify the JSON content being encrypted
@@ -311,7 +348,7 @@ func TestPublishController_Execute_IPv6(t *testing.T) {
 	mockDevices.EXPECT().List(ctx).Return([]*entity.Device{device}, nil)
 	mockPeers.EXPECT().ListByDevice(ctx, entity.DeviceId("wg0")).Return([]*entity.Peer{peer}, nil)
 	mockResolver.EXPECT().
-		Resolve(ctx, "wg0", uint16(51820), "ipv6").
+		Resolve(ctx, "wg0", uint16(51820), "ipv6", gomock.Any()).
 		Return("2001:db8::1", 51820, nil)
 
 	mockEncryptor.EXPECT().
@@ -366,10 +403,10 @@ func TestPublishController_Execute_Dualstack(t *testing.T) {
 
 	// Expect both IPv4 and IPv6 resolution
 	mockResolver.EXPECT().
-		Resolve(ctx, "wg0", uint16(51820), "ipv4").
+		Resolve(ctx, "wg0", uint16(51820), "ipv4", gomock.Any()).
 		Return("1.2.3.4", 51820, nil)
 	mockResolver.EXPECT().
-		Resolve(ctx, "wg0", uint16(51820), "ipv6").
+		Resolve(ctx, "wg0", uint16(51820), "ipv6", gomock.Any()).
 		Return("2001:db8::1", 51820, nil)
 
 	mockEncryptor.EXPECT().
@@ -421,10 +458,10 @@ func TestPublishController_Execute_Dualstack_BothFail(t *testing.T) {
 
 	// Both resolutions fail
 	mockResolver.EXPECT().
-		Resolve(ctx, "wg0", uint16(51820), "ipv4").
+		Resolve(ctx, "wg0", uint16(51820), "ipv4", gomock.Any()).
 		Return("", 0, errors.New("IPv4 failed"))
 	mockResolver.EXPECT().
-		Resolve(ctx, "wg0", uint16(51820), "ipv6").
+		Resolve(ctx, "wg0", uint16(51820), "ipv6", gomock.Any()).
 		Return("", 0, errors.New("IPv6 failed"))
 
 	controller := ctrl.NewPublishController(
@@ -468,7 +505,7 @@ func TestPublishController_Execute_MultipleDevices(t *testing.T) {
 	// Device 1 (wg0)
 	mockPeers.EXPECT().ListByDevice(ctx, entity.DeviceId("wg0")).Return([]*entity.Peer{peer1}, nil)
 	mockResolver.EXPECT().
-		Resolve(ctx, "wg0", uint16(51820), "ipv4").
+		Resolve(ctx, "wg0", uint16(51820), "ipv4", gomock.Any()).
 		Return("1.2.3.4", 51820, nil)
 	mockEncryptor.EXPECT().
 		Encrypt(ctx, gomock.Any()).
@@ -477,7 +514,7 @@ func TestPublishController_Execute_MultipleDevices(t *testing.T) {
 	// Device 2 (wg1)
 	mockPeers.EXPECT().ListByDevice(ctx, entity.DeviceId("wg1")).Return([]*entity.Peer{peer2}, nil)
 	mockResolver.EXPECT().
-		Resolve(ctx, "wg1", uint16(51821), "ipv6").
+		Resolve(ctx, "wg1", uint16(51821), "ipv6", gomock.Any()).
 		Return("2001:db8::1", 51821, nil)
 	mockEncryptor.EXPECT().
 		Encrypt(ctx, gomock.Any()).
@@ -587,10 +624,10 @@ func TestPublishController_ExecuteForPeer_Success(t *testing.T) {
 	mockPeers.EXPECT().Find(ctx, gomock.Any()).Return(peer, nil)
 	mockDevices.EXPECT().Find(ctx, entity.DeviceId("wg0")).Return(device, nil)
 	mockResolver.EXPECT().
-		Resolve(ctx, "wg0", uint16(51820), "ipv4").
+		Resolve(ctx, "wg0", uint16(51820), "ipv4", gomock.Any()).
 		Return("1.2.3.4", 51820, nil)
 	mockResolver.EXPECT().
-		Resolve(ctx, "wg0", uint16(51820), "ipv6").
+		Resolve(ctx, "wg0", uint16(51820), "ipv6", gomock.Any()).
 		Return("2001:db8::1", 51820, nil)
 
 	mockEncryptor.EXPECT().
@@ -646,10 +683,10 @@ func TestPublishController_Execute_Dedup_ChangedEndpoint_Publishes(t *testing.T)
 	// Two calls, two different resolved endpoints.
 	gomock.InOrder(
 		mockResolver.EXPECT().
-			Resolve(ctx, "wg0", uint16(51820), "ipv4").
+			Resolve(ctx, "wg0", uint16(51820), "ipv4", gomock.Any()).
 			Return("1.2.3.4", 51820, nil),
 		mockResolver.EXPECT().
-			Resolve(ctx, "wg0", uint16(51820), "ipv4").
+			Resolve(ctx, "wg0", uint16(51820), "ipv4", gomock.Any()).
 			Return("5.6.7.8", 51820, nil),
 	)
 
@@ -698,7 +735,7 @@ func TestPublishController_Execute_Dedup_UnchangedEndpoint_Skips(t *testing.T) {
 
 	// Same endpoint resolved both times.
 	mockResolver.EXPECT().
-		Resolve(ctx, "wg0", uint16(51820), "ipv4").
+		Resolve(ctx, "wg0", uint16(51820), "ipv4", gomock.Any()).
 		Return("1.2.3.4", 51820, nil).
 		Times(2)
 
@@ -748,7 +785,7 @@ func TestPublishController_Execute_Dedup_OffByDefault_AlwaysPublishes(t *testing
 
 	// Same endpoint resolved both times.
 	mockResolver.EXPECT().
-		Resolve(ctx, "wg0", uint16(51820), "ipv4").
+		Resolve(ctx, "wg0", uint16(51820), "ipv4", gomock.Any()).
 		Return("1.2.3.4", 51820, nil).
 		Times(2)
 
@@ -800,7 +837,7 @@ func TestPublishController_ExecuteForPeer_Dedup_UnchangedEndpoint_Skips(t *testi
 
 	// Same endpoint resolved both times.
 	mockResolver.EXPECT().
-		Resolve(ctx, "wg0", uint16(51820), "ipv4").
+		Resolve(ctx, "wg0", uint16(51820), "ipv4", gomock.Any()).
 		Return("1.2.3.4", 51820, nil).
 		Times(2)
 
@@ -856,10 +893,10 @@ func TestPublishController_ExecuteForPeer_Dedup_ChangedEndpoint_Publishes(t *tes
 	// Two calls, two different resolved endpoints.
 	gomock.InOrder(
 		mockResolver.EXPECT().
-			Resolve(ctx, "wg0", uint16(51820), "ipv4").
+			Resolve(ctx, "wg0", uint16(51820), "ipv4", gomock.Any()).
 			Return("1.2.3.4", 51820, nil),
 		mockResolver.EXPECT().
-			Resolve(ctx, "wg0", uint16(51820), "ipv4").
+			Resolve(ctx, "wg0", uint16(51820), "ipv4", gomock.Any()).
 			Return("5.6.7.8", 51820, nil),
 	)
 
@@ -912,7 +949,7 @@ func TestPublishController_Execute_Dedup_FailedStore_DoesNotCacheAndRetries(t *t
 
 	// Same endpoint resolved both times.
 	mockResolver.EXPECT().
-		Resolve(ctx, "wg0", uint16(51820), "ipv4").
+		Resolve(ctx, "wg0", uint16(51820), "ipv4", gomock.Any()).
 		Return("1.2.3.4", 51820, nil).
 		Times(2)
 

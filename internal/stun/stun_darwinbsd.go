@@ -75,7 +75,11 @@ func configureBPFFilter(ctx context.Context, linkType uint32, port uint16, proto
 	return filter, payloadOff, nil
 }
 
-func New(ctx context.Context, excludeInterface string, port uint16, protocol string) (*Stun, error) {
+// firewallMark is accepted and ignored here: SO_MARK is a Linux socket option
+// with no darwin/freebsd equivalent, so the STUN socket cannot be pinned to the
+// device's routing path the way it is on Linux. ping_monitor_darwinbsd.go gives
+// up on device binding for the same reason.
+func New(ctx context.Context, excludeInterface string, port uint16, protocol string, firewallMark int) (*Stun, error) {
 	logger := zerolog.Ctx(ctx)
 
 	// Get all eligible interfaces (excluding the specific WireGuard interface)

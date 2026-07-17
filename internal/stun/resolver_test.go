@@ -53,11 +53,54 @@ func newTestResolver(t *testing.T, client *mockStunClient, servers []string) *Re
 		config:       cfg,
 		deviceConfig: &config.DeviceConfig{},
 		logger:       logger,
-		newClient: func(_ context.Context, _ string, _ uint16, _ string) (StunClient, error) {
+		newClient: func(_ context.Context, _ string, _ uint16, _ string, _ int) (StunClient, error) {
 			return client, nil
 		},
 	}
 	return r
+}
+
+// The mark only does its job if it reaches the socket, so pin the handoff:
+// Resolve must pass the caller's fwmark through to the client it builds.
+func TestResolver_ForwardsFirewallMarkToClient(t *testing.T) {
+	tests := []struct {
+		name string
+		mark int
+	}{
+		{name: "unset", mark: 0},
+		{name: "wg-quick style mark", mark: 0xca6c},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := &mockStunClient{
+				connectResults: []connectResult{
+					{host: "1.2.3.4", port: 54321, err: nil},
+				},
+			}
+
+			gotMark := -1
+			logger := zerolog.Nop()
+			r := &Resolver{
+				config: &config.Config{
+					Stun: config.Stun{Addresses: []string{"stun.example.com:3478"}},
+				},
+				deviceConfig: &config.DeviceConfig{},
+				logger:       logger,
+				newClient: func(_ context.Context, _ string, _ uint16, _ string, firewallMark int) (StunClient, error) {
+					gotMark = firewallMark
+					return client, nil
+				},
+			}
+
+			if _, _, err := r.Resolve(context.Background(), "wg0", 51820, "ipv4", tt.mark); err != nil {
+				t.Fatalf("Resolve: unexpected error: %v", err)
+			}
+			if gotMark != tt.mark {
+				t.Errorf("firewallMark reaching the client = %#x, want %#x", gotMark, tt.mark)
+			}
+		})
+	}
 }
 
 func TestResolver_FirstServerSucceeds(t *testing.T) {
@@ -73,7 +116,7 @@ func TestResolver_FirstServerSucceeds(t *testing.T) {
 		"stun3.example.com:3478",
 	})
 
-	host, port, err := r.Resolve(context.Background(), "wg0", 51820, "ipv4")
+	host, port, err := r.Resolve(context.Background(), "wg0", 51820, "ipv4", 0)
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
@@ -102,7 +145,7 @@ func TestResolver_MiddleServerSucceeds(t *testing.T) {
 		"stun3.example.com:3478",
 	})
 
-	host, port, err := r.Resolve(context.Background(), "wg0", 51820, "ipv4")
+	host, port, err := r.Resolve(context.Background(), "wg0", 51820, "ipv4", 0)
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
@@ -133,7 +176,7 @@ func TestResolver_LastServerSucceeds(t *testing.T) {
 		"stun3.example.com:3478",
 	})
 
-	host, port, err := r.Resolve(context.Background(), "wg0", 51820, "ipv4")
+	host, port, err := r.Resolve(context.Background(), "wg0", 51820, "ipv4", 0)
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
@@ -163,7 +206,7 @@ func TestResolver_AllServersFail(t *testing.T) {
 		"stun3.example.com:3478",
 	})
 
-	_, _, err := r.Resolve(context.Background(), "wg0", 51820, "ipv4")
+	_, _, err := r.Resolve(context.Background(), "wg0", 51820, "ipv4", 0)
 	if !errors.Is(err, ErrAllServersFailed) {
 		t.Errorf("expected ErrAllServersFailed, got: %v", err)
 	}
@@ -186,7 +229,7 @@ func TestResolver_InvalidEndpointSkipped(t *testing.T) {
 		"stun2.example.com:3478",
 	})
 
-	host, port, err := r.Resolve(context.Background(), "wg0", 51820, "ipv4")
+	host, port, err := r.Resolve(context.Background(), "wg0", 51820, "ipv4", 0)
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
@@ -212,7 +255,7 @@ func TestResolver_SingleServer_Success(t *testing.T) {
 		"stun.example.com:3478",
 	})
 
-	host, port, err := r.Resolve(context.Background(), "wg0", 51820, "ipv4")
+	host, port, err := r.Resolve(context.Background(), "wg0", 51820, "ipv4", 0)
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}

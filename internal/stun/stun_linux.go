@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"net"
 	"sync"
+	"syscall"
 	"time"
 
 	stun "github.com/pion/stun/v3"
@@ -26,13 +27,37 @@ type Stun struct {
 	packetChan chan []byte
 }
 
-func createRawSocket(protocol string, logger zerolog.Logger) (net.PacketConn, error) {
+// markControl stamps firewallMark on the socket before it is bound, so the
+// probe is routed exactly like the WireGuard traffic whose NAT mapping it
+// measures. Without it a policy-routing rule keyed on the mark -- the one
+// wg-quick installs to keep WireGuard's own packets out of its tunnel -- sends
+// the probe down a different path, and the endpoint we discover is the wrong
+// NAT's.
+func markControl(firewallMark int) func(string, string, syscall.RawConn) error {
+	return func(_, _ string, c syscall.RawConn) error {
+		var setErr error
+		if err := c.Control(func(fd uintptr) {
+			setErr = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_MARK, firewallMark)
+		}); err != nil {
+			return err
+		}
+		return setErr
+	}
+}
+
+func createRawSocket(ctx context.Context, protocol string, firewallMark int, logger zerolog.Logger) (net.PacketConn, error) {
+	var lc net.ListenConfig
+	if firewallMark != 0 {
+		lc.Control = markControl(firewallMark)
+		logger.Debug().Int("fwmark", firewallMark).Msg("marking STUN socket to match the device")
+	}
+
 	if protocol == "ipv6" {
 		logger.Debug().Msg("creating IPv6 raw socket")
-		return net.ListenPacket("ip6:17", "")
+		return lc.ListenPacket(ctx, "ip6:17", "")
 	}
 	logger.Debug().Msg("creating IPv4 raw socket")
-	return net.ListenPacket("ip4:17", "0.0.0.0")
+	return lc.ListenPacket(ctx, "ip4:17", "0.0.0.0")
 }
 
 func setPacketConn(s *Stun, c net.PacketConn, filter []bpf.RawInstruction) error {
@@ -60,10 +85,10 @@ func setPacketConn(s *Stun, c net.PacketConn, filter []bpf.RawInstruction) error
 	return nil
 }
 
-func New(ctx context.Context, excludeInterface string, port uint16, protocol string) (*Stun, error) {
+func New(ctx context.Context, excludeInterface string, port uint16, protocol string, firewallMark int) (*Stun, error) {
 	logger := zerolog.Ctx(ctx)
 
-	c, err := createRawSocket(protocol, *logger)
+	c, err := createRawSocket(ctx, protocol, firewallMark, *logger)
 	if err != nil {
 		return nil, err
 	}

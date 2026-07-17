@@ -76,7 +76,7 @@ func (c *PublishController) discoverEndpoints(ctx context.Context, device *entit
 	// Perform IPv4 STUN discovery if needed
 	var ipv4Err error
 	if resolveIPv4 {
-		host, port, err := c.resolver.Resolve(ctx, string(device.Name()), uint16(device.ListenPort()), "ipv4")
+		host, port, err := c.resolver.Resolve(ctx, string(device.Name()), uint16(device.ListenPort()), "ipv4", device.FirewallMark())
 		if err != nil {
 			ipv4Err = err
 		} else {
@@ -88,7 +88,7 @@ func (c *PublishController) discoverEndpoints(ctx context.Context, device *entit
 	// Perform IPv6 STUN discovery if needed
 	var ipv6Err error
 	if resolveIPv6 {
-		host, port, err := c.resolver.Resolve(ctx, string(device.Name()), uint16(device.ListenPort()), "ipv6")
+		host, port, err := c.resolver.Resolve(ctx, string(device.Name()), uint16(device.ListenPort()), "ipv6", device.FirewallMark())
 		if err != nil {
 			ipv6Err = err
 		} else {
