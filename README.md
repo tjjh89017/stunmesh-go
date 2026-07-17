@@ -193,7 +193,6 @@ stunmesh-go reads the WireGuard device's state once at startup and keeps it for 
 | `wg-quick down` then `up`, or otherwise recreating the interface | If the WireGuard config does not pin `ListenPort`, the kernel picks a **new random port** every time. stunmesh-go would keep probing the old one and publish an endpoint nobody is listening on. |
 | `wg set <dev> listen-port ...` | Same as above. |
 | `wg set <dev> fwmark ...` | The probe socket keeps the old mark and stops matching the device's routing path. |
-| Rotating the interface's private key | Peers pin your old public key, so WireGuard itself will not pair until every side is reconfigured. |
 | Editing `config.yaml` | The config is read once at startup; there is no reload. |
 
 Under systemd, tie the two units together so this is enforced rather than remembered:
