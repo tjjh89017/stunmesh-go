@@ -11,6 +11,7 @@ import (
 	mock "github.com/tjjh89017/stunmesh-go/internal/ctrl/mock"
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
 	"github.com/tjjh89017/stunmesh-go/internal/plugin"
+	"github.com/tjjh89017/stunmesh-go/internal/plugin/registry"
 	"github.com/tjjh89017/stunmesh-go/pluginapi"
 	"go.uber.org/mock/gomock"
 )
@@ -50,7 +51,7 @@ func newDedupTestManager(t *testing.T, builtinName string, dedup bool) (*plugin.
 	t.Helper()
 
 	store := &fakeDedupStore{}
-	plugin.RegisterBuiltin(builtinName, func(config pluginapi.PluginConfig) (pluginapi.Store, error) {
+	registry.Register(builtinName, func(config pluginapi.PluginConfig) (pluginapi.Store, error) {
 		return store, nil
 	})
 
