@@ -52,7 +52,7 @@ Stores peer endpoint information in the OpenDHT distributed hash table via an Op
 
 **Protocol:** Exec (JSON)
 
-**Best for:** Meshes that would rather not depend on a hosted service. Note that OpenDHT values expire after 10 minutes, so `dedup` must stay `false`, and DHT lookups take seconds rather than milliseconds.
+**Best for:** Meshes that would rather not depend on a hosted service. Note that the default `dhtproxy.jami.net` endpoint answers over **IPv6 only**, OpenDHT values expire after 10 minutes so `dedup` must stay `false`, and DHT lookups take seconds rather than milliseconds.
 
 See [opendht/README.md](opendht/README.md) for setup instructions and limitations.
 

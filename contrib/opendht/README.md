@@ -12,6 +12,8 @@ before deploying this.
 
 - `curl`
 - `jq`
+- **IPv6 connectivity**, if you use the default `dhtproxy.jami.net` endpoint —
+  it does not answer over IPv4 at all. See [Limitations](#limitations).
 
 Tested on Linux and macOS.
 
@@ -94,11 +96,30 @@ peer would pick an arbitrary one of its own recent endpoints.
 
 ## Limitations
 
+**`dhtproxy.jami.net` is reachable over IPv6 only.** The name resolves to
+both an A record (`141.94.96.254`) and an AAAA record
+(`2001:41d0:403:4702::`), but nothing is listening on the IPv4 address — TCP
+80, 443 and 8080 are all closed there. An IPv4-only host therefore fails at
+connect:
+
+```
+exec plugin error: set request failed: curl: (7) Failed to connect to
+dhtproxy.jami.net port 443 after 299 ms: Couldn't connect to server
+```
+
+There is no client-side fix, because the IPv4 endpoint does not exist. Hosts
+without IPv6 have to run their own proxy (see below). This is worth weighing
+before choosing this plugin: NAT traversal is an IPv4 problem, so the peers
+that most need stunmesh are also the ones most likely to lack the IPv6 that
+the default endpoint requires.
+
 **The endpoint is somebody else's infrastructure.** `dhtproxy.jami.net` is
 run by Savoir-faire Linux for the Jami messenger. It publishes no terms of
 service, no SLA and no rate limits for third-party use. It may start refusing
-or throttling stunmesh traffic at any time, with no recourse. If that matters
-to you, run your own proxy (see below).
+or throttling stunmesh traffic at any time, with no recourse. The dead A
+record above is what that looks like in practice: a broken record nobody
+announces, fixes on your schedule, or answers questions about. If that
+matters to you, run your own proxy (see below).
 
 **The network is small.** `GET /node/info` on the public proxy reports a
 `network_size_estimation` of roughly 4096 IPv4 nodes — this is essentially
