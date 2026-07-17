@@ -59,6 +59,19 @@ Once getting info from internet, it will setup peer endpoint with wireguard tool
 
 **FreeBSD and macOS (BSD-based systems)**: Uses BPF with interface-specific packet capture. stunmesh-go will listen on all eligible network interfaces for STUN response messages, excluding the specific WireGuard interface being managed. This provides better resilience for systems with multiple network paths or backup routes compared to single default route dependency.
 
+### Firewall mark (Linux only)
+
+STUN discovery probes from the WireGuard listen port to learn the NAT mapping that WireGuard's own traffic will use. That only holds if the probe and the tunnel traffic leave by the same route.
+
+They need not. WireGuard stamps an fwmark on the packets it sends so that policy routing can keep its own traffic out of the tunnel it manages — this is what `wg-quick` sets up when `Table = auto` installs a default route through the tunnel. An unmarked probe would miss those rules, take a different path, and report a mapping that belongs to some other route.
+
+So on Linux, stunmesh-go reads the device's fwmark and applies it to the probe socket with `SO_MARK`. This is automatic, needs no configuration, and does nothing when the device has no fwmark set — which is the common case.
+
+Two caveats:
+
+- **It does not make an exit-node / full-tunnel setup work on its own.** stunmesh-go never touches the routing table. The `ip rule` and routing table entries that consume the mark are `wg-quick`'s job (or yours). stunmesh-go only makes sure its probe joins the traffic class WireGuard already put itself in.
+- **`SO_MARK` is Linux-only.** FreeBSD and macOS have no equivalent, so the probe socket cannot be pinned to the device's routing path there.
+
 ## Build
 
 ```bash
@@ -170,6 +183,29 @@ Or use STUNMESH-go in the container
 ```
 docker pull tjjh89017/stunmesh
 ```
+
+### When stunmesh-go must be restarted
+
+stunmesh-go reads the WireGuard device's state once at startup and keeps it for the life of the process. Restart it after any of the following, or it will keep acting on stale values — usually without any error, because a stale port or mark still looks perfectly valid:
+
+| Change | Why a restart is needed |
+|---|---|
+| `wg-quick down` then `up`, or otherwise recreating the interface | If the WireGuard config does not pin `ListenPort`, the kernel picks a **new random port** every time. stunmesh-go would keep probing the old one and publish an endpoint nobody is listening on. |
+| `wg set <dev> listen-port ...` | Same as above. |
+| `wg set <dev> fwmark ...` | The probe socket keeps the old mark and stops matching the device's routing path. |
+| Rotating the interface's private key | Peers pin your old public key, so WireGuard itself will not pair until every side is reconfigured. |
+| Editing `config.yaml` | The config is read once at startup; there is no reload. |
+
+Under systemd, tie the two units together so this is enforced rather than remembered:
+
+```ini
+# /etc/systemd/system/stunmesh-go.service
+[Unit]
+After=wg-quick@wg0.service
+BindsTo=wg-quick@wg0.service
+```
+
+`After=` also keeps stunmesh-go from starting before the interface exists; `BindsTo=` restarts it whenever `wg-quick@wg0` is restarted.
 
 ### Configuration
 
