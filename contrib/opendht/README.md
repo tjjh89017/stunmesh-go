@@ -143,20 +143,46 @@ at the cost of managing a second keypair; this plugin does not use it.
 
 ## Running your own proxy
 
-To avoid depending on Jami's infrastructure, run a node with the proxy
-interface enabled and point `-endpoint` at it:
+Hosts without IPv6 have to do this, since the default endpoint is
+unreachable for them. Run a node with the proxy interface enabled and point
+`-endpoint` at it:
 
 ```bash
-docker run -d --name dhtnode -p 8080:8080 \
+docker run -d -i --name dhtnode -p 8080:8080 \
   ghcr.io/savoirfairelinux/opendht/opendht \
-  dhtnode --proxyserver 8080
+  dhtnode -b bootstrap.jami.net:4222 --proxyserver 8080
 ```
 
 ```yaml
 args: ["-endpoint", "http://127.0.0.1:8080"]
 ```
 
-This still joins the public OpenDHT network (bootstrapping via
-`bootstrap.jami.net`), so it changes who runs the HTTP endpoint, not which
-DHT the data lives in. It needs outbound UDP, which some restrictive NATs
-block.
+Both flags matter, and getting either wrong fails quietly:
+
+- **`-i`** keeps stdin open. `dhtnode` runs an interactive command loop, so
+  without it the container reads EOF and exits `0` immediately — a clean exit
+  that does not look like a failure.
+- **`-b`** names a bootstrap node. `dhtnode` does not bootstrap on its own:
+  without it the node never joins the DHT (`.ipv4.good` stays at 0) and yet
+  `set` and `get` still appear to succeed, because values land in the node's
+  local storage and it reads them straight back. Nothing else on the network
+  can see them.
+
+Check readiness before trusting it:
+
+```bash
+curl -sS http://127.0.0.1:8080/node/info | jq '.ipv4.good'
+```
+
+`good` must be greater than zero. Do not gate on
+`network_size_estimation` — it is still `null` at `good=2`, when the node is
+already usable. Bootstrapping takes a few seconds.
+
+Note that `brew install opendht` does not help here: the formula builds with
+`-DOPENDHT_C=ON -DOPENDHT_TOOLS=ON` only, and `OPENDHT_PROXY_SERVER` defaults
+to `OFF`, so the resulting `dhtnode` has no proxy interface. Building it in
+means also supplying Restinio and jsoncpp.
+
+Running your own proxy changes who runs the HTTP endpoint, not which DHT the
+data lives in — the node still joins the public OpenDHT network. It needs
+outbound UDP, which some restrictive NATs block.
