@@ -52,6 +52,7 @@ func (ctrl *BootstrapController) registerDevice(ctx context.Context, deviceName 
 		device.ListenPort,
 		device.PrivateKey[:],
 		protocol,
+		device.FirewallMark,
 	)
 
 	allowPeers, err := ctrl.filterService.Execute(ctx, deviceEntity.Name(), device.PublicKey[:])

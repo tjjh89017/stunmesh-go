@@ -74,7 +74,7 @@ func newDedupTestManager(t *testing.T, builtinName string, dedup bool) (*plugin.
 
 // Helper function to create test device
 func createTestDevice(name string, port int, protocol string) *entity.Device {
-	return entity.NewDevice(entity.DeviceId(name), port, make([]byte, 32), protocol)
+	return entity.NewDevice(entity.DeviceId(name), port, make([]byte, 32), protocol, 0)
 }
 
 // Helper function to create test peer
