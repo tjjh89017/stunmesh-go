@@ -3,8 +3,8 @@
 package plugin
 
 import (
-	pluginapi "github.com/tjjh89017/stunmesh-go/pluginapi"
 	"github.com/tjjh89017/stunmesh-go/internal/plugin/builtin/cloudflare"
+	pluginapi "github.com/tjjh89017/stunmesh-go/pluginapi"
 )
 
 func init() {

@@ -79,13 +79,14 @@ The Makefile supports several options for customizing the build:
 - `EXTRA_MIN=1` - Enable all minimization options above (STRIP + TRIMPATH + UPX)
 
 **Built-in Plugin Options:**
-- `BUILTIN=all` - (Default) Compile with all available built-in plugins (cloudflare)
+- `BUILTIN=all` - (Default) Compile with all available built-in plugins (cloudflare, opendht)
 - `BUILTIN=` - Build without any built-in plugins (minimal binary)
 - `BUILTIN=builtin_cloudflare` - Compile with specific built-in Cloudflare plugin only
 - `BUILTIN="builtin_cloudflare builtin_xxx"` - Multiple plugins (quote required, space-separated)
 
 **Available Built-in Plugins:**
 - `builtin_cloudflare` - Cloudflare DNS plugin for peer endpoint storage
+- `builtin_opendht` - OpenDHT plugin for peer endpoint storage, via an OpenDHT proxy server's REST API
 
 **Build Examples:**
 ```bash
@@ -354,7 +355,7 @@ stunmesh-go supports three plugin types. **All are fully supported and productio
   - No external plugin processes (reduced memory usage)
   - No IPC overhead
   - Faster startup
-- Available built-in plugins: `cloudflare`
+- Available built-in plugins: `cloudflare`, `opendht`
 - Build with: `make all BUILTIN=builtin_cloudflare EXTRA_MIN=1`
 
 **Exec Plugin (`type: exec`)**
@@ -426,11 +427,36 @@ interfaces:
         protocol: ipv4
 ```
 
+The `opendht` built-in stores endpoints in the OpenDHT distributed hash table
+through an OpenDHT proxy server's REST API. It needs no account, token or
+quota, since there is no operator. Every field is optional:
+
+```yaml
+plugins:
+  dht:
+    type: builtin
+    name: opendht
+    endpoint: https://dhtproxy.jami.net  # Default
+    magic: stunmesh-v1                   # Default; tags our own values
+    timeout: 15s                         # Default; also accepts a number of seconds
+    dedup: false                         # Must stay false, see below
+```
+
+`dedup` must stay `false` here: OpenDHT values expire after 10 minutes, and
+nothing but the refresh cycle republishes them. Note also that
+`dhtproxy.jami.net` answers over **IPv6 only**, and that DHT lookups take
+seconds rather than milliseconds. The trade-offs, and how to run your own
+proxy, are covered in [contrib/opendht/README.md](contrib/opendht/README.md) —
+that plugin is the same design as a shell script, and its documentation
+applies here too.
+
 **Contrib Plugins**
 
 Additional plugins are available in the [`contrib/`](contrib/) directory:
 - **Cloudflare DNS Plugin**: Stores peer information in Cloudflare DNS TXT records
   - See [contrib/cloudflare/README.md](contrib/cloudflare/README.md) for setup instructions
+- **OpenDHT Plugin**: Stores peer information in the OpenDHT distributed hash table
+  - See [contrib/opendht/README.md](contrib/opendht/README.md) for setup instructions
 - More community plugins can be added here
 
 To use contrib plugins, build them and reference them as exec plugins in your configuration.
