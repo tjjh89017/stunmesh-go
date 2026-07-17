@@ -38,6 +38,24 @@ Shell script implementation of the Cloudflare DNS plugin, demonstrating the **sh
 
 See [cloudflare-shell/README.md](cloudflare-shell/README.md) for setup instructions.
 
+### OpenDHT Plugin (Shell Script)
+
+Location: [`opendht/`](opendht/)
+
+Stores peer endpoint information in the OpenDHT distributed hash table via an OpenDHT proxy server's REST API. Unlike the other plugins, it needs no account, no API token and no quota — but nothing guarantees the data stays there.
+
+**Features:**
+- No account or credentials required
+- Uses the public `dhtproxy.jami.net` by default, or your own proxy
+- Requires curl, jq
+- Linux and macOS
+
+**Protocol:** Exec (JSON)
+
+**Best for:** Meshes that would rather not depend on a hosted service. Note that OpenDHT values expire after 10 minutes, so `dedup` must stay `false`, and DHT lookups take seconds rather than milliseconds.
+
+See [opendht/README.md](opendht/README.md) for setup instructions and limitations.
+
 ## Creating Your Own Plugin
 
 Stunmesh supports two plugin protocols: **exec** (JSON-based) and **shell** (shell variable-based).
