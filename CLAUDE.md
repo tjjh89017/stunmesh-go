@@ -393,7 +393,7 @@ Common parameters to remember:
 3. Add a blank import to `internal/plugin/imports.go`
    - That file carries no build tag, and must not: a blank import names no symbol, so importing a built-in that is tagged out (leaving only its stub) is fine. The tag belongs on the implementation, once
 4. Add `builtin_<name>` to `ALL_BUILTINS` in the `Makefile`
-5. Update the built-in plugin list and configuration example in README.md
+5. Update the built-in plugin list and configuration example in the docs site ([tjjh89017/stunmesh-docs](https://github.com/tjjh89017/stunmesh-docs), published at docs.stunmesh.dev), and the `BUILTIN` examples in README.md if affected
 
 Verify every tag combination, since a built-in must be able to compile
 both alone and alongside the others:
@@ -407,7 +407,7 @@ done
 1. Add new `PluginType` constant in `plugin/manager.go`
 2. Implement `Store` interface in new plugin file
 3. Add case in `createPlugin()` method
-4. Update documentation in README.md
+4. Update documentation in the docs site ([tjjh89017/stunmesh-docs](https://github.com/tjjh89017/stunmesh-docs), published at docs.stunmesh.dev)
 
 ### Modifying Wire Dependencies
 1. Update `wire.go` with new bindings
