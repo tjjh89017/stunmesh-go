@@ -123,7 +123,7 @@ Use this protocol for complex plugins.
 }
 ```
 
-See the [exec plugin documentation](../README.md#exec-plugin-protocol) for more details.
+See the [exec plugin documentation](https://docs.stunmesh.dev/plugins/exec-protocol) for more details.
 
 ### Shell Plugin Protocol (Shell Variables)
 
@@ -163,7 +163,7 @@ esac
 - No special characters - safe to use without quoting or escaping
 - Can safely use `source /dev/stdin` or `eval`
 
-See the [shell plugin documentation](../README.md#shell-plugin-protocol) and [cloudflare-shell/](cloudflare-shell/) for complete examples.
+See the [shell plugin documentation](https://docs.stunmesh.dev/plugins/shell-protocol) and [cloudflare-shell/](cloudflare-shell/) for complete examples.
 
 ## Contributing
 
