@@ -121,6 +121,7 @@ plugins:
     type: exec
     command: /usr/local/bin/stunmesh-cloudflare
     args: ["-zone", "example.com", "-token", "${CLOUDFLARE_API_TOKEN}"]
+    dedup: true  # Optional, default false: skip store.Set when the peer's endpoint is unchanged
 
 interfaces:
   wg0:
@@ -150,6 +151,10 @@ Four main controllers orchestrate the application workflow:
    - Encrypts entire endpoint JSON (`{"ipv4": "...", "ipv6": "..."}`) and stores via plugins
    - Each peer uses its designated plugin instance
    - Logs discovered endpoints for debugging
+   - **Deduplication (`dedup`)**: per-plugin-instance boolean config option, default `false`
+     - When the peer's plugin instance has `dedup: true` and the plaintext endpoint JSON is unchanged since the last successful publish for that peer, `store.Set` is skipped
+     - When `dedup` is `false` (default), every peer is published every refresh cycle, unchanged from prior behavior
+     - **Do not enable `dedup` for storage backends with expiring/TTL values** (e.g. a short-TTL DHT) — skipping the write lets the value expire since there is no other mechanism to refresh it; only use `dedup` with persistent backends (e.g. Cloudflare DNS, GitHub Gist) where a written value stays until overwritten
 
 3. **EstablishController** (`internal/ctrl/establish.go`):
    - Retrieves peer endpoint data from storage plugins

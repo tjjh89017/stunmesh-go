@@ -384,6 +384,28 @@ stunmesh-go supports three plugin types. **All are fully supported and productio
   - Simple integration with existing shell tools
 - Best for: Simple shell scripts without complex data handling
 
+#### Deduplication (`dedup`)
+
+Any plugin instance can set `dedup: true` to skip re-publishing a peer's endpoint when it hasn't changed since the last successful publish:
+
+- Type: boolean, default: `false`
+- Set inside the plugin instance block, alongside `type` (applies to all peers using that plugin instance)
+- The comparison is done on the plaintext endpoint (`{"ipv4": "...", "ipv6": "..."}`), not the stored ciphertext, so it correctly detects "no change" even though the encrypted value differs on every publish (a fresh nonce is used each time)
+- When enabled and the endpoint is unchanged, the storage write (`store.Set`) is skipped for that peer, reducing API calls and, for revision-tracking backends like a GitHub Gist, avoiding piling up unnecessary revisions
+- When disabled (the default), behavior is unchanged: every peer is published on every refresh cycle
+
+```yaml
+plugins:
+  cf_builtin:
+    type: builtin
+    name: cloudflare
+    zone: example.com
+    token: your_api_token_here
+    dedup: true  # Skip re-publishing when the endpoint hasn't changed
+```
+
+**Note: Do not enable `dedup` for backends whose stored values expire or have a TTL (e.g. a DHT with a short TTL).** Those backends rely on periodic re-publishing to keep the value alive; if `dedup` skips the write, the value can expire and peers will fail to discover the endpoint. Only enable `dedup` for persistent backends (e.g. Cloudflare DNS, GitHub Gist, a durable KV store) where a written value remains until explicitly overwritten.
+
 **Built-in Plugin Configuration Example:**
 ```yaml
 plugins:
