@@ -53,7 +53,7 @@ func newTestResolver(t *testing.T, client *mockStunClient, servers []string) *Re
 		config:       cfg,
 		deviceConfig: &config.DeviceConfig{},
 		logger:       logger,
-		newClient: func(_ context.Context, _ string, _ uint16, _ string, _ int) (StunClient, error) {
+		newClient: func(_ context.Context, _ string, _ uint16, _ string, _ int, _ []string, _ bool) (StunClient, error) {
 			return client, nil
 		},
 	}
@@ -87,7 +87,7 @@ func TestResolver_ForwardsFirewallMarkToClient(t *testing.T) {
 				},
 				deviceConfig: &config.DeviceConfig{},
 				logger:       logger,
-				newClient: func(_ context.Context, _ string, _ uint16, _ string, firewallMark int) (StunClient, error) {
+				newClient: func(_ context.Context, _ string, _ uint16, _ string, firewallMark int, _ []string, _ bool) (StunClient, error) {
 					gotMark = firewallMark
 					return client, nil
 				},

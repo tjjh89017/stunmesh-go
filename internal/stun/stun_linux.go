@@ -85,8 +85,22 @@ func setPacketConn(s *Stun, c net.PacketConn, filter []bpf.RawInstruction) error
 	return nil
 }
 
-func New(ctx context.Context, excludeInterface string, port uint16, protocol string, firewallMark int) (*Stun, error) {
+// listenIgnoredOnce guards the one-time warning that Linux ignores the
+// per-interface listen restriction. New runs once per refresh cycle, so a
+// plain log would repeat every cycle; sync.Once fires it exactly once.
+var listenIgnoredOnce sync.Once
+
+func New(ctx context.Context, excludeInterface string, port uint16, protocol string, firewallMark int, listenInterfaces []string, listenDefaultRoute bool) (*Stun, error) {
 	logger := zerolog.Ctx(ctx)
+
+	// Linux discovers via a system-wide raw socket with a BPF filter, so there
+	// is no per-interface listen to restrict. Honor the config's spirit by
+	// telling the user it has no effect here rather than silently dropping it.
+	if len(listenInterfaces) > 0 || listenDefaultRoute {
+		listenIgnoredOnce.Do(func() {
+			logger.Warn().Msg("listen_interfaces/listen_default_route are ignored on Linux (system-wide raw socket); they apply to darwin/bsd only")
+		})
+	}
 
 	c, err := createRawSocket(ctx, protocol, firewallMark, *logger)
 	if err != nil {

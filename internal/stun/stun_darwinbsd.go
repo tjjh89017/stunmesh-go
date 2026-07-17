@@ -6,8 +6,10 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"net"
 	"sync"
+	"syscall"
 	"time"
 
 	pcap "github.com/packetcap/go-pcap"
@@ -16,6 +18,7 @@ import (
 	"golang.org/x/net/bpf"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
+	"golang.org/x/net/route"
 )
 
 const PacketSize = 1600
@@ -79,26 +82,37 @@ func configureBPFFilter(ctx context.Context, linkType uint32, port uint16, proto
 // with no darwin/freebsd equivalent, so the STUN socket cannot be pinned to the
 // device's routing path the way it is on Linux. ping_monitor_darwinbsd.go gives
 // up on device binding for the same reason.
-func New(ctx context.Context, excludeInterface string, port uint16, protocol string, firewallMark int) (*Stun, error) {
+//
+// listenInterfaces and listenDefaultRoute restrict which underlay interfaces to
+// open (see resolveListenInterfaces). Empty list + false keeps the historical
+// "open every eligible interface" behavior.
+func New(ctx context.Context, excludeInterface string, port uint16, protocol string, firewallMark int, listenInterfaces []string, listenDefaultRoute bool) (*Stun, error) {
 	logger := zerolog.Ctx(ctx)
 
-	// Get all eligible interfaces (excluding the specific WireGuard interface)
-	interfaceNames, err := getAllEligibleInterfaces(excludeInterface)
+	interfaceNames, required, err := resolveListenInterfaces(logger, protocol, excludeInterface, listenInterfaces, listenDefaultRoute, net.Interfaces, defaultRouteInterface)
 	if err != nil {
 		return nil, err
 	}
 
-	logger.Debug().Msgf("found %d eligible interfaces (excluding %s): %v", len(interfaceNames), excludeInterface, interfaceNames)
+	logger.Debug().Msgf("listening on %d interface(s) (excluding %s): %v", len(interfaceNames), excludeInterface, interfaceNames)
 
 	var handles []interfaceHandle
 
-	// Create pcap handle for each eligible interface
+	// Create pcap handle for each selected interface
 	for _, ifaceName := range interfaceNames {
 		logger.Debug().Msgf("attempting to register OpenLive for interface: %s", ifaceName)
 		handle, err := pcap.OpenLive(ctx, ifaceName, PacketSize, false, time.Duration(StunTimeout)*time.Second, pcap.DefaultSyscalls)
 		if err != nil {
-			logger.Debug().Msgf("failed to open interface %s: %v", ifaceName, err)
-			// Skip interfaces that can't be opened
+			// Tolerate open failures and move on; the daemon retries every
+			// refresh cycle, so a transiently-down interface heals itself. An
+			// interface the user named explicitly gets a louder warn (they
+			// asked for it), the scan-all default stays at debug. If nothing
+			// opens at all, the len(handles)==0 check below still errors.
+			if required[ifaceName] {
+				logger.Warn().Err(err).Msgf("requested interface %s could not be opened, skipping", ifaceName)
+			} else {
+				logger.Debug().Msgf("failed to open interface %s: %v", ifaceName, err)
+			}
 			continue
 		}
 
@@ -319,29 +333,155 @@ func createStunBindingPacket(srcPort, dstPort uint16) ([]byte, error) {
 	return append(buf, msg.Raw...), nil
 }
 
-func getAllEligibleInterfaces(excludeInterface string) ([]string, error) {
-	interfaces, err := net.Interfaces()
+// resolveListenInterfaces decides which underlay interfaces STUN discovery
+// should open for the given protocol.
+//
+// With no selector (empty listenInterfaces and listenDefaultRoute false) it
+// returns every eligible interface -- up, non-loopback, and not the WireGuard
+// interface itself -- preserving the historical open-everything behavior.
+//
+// With a selector active it returns the union of the explicitly named
+// interfaces and, when listenDefaultRoute is set, the default-route interface
+// for this protocol (the two are additive, not mutually exclusive). Names
+// absent from the system (typos) and a missing default route are warned and
+// skipped rather than fatal; New's "no usable interfaces" check is the backstop
+// when the union comes out empty. The returned required set marks the
+// explicitly named interfaces so New can warn louder if one fails to open.
+func resolveListenInterfaces(
+	logger *zerolog.Logger,
+	protocol, excludeInterface string,
+	listenInterfaces []string,
+	listenDefaultRoute bool,
+	allInterfaces func() ([]net.Interface, error),
+	defaultRoute func(protocol string) (string, error),
+) ([]string, map[string]bool, error) {
+	interfaces, err := allInterfaces()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	var eligible []string
+	if len(listenInterfaces) == 0 && !listenDefaultRoute {
+		var eligible []string
+		for _, iface := range interfaces {
+			// Skip loopback, down, and the WireGuard interface we're excluding
+			if iface.Flags&net.FlagLoopback != 0 || iface.Flags&net.FlagUp == 0 {
+				continue
+			}
+			if iface.Name == excludeInterface {
+				continue
+			}
+			eligible = append(eligible, iface.Name)
+		}
+		if len(eligible) == 0 {
+			return nil, nil, errors.New("no eligible interfaces found")
+		}
+		return eligible, nil, nil
+	}
+
+	present := make(map[string]bool, len(interfaces))
 	for _, iface := range interfaces {
-		// Skip loopback, down, and the specific WireGuard interface we're excluding
-		if iface.Flags&net.FlagLoopback != 0 || iface.Flags&net.FlagUp == 0 {
-			continue
-		}
-		if iface.Name == excludeInterface {
-			continue
-		}
-		eligible = append(eligible, iface.Name)
+		present[iface.Name] = true
 	}
 
-	if len(eligible) == 0 {
-		return nil, errors.New("no eligible interfaces found")
+	var names []string
+	required := make(map[string]bool)
+	seen := make(map[string]bool)
+	add := func(name string, req bool) {
+		if name == "" || seen[name] {
+			return
+		}
+		seen[name] = true
+		names = append(names, name)
+		if req {
+			required[name] = true
+		}
 	}
 
-	return eligible, nil
+	for _, name := range listenInterfaces {
+		switch {
+		case name == excludeInterface:
+			logger.Warn().Msgf("listen_interfaces names the WireGuard interface %q itself; skipping (STUN cannot run through the tunnel)", name)
+		case !present[name]:
+			logger.Warn().Msgf("listen_interfaces names unknown interface %q; skipping", name)
+		default:
+			add(name, true)
+		}
+	}
+
+	if listenDefaultRoute {
+		name, err := defaultRoute(protocol)
+		switch {
+		case err != nil:
+			logger.Warn().Err(err).Str("protocol", protocol).Msg("could not resolve default-route interface; skipping")
+		case name == "":
+			logger.Debug().Str("protocol", protocol).Msg("no default-route interface for protocol; skipping")
+		case name == excludeInterface:
+			logger.Debug().Msgf("default route points at the WireGuard interface %q; skipping", name)
+		default:
+			add(name, false)
+		}
+	}
+
+	if len(names) == 0 {
+		return nil, nil, fmt.Errorf("listen restriction for %s resolved to no interfaces", protocol)
+	}
+
+	return names, required, nil
+}
+
+// defaultRouteInterface returns the interface carrying the default route for
+// the given protocol ("ipv4"/"ipv6"), read straight from the kernel routing
+// table via a routing-socket RIB dump -- no exec, no netstat parsing. v4 and v6
+// default routes can sit on different interfaces, hence per-protocol. An empty
+// name with nil error means there simply is no default route for that family
+// (a host may legitimately lack an IPv6 one).
+func defaultRouteInterface(protocol string) (string, error) {
+	af := syscall.AF_INET
+	if protocol == "ipv6" {
+		af = syscall.AF_INET6
+	}
+
+	rib, err := route.FetchRIB(af, route.RIBTypeRoute, 0)
+	if err != nil {
+		return "", err
+	}
+	msgs, err := route.ParseRIB(route.RIBTypeRoute, rib)
+	if err != nil {
+		return "", err
+	}
+
+	for _, m := range msgs {
+		rm, ok := m.(*route.RouteMessage)
+		if !ok {
+			continue
+		}
+		// A default route goes via a gateway and its destination is the
+		// zero address (0.0.0.0 / ::). Addrs[0] is the destination.
+		if rm.Flags&syscall.RTF_GATEWAY == 0 || rm.Flags&syscall.RTF_UP == 0 {
+			continue
+		}
+		if len(rm.Addrs) == 0 || !isDefaultDestination(rm.Addrs[0]) {
+			continue
+		}
+		iface, err := net.InterfaceByIndex(rm.Index)
+		if err != nil {
+			return "", err
+		}
+		return iface.Name, nil
+	}
+
+	return "", nil
+}
+
+func isDefaultDestination(a route.Addr) bool {
+	switch v := a.(type) {
+	case *route.Inet4Addr:
+		return v.IP == [4]byte{}
+	case *route.Inet6Addr:
+		return v.IP == [16]byte{}
+	default:
+		return false
+	}
 }
 
 func stunNullBpfFilter(ctx context.Context, port uint16, protocol string) ([]bpf.RawInstruction, error) {
