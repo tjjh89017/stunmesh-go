@@ -10,6 +10,8 @@ type DeviceInfo struct {
 	PrivateKey Key
 	PublicKey  Key
 	PeerKeys   []Key
+	// Zero means unset. int, not uint32, to match wgctrl's own type.
+	FirewallMark int
 }
 
 // PeerEndpointUpdate describes a peer endpoint change to apply to a device.

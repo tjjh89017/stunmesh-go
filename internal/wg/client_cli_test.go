@@ -93,6 +93,53 @@ func TestCliClient_Device_ParseSuccess(t *testing.T) {
 	}
 }
 
+func TestCliClient_Device_ParseFirewallMark(t *testing.T) {
+	privB64 := keyB64(0x01)
+	pubB64 := keyB64(0x02)
+
+	tests := []struct {
+		name    string
+		field   string
+		want    int
+		wantErr bool
+	}{
+		{name: "off means no mark", field: "off", want: 0},
+		{name: "wg-quick style mark", field: "0xca6c", want: 51820},
+		{name: "uppercase hex digits", field: "0xCA6C", want: 51820},
+		// Deliberately not 0xffffffff: FirewallMark is an int, matching
+		// wgctrl's own type, and the build matrix includes 32-bit mipsle and
+		// arm where an untyped 0xffffffff constant does not fit an int.
+		{name: "large mark", field: "0x7fffffff", want: 0x7fffffff},
+		{name: "not a number", field: "bogus", wantErr: true},
+		// wg(8) only ever emits "off" or 0x%x, so a bare decimal means the
+		// format moved. Reading it as "no mark" would silently cost STUN path
+		// parity, so fail loudly like every other field on this line does.
+		{name: "bare decimal is not wg's format", field: "51820", wantErr: true},
+		{name: "empty", field: "", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dump := strings.Join([]string{privB64, pubB64, "51820", tt.field}, "\t") + "\n"
+			c := &cliClient{runner: fakeRunner([]byte(dump), nil)}
+
+			info, err := c.Device("testdev")
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("Device: expected error for fwmark field %q, got none", tt.field)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Device: unexpected error: %v", err)
+			}
+			if info.FirewallMark != tt.want {
+				t.Errorf("FirewallMark = %#x, want %#x", info.FirewallMark, tt.want)
+			}
+		})
+	}
+}
+
 func TestCliClient_UpdatePeerEndpoint_IPv4(t *testing.T) {
 	var captured []capturedCall
 	c := &cliClient{runner: capturingRunner(nil, nil, &captured)}
