@@ -142,6 +142,6 @@ echo -e "STUNMESH_ACTION=set\nSTUNMESH_KEY=testkey123\nSTUNMESH_VALUE=testvalue4
 
 ## See Also
 
-- [Shell Plugin Protocol](../../README.md#shell-plugin-protocol)
+- [Shell Plugin Protocol](https://docs.stunmesh.dev/plugins/shell-protocol)
 - [Go-based Cloudflare Plugin](../cloudflare/)
 - [Contrib Plugin Development Guide](../README.md)
