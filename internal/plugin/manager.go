@@ -9,11 +9,13 @@ import (
 
 type Manager struct {
 	plugins map[string]pluginapi.Store
+	dedup   map[string]bool
 }
 
 func NewManager() *Manager {
 	return &Manager{
 		plugins: make(map[string]pluginapi.Store),
+		dedup:   make(map[string]bool),
 	}
 }
 
@@ -24,6 +26,7 @@ func (m *Manager) LoadPlugins(ctx context.Context, definitions map[string]plugin
 			return fmt.Errorf("failed to create plugin %s: %w", name, err)
 		}
 		m.plugins[name] = store
+		m.dedup[name] = parseDedup(def.Config["dedup"])
 	}
 	return nil
 }
@@ -34,6 +37,26 @@ func (m *Manager) GetPlugin(name string) (pluginapi.Store, error) {
 		return nil, fmt.Errorf("plugin %s not found", name)
 	}
 	return store, nil
+}
+
+// IsDedup reports whether the named plugin instance has dedup enabled.
+// Unknown plugin names return false.
+func (m *Manager) IsDedup(name string) bool {
+	return m.dedup[name]
+}
+
+// parseDedup coerces a raw config value into a dedup flag. It accepts a
+// real bool, or a string such as "true"/"1" (e.g. from a viper env
+// override). Anything else, including an absent value (nil), is false.
+func parseDedup(value interface{}) bool {
+	switch v := value.(type) {
+	case bool:
+		return v
+	case string:
+		return v == "true" || v == "1"
+	default:
+		return false
+	}
 }
 
 func (m *Manager) createPlugin(ctx context.Context, def pluginapi.PluginDefinition) (pluginapi.Store, error) {

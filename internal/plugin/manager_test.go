@@ -152,6 +152,82 @@ func TestLoadPlugins_InvalidPluginConfig(t *testing.T) {
 	}
 }
 
+func TestIsDedup_DefaultsToFalseWhenNotSet(t *testing.T) {
+	m := NewManager()
+	ctx := context.Background()
+
+	definitions := map[string]pluginapi.PluginDefinition{
+		"test_plugin": {
+			Type: "shell",
+			Config: pluginapi.PluginConfig{
+				"command": "/bin/true",
+			},
+		},
+	}
+
+	if err := m.LoadPlugins(ctx, definitions); err != nil {
+		t.Fatalf("LoadPlugins() unexpected error: %v", err)
+	}
+
+	if got := m.IsDedup("test_plugin"); got != false {
+		t.Errorf("IsDedup() = %v, want false when dedup is not set", got)
+	}
+}
+
+func TestIsDedup_TrueWhenConfigured(t *testing.T) {
+	m := NewManager()
+	ctx := context.Background()
+
+	definitions := map[string]pluginapi.PluginDefinition{
+		"test_plugin": {
+			Type: "shell",
+			Config: pluginapi.PluginConfig{
+				"command": "/bin/true",
+				"dedup":   true,
+			},
+		},
+	}
+
+	if err := m.LoadPlugins(ctx, definitions); err != nil {
+		t.Fatalf("LoadPlugins() unexpected error: %v", err)
+	}
+
+	if got := m.IsDedup("test_plugin"); got != true {
+		t.Errorf("IsDedup() = %v, want true when dedup: true is configured", got)
+	}
+}
+
+func TestIsDedup_StringCoercion(t *testing.T) {
+	m := NewManager()
+	ctx := context.Background()
+
+	definitions := map[string]pluginapi.PluginDefinition{
+		"test_plugin": {
+			Type: "shell",
+			Config: pluginapi.PluginConfig{
+				"command": "/bin/true",
+				"dedup":   "true",
+			},
+		},
+	}
+
+	if err := m.LoadPlugins(ctx, definitions); err != nil {
+		t.Fatalf("LoadPlugins() unexpected error: %v", err)
+	}
+
+	if got := m.IsDedup("test_plugin"); got != true {
+		t.Errorf("IsDedup() = %v, want true when dedup: \"true\" (string) is configured", got)
+	}
+}
+
+func TestIsDedup_UnknownPluginReturnsFalse(t *testing.T) {
+	m := NewManager()
+
+	if got := m.IsDedup("nonexistent"); got != false {
+		t.Errorf("IsDedup() = %v, want false for unknown plugin name", got)
+	}
+}
+
 func TestCreatePlugin_SwitchCoverage(t *testing.T) {
 	m := NewManager()
 	ctx := context.Background()
