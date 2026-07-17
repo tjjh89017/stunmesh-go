@@ -30,6 +30,12 @@ type PublishController struct {
 	logger        zerolog.Logger
 	triggerQueue  *queue.Queue[struct{}]      // Trigger queue for full publish
 	peerQueue     *queue.Queue[entity.PeerId] // Trigger queue for specific peer
+
+	// lastPublished remembers the plaintext endpoint JSON last successfully
+	// published for each peer, keyed by peer.LocalId(). It is only read and
+	// written from Execute/ExecuteForPeer, both of which are driven
+	// sequentially from the single Run() goroutine, so no mutex is needed.
+	lastPublished map[string]string
 }
 
 func NewPublishController(devices DeviceRepository, peers PeerRepository, pluginManager *plugin.Manager, resolver StunResolver, encryptor EndpointEncryptor, deviceConfig DeviceConfigProvider, logger *zerolog.Logger) *PublishController {
@@ -43,6 +49,7 @@ func NewPublishController(devices DeviceRepository, peers PeerRepository, plugin
 		logger:        logger.With().Str("controller", "publish").Logger(),
 		triggerQueue:  queue.NewBuffered[struct{}](queue.TriggerQueueSize), // Buffered trigger queue
 		peerQueue:     queue.NewBuffered[entity.PeerId](queue.PeerQueueSize), // Buffered peer queue
+		lastPublished: make(map[string]string),
 	}
 }
 
@@ -165,6 +172,14 @@ func (c *PublishController) Execute(ctx context.Context) {
 				continue
 			}
 
+			// Skip publishing if the plaintext endpoint hasn't changed since
+			// the last successful publish for this peer, and the peer's
+			// plugin instance has dedup enabled.
+			if c.pluginManager.IsDedup(peer.Plugin()) && c.lastPublished[peer.LocalId()] == string(jsonPlain) {
+				logger.Debug().Msg("endpoint unchanged, skip publish")
+				continue
+			}
+
 			// Encrypt entire JSON content
 			res, err := c.encryptor.Encrypt(ctx, &EndpointEncryptRequest{
 				PeerPublicKey: peer.PublicKey(),
@@ -189,6 +204,8 @@ func (c *PublishController) Execute(ctx context.Context) {
 				logger.Error().Err(err).Msg("failed to store endpoint")
 				continue
 			}
+
+			c.lastPublished[peer.LocalId()] = string(jsonPlain)
 		}
 	}
 }
@@ -238,6 +255,14 @@ func (c *PublishController) ExecuteForPeer(ctx context.Context, peerId entity.Pe
 		return
 	}
 
+	// Skip publishing if the plaintext endpoint hasn't changed since the
+	// last successful publish for this peer, and the peer's plugin
+	// instance has dedup enabled.
+	if c.pluginManager.IsDedup(peer.Plugin()) && c.lastPublished[peer.LocalId()] == string(jsonPlain) {
+		logger.Debug().Msg("endpoint unchanged, skip publish")
+		return
+	}
+
 	// Encrypt entire JSON content
 	res, err := c.encryptor.Encrypt(ctx, &EndpointEncryptRequest{
 		PeerPublicKey: peer.PublicKey(),
@@ -263,6 +288,8 @@ func (c *PublishController) ExecuteForPeer(ctx context.Context, peerId entity.Pe
 		logger.Error().Err(err).Msg("failed to store endpoint for specific peer")
 		return
 	}
+
+	c.lastPublished[peer.LocalId()] = string(jsonPlain)
 
 	logger.Info().Msg("successfully published endpoint for specific peer")
 }
