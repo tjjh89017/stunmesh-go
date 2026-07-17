@@ -34,8 +34,16 @@ func (p *Peer) GetProtocol() string {
 }
 
 type Interface struct {
-	Protocol string          `mapstructure:"protocol"`
-	Peers    map[string]Peer `mapstructure:"peers"`
+	Protocol string `mapstructure:"protocol"`
+	// ListenInterfaces restricts which underlay interfaces STUN discovery
+	// listens on (darwin/bsd only; Linux uses a system-wide raw socket and
+	// ignores it). Empty means "all eligible interfaces" -- the default.
+	ListenInterfaces []string `mapstructure:"listen_interfaces"`
+	// ListenDefaultRoute additionally listens on the default-route interface,
+	// resolved per-protocol (darwin/bsd only). Combined with ListenInterfaces
+	// as a union; the two are additive, not mutually exclusive.
+	ListenDefaultRoute bool            `mapstructure:"listen_default_route"`
+	Peers              map[string]Peer `mapstructure:"peers"`
 }
 
 // GetProtocol returns the configured protocol, defaulting to "ipv4" for backward compatibility
@@ -68,6 +76,19 @@ func (c *DeviceConfig) GetInterfaceProtocol(deviceName string) string {
 		return "ipv4"
 	}
 	return device.GetProtocol()
+}
+
+// GetListenConfig returns the interface's underlay-listen restriction for STUN
+// discovery: the explicit interface names and whether to also include the
+// default-route interface. A nil/empty list with defaultRoute false means
+// "listen on all" -- the zero-breaking default. Only darwin/bsd honor these;
+// Linux ignores them (warned about at config load).
+func (c *DeviceConfig) GetListenConfig(deviceName string) (interfaces []string, defaultRoute bool) {
+	device, ok := c.interfaces[deviceName]
+	if !ok {
+		return nil, false
+	}
+	return device.ListenInterfaces, device.ListenDefaultRoute
 }
 
 func (c *DeviceConfig) GetConfigPeers(ctx context.Context, deviceName string, localPublicKey []byte) ([]*entity.Peer, error) {

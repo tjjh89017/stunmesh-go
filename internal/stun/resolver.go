@@ -23,7 +23,7 @@ type Resolver struct {
 	deviceConfig *config.DeviceConfig
 	logger       zerolog.Logger
 	mu           sync.Mutex
-	newClient    func(ctx context.Context, deviceName string, port uint16, protocol string, firewallMark int) (StunClient, error)
+	newClient    func(ctx context.Context, deviceName string, port uint16, protocol string, firewallMark int, listenInterfaces []string, listenDefaultRoute bool) (StunClient, error)
 }
 
 func NewResolver(config *config.Config, deviceConfig *config.DeviceConfig, logger *zerolog.Logger) *Resolver {
@@ -31,8 +31,8 @@ func NewResolver(config *config.Config, deviceConfig *config.DeviceConfig, logge
 		config:       config,
 		deviceConfig: deviceConfig,
 		logger:       logger.With().Str("component", "stun").Logger(),
-		newClient: func(ctx context.Context, deviceName string, port uint16, protocol string, firewallMark int) (StunClient, error) {
-			return New(ctx, deviceName, port, protocol, firewallMark)
+		newClient: func(ctx context.Context, deviceName string, port uint16, protocol string, firewallMark int, listenInterfaces []string, listenDefaultRoute bool) (StunClient, error) {
+			return New(ctx, deviceName, port, protocol, firewallMark, listenInterfaces, listenDefaultRoute)
 		},
 	}
 }
@@ -50,7 +50,12 @@ func (r *Resolver) Resolve(ctx context.Context, deviceName string, port uint16, 
 
 	r.logger.Debug().Str("device", deviceName).Str("protocol", protocol).Msg("resolving with protocol")
 
-	stun, err := r.newClient(stunCtx, deviceName, port, protocol, firewallMark)
+	// The underlay-listen restriction is static interface config, so read it
+	// here rather than threading it through the publish controller. Only
+	// darwin/bsd act on it; Linux ignores it (warns once, see stun_linux.go).
+	listenInterfaces, listenDefaultRoute := r.deviceConfig.GetListenConfig(deviceName)
+
+	stun, err := r.newClient(stunCtx, deviceName, port, protocol, firewallMark, listenInterfaces, listenDefaultRoute)
 	if err != nil {
 		return "", 0, err
 	}

@@ -57,7 +57,7 @@ Once getting info from internet, it will setup peer endpoint with wireguard tool
 
 **Linux**: Uses raw sockets with BPF filtering to listen on all interfaces system-wide. No interface-specific limitations.
 
-**FreeBSD and macOS (BSD-based systems)**: Uses BPF with interface-specific packet capture. stunmesh-go will listen on all eligible network interfaces for STUN response messages, excluding the specific WireGuard interface being managed. This provides better resilience for systems with multiple network paths or backup routes compared to single default route dependency.
+**FreeBSD and macOS (BSD-based systems)**: Uses BPF with interface-specific packet capture. By default stunmesh-go listens on all eligible network interfaces for STUN response messages, excluding the specific WireGuard interface being managed. This provides better resilience for systems with multiple network paths or backup routes compared to single default route dependency. The set of interfaces can be narrowed — see [Restricting listen interfaces](#restricting-listen-interfaces-freebsdmacos).
 
 ### Firewall mark (Linux only)
 
@@ -71,6 +71,29 @@ Two caveats:
 
 - **It does not make an exit-node / full-tunnel setup work on its own.** stunmesh-go never touches the routing table. The `ip rule` and routing table entries that consume the mark are `wg-quick`'s job (or yours). stunmesh-go only makes sure its probe joins the traffic class WireGuard already put itself in.
 - **`SO_MARK` is Linux-only.** FreeBSD and macOS have no equivalent, so the probe socket cannot be pinned to the device's routing path there.
+
+### Restricting listen interfaces (FreeBSD/macOS)
+
+By default the BSD backend opens a capture handle on every eligible interface. On a host with many interfaces that is wasteful, and on some it is undesirable. Two per-interface options narrow it down:
+
+```yaml
+interfaces:
+  wg0:
+    protocol: "dualstack"
+    listen_interfaces: ["em0", "em1"]   # only capture on these
+    listen_default_route: true          # also capture on the default-route interface
+```
+
+- **`listen_interfaces`** (list of strings, default empty): the underlay interfaces to capture on. Empty means "all eligible" — the historical behavior.
+- **`listen_default_route`** (bool, default `false`): additionally capture on the interface that carries the default route, resolved per-protocol (the IPv4 and IPv6 default routes may live on different interfaces).
+
+The two are **additive, not mutually exclusive** — the effective set is the union of `listen_interfaces` and, when `listen_default_route` is `true`, the default-route interface. When both are unset the backend listens on all eligible interfaces, so existing configs are unaffected.
+
+Semantics:
+
+- If neither option is set, all eligible interfaces are used (unchanged default).
+- A name in `listen_interfaces` that does not exist on the system, or an interface that cannot be opened right now, is warned about and skipped rather than fatal — the daemon retries every refresh cycle. If the selection ends up empty, discovery fails loudly for that protocol (in `dualstack` a single failed family is tolerated as long as the other succeeds).
+- **Linux ignores both options.** Its raw socket is system-wide with no per-interface listen; setting either key logs a one-time warning and has no other effect.
 
 ## Build
 
