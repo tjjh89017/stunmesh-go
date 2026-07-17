@@ -9,7 +9,7 @@ TRIMPATH ?= 0
 UPX ?= 0
 EXTRA_MIN ?= 0
 BUILTIN ?= all
-ALL_BUILTINS := builtin_cloudflare
+ALL_BUILTINS := builtin_cloudflare builtin_opendht
 # Empty selects the per-platform default from the internal/wg build constraints:
 # wgcli on freebsd, wgctrl elsewhere. Set to override.
 BACKEND ?=
