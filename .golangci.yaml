@@ -2,3 +2,6 @@ version: "2"
 linters:
   enable:
     - protogetter
+formatters:
+  enable:
+    - gofmt
