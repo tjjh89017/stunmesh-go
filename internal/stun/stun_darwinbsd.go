@@ -38,6 +38,12 @@ type Stun struct {
 	once       sync.Once
 	packetChan chan *stun.Message
 	waitGroup  sync.WaitGroup
+	// done is closed by Stop to release a listener goroutine parked trying to
+	// hand off a packet nobody is waiting for any more. Without it Stop's
+	// waitGroup.Wait blocks until the context is cancelled, hanging Resolve's
+	// deferred cleanup.
+	done     chan struct{}
+	stopOnce sync.Once
 }
 
 func calculatePayloadOffset(linkType uint32, protocol string) uint32 {
@@ -153,6 +159,7 @@ func New(ctx context.Context, excludeInterface string, port uint16, protocol str
 		protocol:   protocol,
 		handles:    handles,
 		packetChan: make(chan *stun.Message),
+		done:       make(chan struct{}),
 	}
 
 	if err := setPacketConn(s, c); err != nil {
@@ -198,9 +205,13 @@ func setPacketConn(s *Stun, c net.PacketConn) error {
 	return nil
 }
 
+// Stop signals the per-interface listeners, waits for them, then closes the
+// socket. packetChan is deliberately left open: Read already selects with a
+// timeout, so closing it buys nothing and only opens a send-on-closed-channel
+// race. The channel is garbage collected along with the Stun.
 func (s *Stun) Stop() error {
+	s.stopOnce.Do(func() { close(s.done) })
 	s.waitGroup.Wait()
-	close(s.packetChan)
 	if s.protocol == "ipv6" {
 		return s.conn6.Close()
 	}
@@ -227,6 +238,8 @@ func (s *Stun) Start(ctx context.Context) {
 					select {
 					case <-ctx.Done():
 						return
+					case <-s.done:
+						return
 					case <-timeout:
 						return
 					default:
@@ -237,6 +250,14 @@ func (s *Stun) Start(ctx context.Context) {
 						buf, _, err = handle.handle.ReadPacketData()
 						if err != nil {
 							logger.Trace().Msgf("fail to read packet data from %s, err %v", handle.name, err)
+							continue
+						}
+						// ReadPacketData can hand back a short or empty
+						// buffer with a nil error (a timed-out read yields
+						// len 0), so the payload offset is not safe to slice
+						// with until it is known to be in range.
+						if uint32(len(buf)) < handle.payloadOff {
+							logger.Trace().Msgf("short packet (%d bytes, need %d) from %s", len(buf), handle.payloadOff, handle.name)
 							continue
 						}
 						// decode STUN
@@ -250,6 +271,8 @@ func (s *Stun) Start(ctx context.Context) {
 						select {
 						case s.packetChan <- m:
 						case <-ctx.Done():
+							return
+						case <-s.done:
 							return
 						}
 						return
@@ -298,7 +321,12 @@ func (s *Stun) Connect(ctx context.Context, stunAddr string) (_ string, _ int, e
 		return "", 0, err
 	}
 
+	// Parse returns nil when the reply carries no XOR-MAPPED-ADDRESS; the
+	// resolver treats the error as "this server failed" and moves to the next.
 	replyAddr := Parse(ctx, reply)
+	if replyAddr == nil {
+		return "", 0, ErrNoMappedAddress
+	}
 
 	return replyAddr.IP.String(), replyAddr.Port, nil
 }

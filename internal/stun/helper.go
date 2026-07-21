@@ -11,6 +11,10 @@ import (
 var (
 	ErrResponseMessage = errors.New("error reading from response message channel")
 	ErrTimeout         = errors.New("timed out waiting for response")
+	// ErrNoMappedAddress means the reply decoded cleanly but carried no
+	// XOR-MAPPED-ADDRESS, so there is no reflexive endpoint to report. An
+	// RFC 3489-era server answering with only MAPPED-ADDRESS lands here.
+	ErrNoMappedAddress = errors.New("stun response has no XOR-MAPPED-ADDRESS")
 )
 
 const BindingPacketHeaderSize = 8

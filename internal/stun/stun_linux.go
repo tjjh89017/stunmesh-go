@@ -4,6 +4,7 @@ package stun
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"net"
 	"sync"
 	"syscall"
@@ -25,6 +26,12 @@ type Stun struct {
 	conn6      *ipv6.PacketConn
 	once       sync.Once
 	packetChan chan []byte
+	// done is closed by Stop to release a listener goroutine that is parked
+	// trying to hand off a packet nobody is waiting for any more (a reply that
+	// arrived after Read already timed out). Without it Stop's close of
+	// packetChan would race that send and panic.
+	done     chan struct{}
+	stopOnce sync.Once
 }
 
 // markControl stamps firewallMark on the socket before it is bound, so the
@@ -116,6 +123,7 @@ func New(ctx context.Context, excludeInterface string, port uint16, protocol str
 		port:       port,
 		protocol:   protocol,
 		packetChan: make(chan []byte),
+		done:       make(chan struct{}),
 	}
 
 	if err := setPacketConn(s, c, filter); err != nil {
@@ -125,8 +133,12 @@ func New(ctx context.Context, excludeInterface string, port uint16, protocol str
 	return s, nil
 }
 
+// Stop releases the listener goroutine and closes the socket. packetChan is
+// deliberately left open: Read already selects with a timeout, so closing it
+// buys nothing and only opens a send-on-closed-channel race with a listener
+// still holding a late reply. The channel is garbage collected with the Stun.
 func (s *Stun) Stop() error {
-	close(s.packetChan)
+	s.stopOnce.Do(func() { close(s.done) })
 	if s.protocol == "ipv6" {
 		return s.conn6.Close()
 	}
@@ -150,18 +162,29 @@ func (s *Stun) Start(ctx context.Context) {
 				select {
 				case <-ctx.Done():
 					return
+				case <-s.done:
+					return
 				case <-timeout:
 					return
 				default:
 					buf := make([]byte, PacketSize)
 					n, err := s.readFrom(buf)
 					if err != nil {
+						// Stop closed the socket out from under us; leave
+						// rather than spin on a dead fd until timeout.
+						select {
+						case <-s.done:
+							return
+						default:
+						}
 						continue
 					}
 					select {
 					case s.packetChan <- buf[:n]:
 						return
 					case <-ctx.Done():
+						return
+					case <-s.done:
 						return
 					}
 				}
@@ -218,7 +241,12 @@ func (s *Stun) Connect(ctx context.Context, stunAddr string) (string, int, error
 		return "", 0, err
 	}
 
+	// Parse returns nil when the reply carries no XOR-MAPPED-ADDRESS; the
+	// resolver treats the error as "this server failed" and moves to the next.
 	replyAddr := Parse(ctx, reply)
+	if replyAddr == nil {
+		return "", 0, ErrNoMappedAddress
+	}
 
 	return replyAddr.IP.String(), replyAddr.Port, nil
 }
@@ -229,6 +257,9 @@ func (s *Stun) Read(ctx context.Context) (*stun.Message, error) {
 		// Linux kernel strips IP headers for both IPv4 and IPv6 raw sockets
 		// We only receive: UDP header (8 bytes) + STUN payload
 		// Note: BPF filter runs before IP header stripping, so it needs different offsets
+		if len(buf) < 8 {
+			return nil, fmt.Errorf("short packet: %d bytes, need at least a UDP header", len(buf))
+		}
 		m := &stun.Message{
 			Raw: buf[8:], // Skip UDP header
 		}
