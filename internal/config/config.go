@@ -193,7 +193,8 @@ func Load() (*Config, error) {
 
 	// STUN server semantics: key absent (nil) -> default + warn; explicitly
 	// provided list with zero usable entries ("addresses: []", or only empty
-	// strings such as an unexpanded "${STUN_SERVER}" template) -> hard error;
+	// strings, e.g. a "${STUN_SERVER}" template that external tooling expanded
+	// to "" — stunmesh-go itself never expands env vars in config values) -> hard error;
 	// otherwise leave the user-provided list untouched.
 	effectiveAddresses := 0
 	for _, addr := range cfg.Stun.Addresses {

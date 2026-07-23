@@ -113,14 +113,14 @@ plugins:
     type: builtin
     name: cloudflare
     zone: example.com
-    token: ${CLOUDFLARE_API_TOKEN}
+    token: "<CLOUDFLARE_API_TOKEN>"
     subdomain: stunmesh
 
   # External exec plugin
   cloudflare_exec:
     type: exec
     command: /usr/local/bin/stunmesh-cloudflare
-    args: ["-zone", "example.com", "-token", "${CLOUDFLARE_API_TOKEN}"]
+    args: ["-zone", "example.com", "-token", "<CLOUDFLARE_API_TOKEN>"]
     dedup: true  # Optional, default false: skip store.Set when the peer's endpoint is unchanged
 
 interfaces:
