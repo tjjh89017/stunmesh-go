@@ -832,3 +832,122 @@ func TestLoad_TypeMismatch_WrapsErrUnmarshalConfig(t *testing.T) {
 		t.Errorf("Load() error = %v, want wrapped ErrUnmarshalConfig", err)
 	}
 }
+
+// --- WeaklyTypedInput regression tests ---
+//
+// main used viper 1.21, whose default decoder sets WeaklyTypedInput: true and
+// composes StringToTimeDurationHookFunc with StringToSliceHookFunc(","). Configs
+// rendered by templating tools (Ansible/Jinja) commonly quote scalars, so these
+// shapes must keep loading after the viper -> yaml+mapstructure migration.
+
+// writeWeakTypingConfig writes configContent into a temp dir and points Paths at it.
+func writeWeakTypingConfig(t *testing.T, configContent string) {
+	t.Helper()
+	resetConfigGlobals(t)
+	tmpDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte(configContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+	Paths = []string{tmpDir}
+}
+
+// Quoted numeric scalar decodes into an int field.
+func TestLoad_WeaklyTypedInput_QuotedIntScalar(t *testing.T) {
+	writeWeakTypingConfig(t, "ping_monitor:\n  fixed_retries: \"7\"\n")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	if cfg.PingMonitor.FixedRetries != 7 {
+		t.Errorf("PingMonitor.FixedRetries = %d, want 7", cfg.PingMonitor.FixedRetries)
+	}
+}
+
+// A plain string for a list field decodes into a single-element list.
+func TestLoad_WeaklyTypedInput_StringToSingleElementList(t *testing.T) {
+	writeWeakTypingConfig(t, "stun:\n  addresses: \"stun.example.com:3478\"\n")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	want := []string{"stun.example.com:3478"}
+	if len(cfg.Stun.Addresses) != 1 || cfg.Stun.Addresses[0] != want[0] {
+		t.Errorf("Stun.Addresses = %v, want %v", cfg.Stun.Addresses, want)
+	}
+}
+
+// A comma-separated string for a list field splits into multiple elements.
+func TestLoad_WeaklyTypedInput_CommaSeparatedStringToList(t *testing.T) {
+	writeWeakTypingConfig(t, "stun:\n  addresses: \"stun1.example.com:3478,stun2.example.com:3478\"\n")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	want := []string{"stun1.example.com:3478", "stun2.example.com:3478"}
+	if len(cfg.Stun.Addresses) != len(want) {
+		t.Fatalf("Stun.Addresses = %v, want %v", cfg.Stun.Addresses, want)
+	}
+	for i := range want {
+		if cfg.Stun.Addresses[i] != want[i] {
+			t.Errorf("Stun.Addresses[%d] = %q, want %q", i, cfg.Stun.Addresses[i], want[i])
+		}
+	}
+}
+
+// Quoted boolean scalar decodes into a bool field.
+func TestLoad_WeaklyTypedInput_QuotedBool(t *testing.T) {
+	writeWeakTypingConfig(t, `
+interfaces:
+  wg0:
+    peers:
+      peer1:
+        public_key: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+        plugin: test_plugin
+        ping:
+          enabled: "true"
+          target: "192.0.2.1"
+`)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	peer := cfg.Interfaces["wg0"].Peers["peer1"]
+	if peer.Ping == nil {
+		t.Fatal("peer1.Ping = nil, want non-nil")
+	}
+	if !peer.Ping.Enabled {
+		t.Error("peer1.Ping.Enabled = false, want true")
+	}
+}
+
+// Numeric scalar decodes into a string field.
+func TestLoad_WeaklyTypedInput_NumberToString(t *testing.T) {
+	writeWeakTypingConfig(t, "log:\n  level: 5\n")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	if cfg.Log.Level != "5" {
+		t.Errorf("Log.Level = %q, want \"5\"", cfg.Log.Level)
+	}
+}
+
+// An empty string for stun.addresses goes through StringToSliceHookFunc and
+// becomes a non-nil empty list, which — with no stun.address — must hit the
+// "explicitly provided but unusable" error branch, never the silent default.
+func TestLoad_WeaklyTypedInput_EmptyStringAddresses(t *testing.T) {
+	writeWeakTypingConfig(t, "stun:\n  addresses: \"\"\n")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() with addresses: \"\" should return an error")
+	}
+	if !errors.Is(err, ErrNoStunServers) {
+		t.Errorf("Load() error = %v, want ErrNoStunServers", err)
+	}
+}
