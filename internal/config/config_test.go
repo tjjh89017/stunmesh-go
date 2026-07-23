@@ -1,21 +1,32 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
-
-	"github.com/spf13/viper"
 )
 
-// resetViper resets viper state between tests
-func resetViper() {
-	viper.Reset()
+// resetConfigGlobals saves the package-level File, Dir, and Paths variables
+// and restores them via t.Cleanup, then resets File/Dir to their zero value
+// so Paths-based search governs unless a test explicitly sets File or Dir.
+//
+// File, Dir, and Paths are package-level globals (not per-instance state),
+// so any test using this helper must not call t.Parallel() -- concurrent
+// tests would race on the same variables.
+func resetConfigGlobals(t *testing.T) {
+	t.Helper()
+	origFile, origDir, origPaths := File, Dir, Paths
+	t.Cleanup(func() {
+		File, Dir, Paths = origFile, origDir, origPaths
+	})
+	File = ""
+	Dir = ""
 }
 
 func TestLoad_Success(t *testing.T) {
-	resetViper()
+	resetConfigGlobals(t)
 
 	// Create temporary config file
 	tmpDir := t.TempDir()
@@ -43,10 +54,7 @@ refresh_interval: 5m
 		t.Fatal(err)
 	}
 
-	// Override config paths to use temp directory
-	originalPaths := Paths
 	Paths = []string{tmpDir}
-	defer func() { Paths = originalPaths }()
 
 	cfg, err := Load()
 	if err != nil {
@@ -73,14 +81,11 @@ refresh_interval: 5m
 }
 
 func TestLoad_FileNotFound(t *testing.T) {
-	resetViper()
+	resetConfigGlobals(t)
 
 	// Use a directory that doesn't contain config file
 	tmpDir := t.TempDir()
-
-	originalPaths := Paths
 	Paths = []string{tmpDir}
-	defer func() { Paths = originalPaths }()
 
 	// Should still succeed but return config with defaults
 	cfg, err := Load()
@@ -100,7 +105,7 @@ func TestLoad_FileNotFound(t *testing.T) {
 }
 
 func TestLoad_InvalidYAML(t *testing.T) {
-	resetViper()
+	resetConfigGlobals(t)
 
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
@@ -116,18 +121,23 @@ interfaces:
 		t.Fatal(err)
 	}
 
-	originalPaths := Paths
 	Paths = []string{tmpDir}
-	defer func() { Paths = originalPaths }()
 
 	_, err := Load()
 	if err == nil {
-		t.Error("Load() with invalid YAML should return error")
+		t.Fatal("Load() with invalid YAML should return error")
+	}
+
+	// Malformed YAML fails at yaml.Unmarshal, which config.go wraps in
+	// ErrReadConfig (not ErrUnmarshalConfig, which is reserved for
+	// mapstructure decode failures against already-parsed data).
+	if !errors.Is(err, ErrReadConfig) {
+		t.Errorf("Load() error = %v, want wrapped ErrReadConfig", err)
 	}
 }
 
 func TestLoad_InvalidProtocol(t *testing.T) {
-	resetViper()
+	resetConfigGlobals(t)
 
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
@@ -146,9 +156,7 @@ interfaces:
 		t.Fatal(err)
 	}
 
-	originalPaths := Paths
 	Paths = []string{tmpDir}
-	defer func() { Paths = originalPaths }()
 
 	_, err := Load()
 	if err == nil {
@@ -162,7 +170,7 @@ interfaces:
 }
 
 func TestLoad_InvalidPeerProtocol(t *testing.T) {
-	resetViper()
+	resetConfigGlobals(t)
 
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
@@ -182,9 +190,7 @@ interfaces:
 		t.Fatal(err)
 	}
 
-	originalPaths := Paths
 	Paths = []string{tmpDir}
-	defer func() { Paths = originalPaths }()
 
 	_, err := Load()
 	if err == nil {
@@ -193,7 +199,7 @@ interfaces:
 }
 
 func TestLoad_DefaultValues(t *testing.T) {
-	resetViper()
+	resetConfigGlobals(t)
 
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
@@ -212,9 +218,7 @@ interfaces:
 		t.Fatal(err)
 	}
 
-	originalPaths := Paths
 	Paths = []string{tmpDir}
-	defer func() { Paths = originalPaths }()
 
 	cfg, err := Load()
 	if err != nil {
@@ -240,7 +244,7 @@ interfaces:
 }
 
 func TestLoad_PluginDefinitions(t *testing.T) {
-	resetViper()
+	resetConfigGlobals(t)
 
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
@@ -267,9 +271,7 @@ plugins:
 		t.Fatal(err)
 	}
 
-	originalPaths := Paths
 	Paths = []string{tmpDir}
-	defer func() { Paths = originalPaths }()
 
 	cfg, err := Load()
 	if err != nil {
@@ -292,10 +294,28 @@ plugins:
 	if testPlugin.Config["command"] != "/bin/test" {
 		t.Errorf("test_plugin command = %v, want /bin/test", testPlugin.Config["command"])
 	}
+
+	args, ok := testPlugin.Config["args"].([]interface{})
+	if !ok || len(args) != 1 || args[0] != "-v" {
+		t.Errorf("test_plugin args = %v, want [-v]", testPlugin.Config["args"])
+	}
+
+	anotherPlugin, ok := cfg.Plugins["another_plugin"]
+	if !ok {
+		t.Fatal("another_plugin not found in config")
+	}
+
+	if anotherPlugin.Type != "shell" {
+		t.Errorf("another_plugin.Type = %q, want %q", anotherPlugin.Type, "shell")
+	}
+
+	if anotherPlugin.Config["command"] != "/bin/sh" {
+		t.Errorf("another_plugin command = %v, want /bin/sh", anotherPlugin.Config["command"])
+	}
 }
 
 func TestLoad_InterfaceConfig(t *testing.T) {
-	resetViper()
+	resetConfigGlobals(t)
 
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
@@ -325,9 +345,7 @@ interfaces:
 		t.Fatal(err)
 	}
 
-	originalPaths := Paths
 	Paths = []string{tmpDir}
-	defer func() { Paths = originalPaths }()
 
 	cfg, err := Load()
 	if err != nil {
@@ -412,5 +430,419 @@ func TestValidateConfig_ValidProtocols(t *testing.T) {
 				t.Errorf("validateConfig() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+// --- File / Dir / Paths resolution ---
+
+func TestLoad_File_Exists(t *testing.T) {
+	resetConfigGlobals(t)
+
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "custom-name.yaml")
+	if err := os.WriteFile(path, []byte("refresh_interval: 11m\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Paths would not find this file (different directory, different name);
+	// File must be honored regardless.
+	Paths = []string{t.TempDir()}
+	File = path
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+
+	if cfg.RefreshInterval != 11*time.Minute {
+		t.Errorf("RefreshInterval = %v, want 11m", cfg.RefreshInterval)
+	}
+}
+
+func TestLoad_File_NotExists_ErrorsWithoutFallback(t *testing.T) {
+	resetConfigGlobals(t)
+
+	File = filepath.Join(t.TempDir(), "does-not-exist.yaml")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() with nonexistent File should return an error, not fall back to defaults")
+	}
+
+	if !errors.Is(err, ErrReadConfig) {
+		t.Errorf("Load() error = %v, want wrapped ErrReadConfig", err)
+	}
+}
+
+func TestLoad_Dir_WithConfig(t *testing.T) {
+	resetConfigGlobals(t)
+
+	tmpDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte("refresh_interval: 13m\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	Dir = tmpDir
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+
+	if cfg.RefreshInterval != 13*time.Minute {
+		t.Errorf("RefreshInterval = %v, want 13m", cfg.RefreshInterval)
+	}
+}
+
+func TestLoad_Dir_WithoutConfig_ErrorsWithoutFallback(t *testing.T) {
+	resetConfigGlobals(t)
+
+	Dir = t.TempDir()
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() with Dir lacking config.yaml should return an error, not fall back to defaults")
+	}
+
+	if !errors.Is(err, ErrReadConfig) {
+		t.Errorf("Load() error = %v, want wrapped ErrReadConfig", err)
+	}
+}
+
+func TestLoad_File_TakesPriorityOverDir(t *testing.T) {
+	resetConfigGlobals(t)
+
+	fileDir := t.TempDir()
+	filePath := filepath.Join(fileDir, "explicit-file.yaml")
+	if err := os.WriteFile(filePath, []byte("refresh_interval: 21m\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	dirWithConfig := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dirWithConfig, "config.yaml"), []byte("refresh_interval: 22m\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	File = filePath
+	Dir = dirWithConfig
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+
+	if cfg.RefreshInterval != 21*time.Minute {
+		t.Errorf("RefreshInterval = %v, want 21m (File must win over Dir)", cfg.RefreshInterval)
+	}
+}
+
+func TestLoad_Paths_FindsConfigYaml(t *testing.T) {
+	resetConfigGlobals(t)
+
+	tmpDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte("refresh_interval: 9m\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	Paths = []string{tmpDir}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+
+	if cfg.RefreshInterval != 9*time.Minute {
+		t.Errorf("RefreshInterval = %v, want 9m", cfg.RefreshInterval)
+	}
+}
+
+func TestLoad_Paths_FindsConfigYml(t *testing.T) {
+	resetConfigGlobals(t)
+
+	tmpDir := t.TempDir()
+	// Only the .yml variant is present.
+	if err := os.WriteFile(filepath.Join(tmpDir, "config.yml"), []byte("refresh_interval: 14m\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	Paths = []string{tmpDir}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+
+	if cfg.RefreshInterval != 14*time.Minute {
+		t.Errorf("RefreshInterval = %v, want 14m", cfg.RefreshInterval)
+	}
+}
+
+func TestLoad_Paths_SearchesInOrder(t *testing.T) {
+	resetConfigGlobals(t)
+
+	emptyDir := t.TempDir()
+	configuredDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(configuredDir, "config.yaml"), []byte("refresh_interval: 17m\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// The first entry has no config file; search must fall through to the
+	// second entry rather than stopping (or erroring) at the first miss.
+	Paths = []string{emptyDir, configuredDir}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+
+	if cfg.RefreshInterval != 17*time.Minute {
+		t.Errorf("RefreshInterval = %v, want 17m", cfg.RefreshInterval)
+	}
+}
+
+func TestLoad_Paths_EnvVarExpansion(t *testing.T) {
+	resetConfigGlobals(t)
+
+	tmpDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte("refresh_interval: 7m\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("STUNMESH_CONFIG_DIR", tmpDir)
+	Paths = []string{"$STUNMESH_CONFIG_DIR"}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+
+	if cfg.RefreshInterval != 7*time.Minute {
+		t.Errorf("RefreshInterval = %v, want 7m", cfg.RefreshInterval)
+	}
+}
+
+func TestLoad_Paths_EmptyExpansionIsSkipped(t *testing.T) {
+	resetConfigGlobals(t)
+
+	tmpDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte("refresh_interval: 8m\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// STUNMESH_CONFIG_DIR_UNSET_FOR_TEST is deliberately never set, so
+	// os.ExpandEnv reduces it to "". findConfigFile must skip that entry
+	// (not error, not treat it as the current directory) and continue on
+	// to the next Paths entry.
+	Paths = []string{"$STUNMESH_CONFIG_DIR_UNSET_FOR_TEST", tmpDir}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+
+	if cfg.RefreshInterval != 8*time.Minute {
+		t.Errorf("RefreshInterval = %v, want 8m", cfg.RefreshInterval)
+	}
+}
+
+func TestLoad_NoConfigFound_ReturnsAllDefaults(t *testing.T) {
+	resetConfigGlobals(t)
+
+	Paths = []string{t.TempDir()}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil (no config file must not error)", err)
+	}
+
+	if cfg.RefreshInterval != 10*time.Minute {
+		t.Errorf("RefreshInterval = %v, want 10m (default)", cfg.RefreshInterval)
+	}
+	if cfg.PingMonitor.Interval != 1*time.Second {
+		t.Errorf("PingMonitor.Interval = %v, want 1s (default)", cfg.PingMonitor.Interval)
+	}
+	if cfg.PingMonitor.Timeout != 1*time.Second {
+		t.Errorf("PingMonitor.Timeout = %v, want 1s (default)", cfg.PingMonitor.Timeout)
+	}
+	if cfg.PingMonitor.FixedRetries != 3 {
+		t.Errorf("PingMonitor.FixedRetries = %d, want 3 (default)", cfg.PingMonitor.FixedRetries)
+	}
+	if got := cfg.Stun.GetServers(); len(got) != 1 || got[0] != "stun.l.google.com:19302" {
+		t.Errorf("Stun.GetServers() = %v, want [stun.l.google.com:19302] (fallback)", got)
+	}
+	if len(cfg.Interfaces) != 0 {
+		t.Errorf("len(Interfaces) = %d, want 0", len(cfg.Interfaces))
+	}
+	if len(cfg.Plugins) != 0 {
+		t.Errorf("len(Plugins) = %d, want 0", len(cfg.Plugins))
+	}
+}
+
+// TestLoad_PartialYAML_UnsetFieldsKeepDefaults verifies mapstructure merge
+// semantics: a yaml document that only sets refresh_interval must leave
+// every other field (here, all of ping_monitor) at its pre-Decode default,
+// rather than zeroing them out.
+func TestLoad_PartialYAML_UnsetFieldsKeepDefaults(t *testing.T) {
+	resetConfigGlobals(t)
+
+	tmpDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte("refresh_interval: 42m\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	Paths = []string{tmpDir}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+
+	if cfg.RefreshInterval != 42*time.Minute {
+		t.Errorf("RefreshInterval = %v, want 42m", cfg.RefreshInterval)
+	}
+	if cfg.PingMonitor.Interval != 1*time.Second {
+		t.Errorf("PingMonitor.Interval = %v, want 1s (default, untouched by yaml)", cfg.PingMonitor.Interval)
+	}
+	if cfg.PingMonitor.Timeout != 1*time.Second {
+		t.Errorf("PingMonitor.Timeout = %v, want 1s (default, untouched by yaml)", cfg.PingMonitor.Timeout)
+	}
+	if cfg.PingMonitor.FixedRetries != 3 {
+		t.Errorf("PingMonitor.FixedRetries = %d, want 3 (default, untouched by yaml)", cfg.PingMonitor.FixedRetries)
+	}
+}
+
+func TestLoad_DurationStringParsing(t *testing.T) {
+	resetConfigGlobals(t)
+
+	tmpDir := t.TempDir()
+	configContent := `
+ping_monitor:
+  interval: 5m
+  timeout: 30s
+  fixed_retries: 7
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte(configContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	Paths = []string{tmpDir}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+
+	if cfg.PingMonitor.Interval != 5*time.Minute {
+		t.Errorf("PingMonitor.Interval = %v, want 5m", cfg.PingMonitor.Interval)
+	}
+	if cfg.PingMonitor.Timeout != 30*time.Second {
+		t.Errorf("PingMonitor.Timeout = %v, want 30s", cfg.PingMonitor.Timeout)
+	}
+	if cfg.PingMonitor.FixedRetries != 7 {
+		t.Errorf("PingMonitor.FixedRetries = %d, want 7", cfg.PingMonitor.FixedRetries)
+	}
+}
+
+// TestLoad_PluginDefinition_RemainCapturesExtraKeys pins the mapstructure
+// `,remain` behavior on PluginDefinition: keys other than "type" fall
+// through into Config rather than being dropped or causing a decode error.
+func TestLoad_PluginDefinition_RemainCapturesExtraKeys(t *testing.T) {
+	resetConfigGlobals(t)
+
+	tmpDir := t.TempDir()
+	configContent := `
+plugins:
+  cloudflare_builtin:
+    type: builtin
+    name: cloudflare
+    zone: example.com
+    token: secret-token
+    subdomain: stunmesh
+    dedup: true
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte(configContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	Paths = []string{tmpDir}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+
+	plugin, ok := cfg.Plugins["cloudflare_builtin"]
+	if !ok {
+		t.Fatal("cloudflare_builtin not found in config")
+	}
+
+	if plugin.Type != "builtin" {
+		t.Errorf("plugin.Type = %q, want %q", plugin.Type, "builtin")
+	}
+
+	// "type" itself must NOT leak into the remainder map.
+	if _, present := plugin.Config["type"]; present {
+		t.Error(`plugin.Config contains "type", want it consumed by the Type field`)
+	}
+
+	wantRemain := map[string]interface{}{
+		"name":      "cloudflare",
+		"zone":      "example.com",
+		"token":     "secret-token",
+		"subdomain": "stunmesh",
+		"dedup":     true,
+	}
+	for k, want := range wantRemain {
+		got, ok := plugin.Config[k]
+		if !ok {
+			t.Errorf("plugin.Config[%q] missing, want %v", k, want)
+			continue
+		}
+		if got != want {
+			t.Errorf("plugin.Config[%q] = %v, want %v", k, got, want)
+		}
+	}
+}
+
+func TestLoad_MalformedYAML_WrapsErrReadConfig(t *testing.T) {
+	resetConfigGlobals(t)
+
+	tmpDir := t.TempDir()
+	// Unterminated flow sequence -- not valid YAML.
+	if err := os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte("plugins: [1, 2\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	Paths = []string{tmpDir}
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() with malformed YAML should return an error")
+	}
+	if !errors.Is(err, ErrReadConfig) {
+		t.Errorf("Load() error = %v, want wrapped ErrReadConfig", err)
+	}
+}
+
+// TestLoad_TypeMismatch_WrapsErrUnmarshalConfig covers the other error path:
+// YAML that parses fine on its own but fails mapstructure decoding into the
+// typed Config struct (a map where a time.Duration is expected).
+func TestLoad_TypeMismatch_WrapsErrUnmarshalConfig(t *testing.T) {
+	resetConfigGlobals(t)
+
+	tmpDir := t.TempDir()
+	configContent := "refresh_interval:\n  nested: not-a-duration\n"
+	if err := os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte(configContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	Paths = []string{tmpDir}
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() with a type-mismatched field should return an error")
+	}
+	if !errors.Is(err, ErrUnmarshalConfig) {
+		t.Errorf("Load() error = %v, want wrapped ErrUnmarshalConfig", err)
 	}
 }
