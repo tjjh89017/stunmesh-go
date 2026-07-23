@@ -8,13 +8,8 @@ import (
 	"time"
 )
 
-// resetConfigGlobals saves the package-level File, Dir, and Paths variables
-// and restores them via t.Cleanup, then resets File/Dir to their zero value
-// so Paths-based search governs unless a test explicitly sets File or Dir.
-//
-// File, Dir, and Paths are package-level globals (not per-instance state),
-// so any test using this helper must not call t.Parallel() -- concurrent
-// tests would race on the same variables.
+// resetConfigGlobals saves File/Dir/Paths and restores them via t.Cleanup, then
+// clears File/Dir. These are shared globals: tests using it must not t.Parallel().
 func resetConfigGlobals(t *testing.T) {
 	t.Helper()
 	origFile, origDir, origPaths := File, Dir, Paths
@@ -128,9 +123,8 @@ interfaces:
 		t.Fatal("Load() with invalid YAML should return error")
 	}
 
-	// Malformed YAML fails at yaml.Unmarshal, which config.go wraps in
-	// ErrReadConfig (not ErrUnmarshalConfig, which is reserved for
-	// mapstructure decode failures against already-parsed data).
+	// Malformed YAML fails at yaml.Unmarshal, wrapped in ErrReadConfig
+	// (ErrUnmarshalConfig is reserved for mapstructure decode failures).
 	if !errors.Is(err, ErrReadConfig) {
 		t.Errorf("Load() error = %v, want wrapped ErrReadConfig", err)
 	}
@@ -444,8 +438,7 @@ func TestLoad_File_Exists(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Paths would not find this file (different directory, different name);
-	// File must be honored regardless.
+	// File must win even though Paths would never find this file.
 	Paths = []string{t.TempDir()}
 	File = path
 
@@ -586,8 +579,7 @@ func TestLoad_Paths_SearchesInOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// The first entry has no config file; search must fall through to the
-	// second entry rather than stopping (or erroring) at the first miss.
+	// Search must fall through the empty first entry, not stop or error.
 	Paths = []string{emptyDir, configuredDir}
 
 	cfg, err := Load()
@@ -629,10 +621,8 @@ func TestLoad_Paths_EmptyExpansionIsSkipped(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// STUNMESH_CONFIG_DIR_UNSET_FOR_TEST is deliberately never set, so
-	// os.ExpandEnv reduces it to "". findConfigFile must skip that entry
-	// (not error, not treat it as the current directory) and continue on
-	// to the next Paths entry.
+	// The unset env var expands to ""; findConfigFile must skip that entry
+	// (not treat it as the current directory) and continue.
 	Paths = []string{"$STUNMESH_CONFIG_DIR_UNSET_FOR_TEST", tmpDir}
 
 	cfg, err := Load()
@@ -678,10 +668,8 @@ func TestLoad_NoConfigFound_ReturnsAllDefaults(t *testing.T) {
 	}
 }
 
-// TestLoad_PartialYAML_UnsetFieldsKeepDefaults verifies mapstructure merge
-// semantics: a yaml document that only sets refresh_interval must leave
-// every other field (here, all of ping_monitor) at its pre-Decode default,
-// rather than zeroing them out.
+// TestLoad_PartialYAML_UnsetFieldsKeepDefaults verifies that yaml keys absent
+// from the file leave pre-Decode defaults untouched rather than zeroing them.
 func TestLoad_PartialYAML_UnsetFieldsKeepDefaults(t *testing.T) {
 	resetConfigGlobals(t)
 
@@ -743,9 +731,8 @@ ping_monitor:
 	}
 }
 
-// TestLoad_PluginDefinition_RemainCapturesExtraKeys pins the mapstructure
-// `,remain` behavior on PluginDefinition: keys other than "type" fall
-// through into Config rather than being dropped or causing a decode error.
+// TestLoad_PluginDefinition_RemainCapturesExtraKeys pins mapstructure `,remain`:
+// keys other than "type" fall through into Config instead of being dropped.
 func TestLoad_PluginDefinition_RemainCapturesExtraKeys(t *testing.T) {
 	resetConfigGlobals(t)
 
@@ -824,9 +811,8 @@ func TestLoad_MalformedYAML_WrapsErrReadConfig(t *testing.T) {
 	}
 }
 
-// TestLoad_TypeMismatch_WrapsErrUnmarshalConfig covers the other error path:
-// YAML that parses fine on its own but fails mapstructure decoding into the
-// typed Config struct (a map where a time.Duration is expected).
+// TestLoad_TypeMismatch_WrapsErrUnmarshalConfig: valid YAML that fails
+// mapstructure decoding (a map where a time.Duration is expected).
 func TestLoad_TypeMismatch_WrapsErrUnmarshalConfig(t *testing.T) {
 	resetConfigGlobals(t)
 

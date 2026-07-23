@@ -11,8 +11,6 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-// TestGetServers_AddressOnly verifies that when only the deprecated Address
-// field is set, GetServers returns a single-element slice with that address.
 func TestGetServers_AddressOnly(t *testing.T) {
 	s := &Stun{Address: "stun.example.com:3478"}
 	got := s.GetServers()
@@ -22,8 +20,6 @@ func TestGetServers_AddressOnly(t *testing.T) {
 	}
 }
 
-// TestGetServers_AddressesOnly verifies that when only the new Addresses
-// slice is set, GetServers returns that slice unchanged.
 func TestGetServers_AddressesOnly(t *testing.T) {
 	s := &Stun{Addresses: []string{"stun1.example.com:3478", "stun2.example.com:3478"}}
 	got := s.GetServers()
@@ -33,8 +29,7 @@ func TestGetServers_AddressesOnly(t *testing.T) {
 	}
 }
 
-// TestGetServers_BothSetNoOverlap verifies that when both fields are set with
-// no duplicate entries, Address is prepended to Addresses in the result.
+// Address is prepended to Addresses.
 func TestGetServers_BothSetNoOverlap(t *testing.T) {
 	s := &Stun{
 		Address:   "stun0.example.com:3478",
@@ -47,8 +42,7 @@ func TestGetServers_BothSetNoOverlap(t *testing.T) {
 	}
 }
 
-// TestGetServers_BothSetWithDuplicate verifies that when Address also appears
-// in Addresses, the duplicate is removed and Address remains first.
+// The duplicate is removed and Address stays first.
 func TestGetServers_BothSetWithDuplicate(t *testing.T) {
 	s := &Stun{
 		Address:   "stun1.example.com:3478",
@@ -61,8 +55,6 @@ func TestGetServers_BothSetWithDuplicate(t *testing.T) {
 	}
 }
 
-// TestGetServers_NeitherSet verifies that when both fields are empty,
-// GetServers falls back to the default Google STUN server.
 func TestGetServers_NeitherSet(t *testing.T) {
 	s := &Stun{}
 	got := s.GetServers()
@@ -72,8 +64,6 @@ func TestGetServers_NeitherSet(t *testing.T) {
 	}
 }
 
-// TestGetServers_AddressesContainsEmptyStrings verifies that empty strings
-// inside Addresses are silently skipped and do not appear in the result.
 func TestGetServers_AddressesContainsEmptyStrings(t *testing.T) {
 	s := &Stun{
 		Addresses: []string{"", "stun1.example.com:3478", "", "stun2.example.com:3478", ""},
@@ -85,8 +75,6 @@ func TestGetServers_AddressesContainsEmptyStrings(t *testing.T) {
 	}
 }
 
-// TestLoad_BackwardCompat_AddressOnly verifies that a config file using the
-// deprecated stun.address key is loaded and GetServers() returns that address.
 func TestLoad_BackwardCompat_AddressOnly(t *testing.T) {
 	resetConfigGlobals(t)
 
@@ -115,9 +103,7 @@ func TestLoad_BackwardCompat_AddressOnly(t *testing.T) {
 	}
 }
 
-// TestLoad_BackwardCompat_AddressesOnly verifies that a config file using only
-// stun.addresses yields exactly that list: stun.address has no default value,
-// so no implicit entry is prepended.
+// stun.address has no default value, so no implicit entry is prepended.
 func TestLoad_BackwardCompat_AddressesOnly(t *testing.T) {
 	resetConfigGlobals(t)
 
@@ -145,9 +131,6 @@ func TestLoad_BackwardCompat_AddressesOnly(t *testing.T) {
 	}
 }
 
-// TestLoad_NeitherAddressNorAddresses verifies that when the config file sets
-// no STUN servers at all, Load applies the default Google STUN server to
-// Addresses, and GetServers returns exactly that list.
 func TestLoad_NeitherAddressNorAddresses(t *testing.T) {
 	resetConfigGlobals(t)
 
@@ -175,9 +158,7 @@ func TestLoad_NeitherAddressNorAddresses(t *testing.T) {
 	}
 }
 
-// TestLoad_ExplicitEmptyAddresses_NoAddress verifies that an explicitly empty
-// stun.addresses list ("addresses: []") with no stun.address is rejected with
-// ErrNoStunServers instead of being silently replaced by the default server.
+// "addresses: []" must error, not be silently replaced by the default server.
 func TestLoad_ExplicitEmptyAddresses_NoAddress(t *testing.T) {
 	resetConfigGlobals(t)
 
@@ -195,9 +176,8 @@ func TestLoad_ExplicitEmptyAddresses_NoAddress(t *testing.T) {
 	}
 }
 
-// TestLoad_ExplicitEmptyAddresses_WithAddress verifies that an explicitly
-// empty stun.addresses list combined with a non-empty stun.address is
-// accepted: the deprecated address becomes the only entry.
+// "addresses: []" plus a non-empty stun.address is accepted: the deprecated
+// address becomes the only entry.
 func TestLoad_ExplicitEmptyAddresses_WithAddress(t *testing.T) {
 	resetConfigGlobals(t)
 
@@ -220,9 +200,6 @@ func TestLoad_ExplicitEmptyAddresses_WithAddress(t *testing.T) {
 	}
 }
 
-// TestLoad_NoConfigFileAtAll verifies that when no config file exists at all,
-// Load applies the default STUN server (the nil-Addresses case) and does not
-// error.
 func TestLoad_NoConfigFileAtAll(t *testing.T) {
 	resetConfigGlobals(t)
 
@@ -239,11 +216,8 @@ func TestLoad_NoConfigFileAtAll(t *testing.T) {
 	}
 }
 
-// TestStunAddressesDecode_NilVsEmpty verifies the nil vs empty-slice
-// distinction Load's three-way STUN semantics depend on, using the same
-// yaml + mapstructure pipeline as Load: an absent addresses key must decode
-// to a nil slice, while an explicit "addresses: []" must decode to a
-// non-nil empty slice.
+// TestStunAddressesDecode_NilVsEmpty pins the nil vs empty-slice distinction
+// Load's STUN semantics depend on: absent key -> nil, "addresses: []" -> non-nil.
 func TestStunAddressesDecode_NilVsEmpty(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -285,9 +259,7 @@ func TestStunAddressesDecode_NilVsEmpty(t *testing.T) {
 	}
 }
 
-// TestLoad_BackwardCompat_AddressesOnly_NoDefault verifies that when stun.address
-// is explicitly set to empty in the config file, only the stun.addresses list is
-// returned by GetServers() after Load().
+// An explicitly empty stun.address contributes nothing to the merged list.
 func TestLoad_BackwardCompat_AddressesOnly_NoDefault(t *testing.T) {
 	resetConfigGlobals(t)
 
@@ -311,8 +283,7 @@ func TestLoad_BackwardCompat_AddressesOnly_NoDefault(t *testing.T) {
 	}
 }
 
-// TestLoad_BackwardCompat_Both verifies that when both stun.address and
-// stun.addresses are present, address appears first and duplicates are removed.
+// With both keys present, address comes first and duplicates are removed.
 func TestLoad_BackwardCompat_Both(t *testing.T) {
 	resetConfigGlobals(t)
 
