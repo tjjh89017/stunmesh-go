@@ -17,8 +17,6 @@ var DefaultSet = wire.NewSet(
 	NewDeviceConfig,
 )
 
-const Name = "config"
-
 // Default values applied by Load when the config file omits the
 // corresponding keys. DefaultStunServer is applied after decoding, only
 // when the user configured no STUN server at all (neither stun.address
@@ -37,10 +35,17 @@ const (
 // (no fallback to defaults).
 var File string
 
-// Dir, when non-empty, points at a directory containing config.yaml. It
+// Dir, when non-empty, points at a directory containing a config file
+// named after one of ConfigFileNames (config.yaml preferred). It
 // takes priority over the default search paths. Reading it must succeed
 // (no fallback to defaults).
 var Dir string
+
+// ConfigFileNames is the ordered list of file names looked for inside a
+// candidate directory (Dir override or each entry of Paths). The first
+// name that exists wins; the first entry is also the name reported when
+// an explicit Dir override contains none of them.
+var ConfigFileNames = []string{"config.yaml", "config.yml"}
 
 // Paths is the ordered list of directories (before $-expansion) searched
 // for a config.yaml/config.yml file when neither File nor Dir is set.
@@ -124,7 +129,16 @@ func findConfigFile() (string, error) {
 	}
 
 	if Dir != "" {
-		return filepath.Join(Dir, "config.yaml"), nil
+		for _, name := range ConfigFileNames {
+			candidate := filepath.Join(Dir, name)
+			if _, err := os.Stat(candidate); err == nil {
+				return candidate, nil
+			}
+		}
+		// None of the candidates exist; return the primary name so that
+		// the subsequent read fails hard with a clear path, preserving
+		// the "explicit Dir override must succeed" contract.
+		return filepath.Join(Dir, ConfigFileNames[0]), nil
 	}
 
 	for _, path := range Paths {
@@ -132,7 +146,7 @@ func findConfigFile() (string, error) {
 		if expanded == "" {
 			continue
 		}
-		for _, name := range []string{"config.yaml", "config.yml"} {
+		for _, name := range ConfigFileNames {
 			candidate := filepath.Join(expanded, name)
 			if _, err := os.Stat(candidate); err == nil {
 				return candidate, nil
