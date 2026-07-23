@@ -270,14 +270,28 @@ The protocol configuration operates at two distinct levels:
 ## Configuration System
 
 ### Config Loading Priority
-Configuration is loaded from these paths in order:
-1. `$STUNMESH_CONFIG_DIR/config.yaml`
-2. `/etc/stunmesh/config.yaml` 
-3. `$HOME/.stunmesh/config.yaml`
-4. `./config.yaml`
+Config parsing uses `go.yaml.in/yaml/v3` + `github.com/go-viper/mapstructure/v2` (with `StringToTimeDurationHookFunc` for duration strings like `"10m"`). Command-line flags take highest priority:
 
-### Environment Variable Support
-Uses Viper's `AutomaticEnv()` - environment variables can override config values using `STUNMESH_` prefix.
+1. `-c` / `--config <file>`: exact config file to read; must be readable, no fallback to defaults
+2. `--config-dir <dir>`: directory searched for `config.yaml` then `config.yml`; must contain one, no fallback to defaults (ignored if `-c`/`--config` is set)
+
+When neither flag is set, these directories are searched in order, each for `config.yaml` then `config.yml` (first match wins):
+
+1. `$STUNMESH_CONFIG_DIR`
+2. `/etc/stunmesh`
+3. `$HOME/.stunmesh`
+4. `.`
+
+If no config file is found, the application proceeds with built-in defaults (centralized in the const block at the top of `internal/config/config.go`).
+
+### Environment Variables
+Environment variables cannot override config values (the former Viper `AutomaticEnv()` hook was removed — it had no practical effect). Only environment variable expansion in the search paths (`$STUNMESH_CONFIG_DIR`, `$HOME`, via `os.ExpandEnv`) is supported. Config files must be YAML (`config.yaml`/`config.yml`).
+
+### STUN Server Configuration
+- `stun.addresses` key absent (and no `stun.address`) → defaults to `stun.l.google.com:19302` with a startup warning
+- `stun.addresses: []` explicitly empty (and no `stun.address`) → startup error (`ErrNoStunServers`)
+- Deprecated `stun.address` (single server) is still supported and takes highest priority: it is merged in front of `addresses` and the list is deduplicated preserving order
+- Defaults (refresh interval, STUN server, ping settings) live in the const block at the top of `internal/config/config.go`
 
 ## Key Implementation Details
 
