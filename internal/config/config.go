@@ -18,6 +18,19 @@ var DefaultSet = wire.NewSet(
 
 const Name = "config"
 
+// Default values applied by Load when the config file omits the
+// corresponding keys. DefaultStunServer is applied after decoding, only
+// when the user configured no STUN server at all (neither stun.address
+// nor stun.addresses); Stun.GetServers also uses it as an empty-list
+// safety net for direct runtime callers.
+const (
+	DefaultRefreshInterval  = 10 * time.Minute
+	DefaultStunServer       = "stun.l.google.com:19302"
+	DefaultPingInterval     = 1 * time.Second
+	DefaultPingTimeout      = 1 * time.Second
+	DefaultPingFixedRetries = 3
+)
+
 // File, when non-empty, is the exact config file path to read. It takes
 // priority over Dir and the default search paths. Reading it must succeed
 // (no fallback to defaults).
@@ -70,7 +83,7 @@ func (s *Stun) GetServers() []string {
 	}
 
 	if len(servers) == 0 {
-		return []string{"stun.l.google.com:19302"}
+		return []string{DefaultStunServer}
 	}
 
 	return servers
@@ -132,12 +145,13 @@ func Load() (*Config, error) {
 	var cfg Config
 	// Defaults: filled in before Decode so that yaml keys not present in
 	// the file leave the corresponding struct field untouched.
-	cfg.RefreshInterval = 10 * time.Minute
-	cfg.Stun.Address = "stun.l.google.com:19302"
+	// Note: Stun.Address and Stun.Addresses have no pre-Decode defaults;
+	// DefaultStunServer is applied after decoding only when neither is set.
+	cfg.RefreshInterval = DefaultRefreshInterval
 	cfg.Stun.Addresses = []string{}
-	cfg.PingMonitor.Interval = 1 * time.Second
-	cfg.PingMonitor.Timeout = 1 * time.Second
-	cfg.PingMonitor.FixedRetries = 3
+	cfg.PingMonitor.Interval = DefaultPingInterval
+	cfg.PingMonitor.Timeout = DefaultPingTimeout
+	cfg.PingMonitor.FixedRetries = DefaultPingFixedRetries
 
 	path, err := findConfigFile()
 	if err != nil {
@@ -173,6 +187,13 @@ func Load() (*Config, error) {
 	// path == "" means no config file was found via the default search;
 	// proceed with defaults, matching prior viper.ConfigFileNotFoundError
 	// behavior.
+
+	// Apply the STUN server default only when the user configured none at
+	// all, so a user-provided stun.addresses list is never implicitly
+	// extended with DefaultStunServer.
+	if cfg.Stun.Address == "" && len(cfg.Stun.Addresses) == 0 {
+		cfg.Stun.Addresses = []string{DefaultStunServer}
+	}
 
 	// Merge deprecated Address into Addresses: prepend Address if non-empty, then deduplicate.
 	cfg.Stun.Addresses = cfg.Stun.GetServers()

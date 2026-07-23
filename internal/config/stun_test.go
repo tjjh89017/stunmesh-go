@@ -112,12 +112,9 @@ func TestLoad_BackwardCompat_AddressOnly(t *testing.T) {
 }
 
 // TestLoad_BackwardCompat_AddressesOnly verifies that a config file using only
-// stun.addresses is loaded correctly. Because Load() sets a default value for
-// stun.address ("stun.l.google.com:19302") via Viper, that default is prepended
-// unless explicitly overridden. The resulting list therefore starts with the
-// default address followed by the explicit addresses from stun.addresses.
+// stun.addresses yields exactly that list: stun.address has no default value,
+// so no implicit entry is prepended.
 func TestLoad_BackwardCompat_AddressesOnly(t *testing.T) {
-	t.Skip("pending stun.address default redesign")
 	resetConfigGlobals(t)
 
 	tmpDir := t.TempDir()
@@ -133,10 +130,42 @@ func TestLoad_BackwardCompat_AddressesOnly(t *testing.T) {
 		t.Fatalf("Load() error = %v, want nil", err)
 	}
 
-	// The Viper default for stun.address ("stun.l.google.com:19302") is prepended
-	// unless the config file explicitly sets stun.address to an empty value.
 	got := cfg.Stun.GetServers()
-	want := []string{"stun.l.google.com:19302", "stun1.example.com:3478", "stun2.example.com:3478"}
+	want := []string{"stun1.example.com:3478", "stun2.example.com:3478"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("GetServers() after Load() = %v, want %v", got, want)
+	}
+
+	if cfg.Stun.Address != "" {
+		t.Errorf("Stun.Address after Load() = %q, want empty", cfg.Stun.Address)
+	}
+}
+
+// TestLoad_NeitherAddressNorAddresses verifies that when the config file sets
+// no STUN servers at all, Load applies the default Google STUN server to
+// Addresses, and GetServers returns exactly that list.
+func TestLoad_NeitherAddressNorAddresses(t *testing.T) {
+	resetConfigGlobals(t)
+
+	tmpDir := t.TempDir()
+	configContent := "refresh_interval: 5m\n"
+	if err := os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte(configContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	Paths = []string{tmpDir}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+
+	want := []string{"stun.l.google.com:19302"}
+	if !reflect.DeepEqual(cfg.Stun.Addresses, want) {
+		t.Errorf("Stun.Addresses after Load() = %v, want %v (default applied)", cfg.Stun.Addresses, want)
+	}
+
+	got := cfg.Stun.GetServers()
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("GetServers() after Load() = %v, want %v", got, want)
 	}
