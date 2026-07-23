@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os/exec"
 
-	"github.com/mitchellh/mapstructure"
+	"github.com/go-viper/mapstructure/v2"
 	"github.com/rs/zerolog"
 	pluginapi "github.com/tjjh89017/stunmesh-go/pluginapi"
 )
