@@ -9,16 +9,14 @@ import (
 // loadConfigFromYAML writes content to a temp config.yaml and loads it.
 func loadConfigFromYAML(t *testing.T, content string) *Config {
 	t.Helper()
-	resetViper()
+	resetConfigGlobals(t)
 
 	tmpDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
 
-	originalPaths := Paths
 	Paths = []string{tmpDir}
-	defer func() { Paths = originalPaths }()
 
 	cfg, err := Load()
 	if err != nil {
