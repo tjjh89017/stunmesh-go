@@ -71,7 +71,7 @@ plugins:
     type: builtin
     name: cloudflare
     zone: example.com
-    token: ${CLOUDFLARE_API_TOKEN}
+    token: "<CLOUDFLARE_API_TOKEN>"
     subdomain: wg
 ```
 
