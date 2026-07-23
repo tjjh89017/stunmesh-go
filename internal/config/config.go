@@ -2,10 +2,13 @@ package config
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"time"
 
+	"github.com/go-viper/mapstructure/v2"
 	"github.com/google/wire"
-	"github.com/spf13/viper"
+	"go.yaml.in/yaml/v3"
 )
 
 var DefaultSet = wire.NewSet(
@@ -15,6 +18,18 @@ var DefaultSet = wire.NewSet(
 
 const Name = "config"
 
+// File, when non-empty, is the exact config file path to read. It takes
+// priority over Dir and the default search paths. Reading it must succeed
+// (no fallback to defaults).
+var File string
+
+// Dir, when non-empty, points at a directory containing config.yaml. It
+// takes priority over the default search paths. Reading it must succeed
+// (no fallback to defaults).
+var Dir string
+
+// Paths is the ordered list of directories (before $-expansion) searched
+// for a config.yaml/config.yml file when neither File nor Dir is set.
 var Paths []string = []string{
 	"$STUNMESH_CONFIG_DIR",
 	"/etc/stunmesh",
@@ -83,30 +98,81 @@ type Config struct {
 	PingMonitor     PingMonitor                 `mapstructure:"ping_monitor"`
 }
 
-func Load() (*Config, error) {
-	viper.SetConfigName(Name)
-	for _, path := range Paths {
-		viper.AddConfigPath(path)
+// findConfigFile resolves which config file (if any) to read, honoring
+// File and Dir overrides before falling back to the default search paths.
+// It returns an empty string (with no error) when no config file is found
+// via the default search, matching prior viper.ConfigFileNotFoundError
+// behavior of proceeding with defaults.
+func findConfigFile() (string, error) {
+	if File != "" {
+		return File, nil
 	}
-	viper.AutomaticEnv()
 
-	viper.SetDefault("refresh_interval", time.Duration(10)*time.Minute)
-	viper.SetDefault("stun.address", "stun.l.google.com:19302")
-	viper.SetDefault("stun.addresses", []string{})
-	viper.SetDefault("ping_monitor.interval", time.Duration(1)*time.Second)
-	viper.SetDefault("ping_monitor.timeout", time.Duration(1)*time.Second)
-	viper.SetDefault("ping_monitor.fixed_retries", 3)
+	if Dir != "" {
+		return filepath.Join(Dir, "config.yaml"), nil
+	}
 
-	if err := viper.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-			return nil, errors.Join(ErrReadConfig, err)
+	for _, path := range Paths {
+		expanded := os.ExpandEnv(path)
+		if expanded == "" {
+			continue
+		}
+		for _, name := range []string{"config.yaml", "config.yml"} {
+			candidate := filepath.Join(expanded, name)
+			if _, err := os.Stat(candidate); err == nil {
+				return candidate, nil
+			}
 		}
 	}
 
+	return "", nil
+}
+
+func Load() (*Config, error) {
 	var cfg Config
-	if err := viper.Unmarshal(&cfg); err != nil {
-		return nil, errors.Join(ErrUnmarshalConfig, err)
+	// Defaults: filled in before Decode so that yaml keys not present in
+	// the file leave the corresponding struct field untouched.
+	cfg.RefreshInterval = 10 * time.Minute
+	cfg.Stun.Address = "stun.l.google.com:19302"
+	cfg.Stun.Addresses = []string{}
+	cfg.PingMonitor.Interval = 1 * time.Second
+	cfg.PingMonitor.Timeout = 1 * time.Second
+	cfg.PingMonitor.FixedRetries = 3
+
+	path, err := findConfigFile()
+	if err != nil {
+		return nil, err
 	}
+
+	if path != "" {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			// Explicit File/Dir overrides must fail hard; the default
+			// search only reaches here for a path that os.Stat already
+			// confirmed exists, so a read failure here is also an error.
+			return nil, errors.Join(ErrReadConfig, err)
+		}
+
+		var raw map[string]interface{}
+		if err := yaml.Unmarshal(data, &raw); err != nil {
+			return nil, errors.Join(ErrReadConfig, err)
+		}
+
+		decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+			DecodeHook: mapstructure.StringToTimeDurationHookFunc(),
+			Result:     &cfg,
+		})
+		if err != nil {
+			return nil, errors.Join(ErrUnmarshalConfig, err)
+		}
+
+		if err := decoder.Decode(raw); err != nil {
+			return nil, errors.Join(ErrUnmarshalConfig, err)
+		}
+	}
+	// path == "" means no config file was found via the default search;
+	// proceed with defaults, matching prior viper.ConfigFileNotFoundError
+	// behavior.
 
 	// Merge deprecated Address into Addresses: prepend Address if non-empty, then deduplicate.
 	cfg.Stun.Addresses = cfg.Stun.GetServers()

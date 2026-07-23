@@ -46,7 +46,7 @@ func (m *Manager) IsDedup(name string) bool {
 }
 
 // parseDedup coerces a raw config value into a dedup flag. It accepts a
-// real bool, or a string such as "true"/"1" (e.g. from a viper env
+// real bool, or a string such as "true"/"1" (e.g. from an environment
 // override). Anything else, including an absent value (nil), is false.
 func parseDedup(value interface{}) bool {
 	switch v := value.(type) {
