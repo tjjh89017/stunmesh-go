@@ -49,6 +49,8 @@ stunmesh-go needs raw socket access, so run it as root next to an already-config
 sudo ./stunmesh-go
 ```
 
+It runs as a daemon by default; pass `-oneshot` to publish and establish 3 times and then exit.
+
 Configuration is read from `/etc/stunmesh/config.yaml`, `~/.stunmesh/config.yaml`, or `./config.yaml` (`.yml` also works), or pass a file directly with `-c <file>`. A minimal two-node setup with the built-in Cloudflare plugin:
 
 ```yaml
@@ -63,7 +65,7 @@ interfaces:
         public_key: "<PEER_B_PUBLIC_KEY_BASE64>"
         plugin: cf
 stun:
-  address: "stun.l.google.com:19302"
+  addresses: ["stun.l.google.com:19302"]
 plugins:
   cf:
     type: builtin
@@ -106,7 +108,6 @@ Build options (built-in plugin selection, binary minimization, WireGuard backend
 
 ## Future work / Roadmap
 
-- one shot command
 - auto execute when routing engine notify change
 
 ## License
