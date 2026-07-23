@@ -49,7 +49,7 @@ stunmesh-go needs raw socket access, so run it as root next to an already-config
 sudo ./stunmesh-go
 ```
 
-Configuration is read from `/etc/stunmesh/config.yaml`, `~/.stunmesh/config.yaml`, or `./config.yaml`. A minimal two-node setup with the built-in Cloudflare plugin:
+Configuration is read from `/etc/stunmesh/config.yaml`, `~/.stunmesh/config.yaml`, or `./config.yaml` (`.yml` also works), or pass a file directly with `-c <file>`. A minimal two-node setup with the built-in Cloudflare plugin:
 
 ```yaml
 ---
