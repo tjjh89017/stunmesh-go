@@ -1,10 +1,14 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
+
+	"github.com/go-viper/mapstructure/v2"
+	"go.yaml.in/yaml/v3"
 )
 
 // TestGetServers_AddressOnly verifies that when only the deprecated Address
@@ -168,6 +172,116 @@ func TestLoad_NeitherAddressNorAddresses(t *testing.T) {
 	got := cfg.Stun.GetServers()
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("GetServers() after Load() = %v, want %v", got, want)
+	}
+}
+
+// TestLoad_ExplicitEmptyAddresses_NoAddress verifies that an explicitly empty
+// stun.addresses list ("addresses: []") with no stun.address is rejected with
+// ErrNoStunServers instead of being silently replaced by the default server.
+func TestLoad_ExplicitEmptyAddresses_NoAddress(t *testing.T) {
+	resetConfigGlobals(t)
+
+	tmpDir := t.TempDir()
+	configContent := "stun:\n  addresses: []\n"
+	if err := os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte(configContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	Paths = []string{tmpDir}
+
+	_, err := Load()
+	if !errors.Is(err, ErrNoStunServers) {
+		t.Fatalf("Load() error = %v, want ErrNoStunServers", err)
+	}
+}
+
+// TestLoad_ExplicitEmptyAddresses_WithAddress verifies that an explicitly
+// empty stun.addresses list combined with a non-empty stun.address is
+// accepted: the deprecated address becomes the only entry.
+func TestLoad_ExplicitEmptyAddresses_WithAddress(t *testing.T) {
+	resetConfigGlobals(t)
+
+	tmpDir := t.TempDir()
+	configContent := "stun:\n  address: \"stun.example.com:3478\"\n  addresses: []\n"
+	if err := os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte(configContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	Paths = []string{tmpDir}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+
+	want := []string{"stun.example.com:3478"}
+	if !reflect.DeepEqual(cfg.Stun.Addresses, want) {
+		t.Errorf("Stun.Addresses after Load() = %v, want %v", cfg.Stun.Addresses, want)
+	}
+}
+
+// TestLoad_NoConfigFileAtAll verifies that when no config file exists at all,
+// Load applies the default STUN server (the nil-Addresses case) and does not
+// error.
+func TestLoad_NoConfigFileAtAll(t *testing.T) {
+	resetConfigGlobals(t)
+
+	Paths = []string{t.TempDir()}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+
+	want := []string{DefaultStunServer}
+	if !reflect.DeepEqual(cfg.Stun.Addresses, want) {
+		t.Errorf("Stun.Addresses after Load() = %v, want %v (default applied)", cfg.Stun.Addresses, want)
+	}
+}
+
+// TestStunAddressesDecode_NilVsEmpty verifies the nil vs empty-slice
+// distinction Load's three-way STUN semantics depend on, using the same
+// yaml + mapstructure pipeline as Load: an absent addresses key must decode
+// to a nil slice, while an explicit "addresses: []" must decode to a
+// non-nil empty slice.
+func TestStunAddressesDecode_NilVsEmpty(t *testing.T) {
+	cases := []struct {
+		name    string
+		yaml    string
+		wantNil bool
+	}{
+		{"no stun block", "refresh_interval: 5m\n", true},
+		{"stun block without addresses key", "stun:\n  address: \"stun.example.com:3478\"\n", true},
+		{"explicit empty list", "stun:\n  addresses: []\n", false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var raw map[string]interface{}
+			if err := yaml.Unmarshal([]byte(tc.yaml), &raw); err != nil {
+				t.Fatalf("yaml.Unmarshal() error = %v", err)
+			}
+
+			var cfg Config
+			decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+				DecodeHook: mapstructure.StringToTimeDurationHookFunc(),
+				Result:     &cfg,
+			})
+			if err != nil {
+				t.Fatalf("mapstructure.NewDecoder() error = %v", err)
+			}
+			if err := decoder.Decode(raw); err != nil {
+				t.Fatalf("decoder.Decode() error = %v", err)
+			}
+
+			gotNil := cfg.Stun.Addresses == nil
+			if gotNil != tc.wantNil {
+				t.Errorf("Stun.Addresses == nil is %v, want %v (value: %#v)", gotNil, tc.wantNil, cfg.Stun.Addresses)
+			}
+			if len(cfg.Stun.Addresses) != 0 {
+				t.Errorf("Stun.Addresses len = %d, want 0", len(cfg.Stun.Addresses))
+			}
+		})
 	}
 }
 

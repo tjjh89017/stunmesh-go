@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/google/wire"
+	"github.com/rs/zerolog"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -53,6 +54,7 @@ var Paths []string = []string{
 var (
 	ErrReadConfig      = errors.New("failed to read config")
 	ErrUnmarshalConfig = errors.New("failed to unmarshal config")
+	ErrNoStunServers   = errors.New("stun.addresses is explicitly empty and no stun.address is set")
 )
 
 type Logger struct {
@@ -145,10 +147,12 @@ func Load() (*Config, error) {
 	var cfg Config
 	// Defaults: filled in before Decode so that yaml keys not present in
 	// the file leave the corresponding struct field untouched.
-	// Note: Stun.Address and Stun.Addresses have no pre-Decode defaults;
-	// DefaultStunServer is applied after decoding only when neither is set.
+	// Note: Stun.Address and Stun.Addresses have no pre-Decode defaults.
+	// Addresses must stay nil here so that after decoding we can tell
+	// "key absent" (nil) apart from "explicitly empty list" (non-nil,
+	// len 0); DefaultStunServer is applied after decoding only when the
+	// user configured no STUN server at all.
 	cfg.RefreshInterval = DefaultRefreshInterval
-	cfg.Stun.Addresses = []string{}
 	cfg.PingMonitor.Interval = DefaultPingInterval
 	cfg.PingMonitor.Timeout = DefaultPingTimeout
 	cfg.PingMonitor.FixedRetries = DefaultPingFixedRetries
@@ -188,11 +192,26 @@ func Load() (*Config, error) {
 	// proceed with defaults, matching prior viper.ConfigFileNotFoundError
 	// behavior.
 
-	// Apply the STUN server default only when the user configured none at
-	// all, so a user-provided stun.addresses list is never implicitly
-	// extended with DefaultStunServer.
-	if cfg.Stun.Address == "" && len(cfg.Stun.Addresses) == 0 {
+	// Three-way STUN server semantics, relying on the nil vs empty-slice
+	// distinction preserved by the yaml + mapstructure pipeline:
+	//   1. addresses key absent (nil) and address empty -> the user
+	//      configured nothing: apply DefaultStunServer and warn.
+	//   2. addresses explicitly empty (non-nil, len 0) and address empty
+	//      -> the user deliberately disabled all STUN servers, which the
+	//      daemon cannot operate without: hard error.
+	//   3. anything else -> the user provided servers; leave untouched so
+	//      a user-provided list is never implicitly extended with
+	//      DefaultStunServer.
+	switch {
+	case cfg.Stun.Addresses == nil && cfg.Stun.Address == "":
+		// The injected zerolog logger is built from this config
+		// (logger.NewLogger), so it does not exist yet; use a minimal
+		// console logger in the same output style.
+		warnLog := zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout}).With().Timestamp().Logger()
+		warnLog.Warn().Msg("no STUN servers configured, defaulting to " + DefaultStunServer)
 		cfg.Stun.Addresses = []string{DefaultStunServer}
+	case len(cfg.Stun.Addresses) == 0 && cfg.Stun.Address == "":
+		return nil, ErrNoStunServers
 	}
 
 	// Merge deprecated Address into Addresses: prepend Address if non-empty, then deduplicate.
