@@ -49,7 +49,7 @@ var Paths []string = []string{
 var (
 	ErrReadConfig      = errors.New("failed to read config")
 	ErrUnmarshalConfig = errors.New("failed to unmarshal config")
-	ErrNoStunServers   = errors.New("stun.addresses is explicitly empty and no stun.address is set")
+	ErrNoStunServers   = errors.New("stun.addresses has no usable entries (empty list or only empty strings) and no stun.address is set")
 )
 
 type Logger struct {
@@ -184,15 +184,22 @@ func Load() (*Config, error) {
 	// path == "": no config file found; proceed with defaults.
 
 	// STUN server semantics: key absent (nil) -> default + warn; explicitly
-	// empty list ("addresses: []") -> hard error; otherwise leave the
-	// user-provided list untouched.
+	// provided list with zero usable entries ("addresses: []", or only empty
+	// strings such as an unexpanded "${STUN_SERVER}" template) -> hard error;
+	// otherwise leave the user-provided list untouched.
+	effectiveAddresses := 0
+	for _, addr := range cfg.Stun.Addresses {
+		if addr != "" {
+			effectiveAddresses++
+		}
+	}
 	switch {
 	case cfg.Stun.Addresses == nil && cfg.Stun.Address == "":
 		// logger.NewLogger needs this config; use a throwaway console logger here.
 		warnLog := zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout}).With().Timestamp().Logger()
 		warnLog.Warn().Msg("no STUN servers configured, defaulting to " + DefaultStunServer)
 		cfg.Stun.Addresses = []string{DefaultStunServer}
-	case len(cfg.Stun.Addresses) == 0 && cfg.Stun.Address == "":
+	case effectiveAddresses == 0 && cfg.Stun.Address == "":
 		return nil, ErrNoStunServers
 	}
 

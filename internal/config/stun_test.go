@@ -200,6 +200,91 @@ func TestLoad_ExplicitEmptyAddresses_WithAddress(t *testing.T) {
 	}
 }
 
+// A provided list whose entries are all empty strings (e.g. an unexpanded
+// "${STUN_SERVER}" template) must error like "addresses: []", not silently
+// fall back to the default server.
+func TestLoad_AllEmptyStringAddresses_NoAddress(t *testing.T) {
+	resetConfigGlobals(t)
+
+	tmpDir := t.TempDir()
+	configContent := "stun:\n  addresses: [\"\"]\n"
+	if err := os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte(configContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	Paths = []string{tmpDir}
+
+	_, err := Load()
+	if !errors.Is(err, ErrNoStunServers) {
+		t.Fatalf("Load() error = %v, want ErrNoStunServers", err)
+	}
+}
+
+func TestLoad_MultipleEmptyStringAddresses_NoAddress(t *testing.T) {
+	resetConfigGlobals(t)
+
+	tmpDir := t.TempDir()
+	configContent := "stun:\n  addresses: [\"\", \"\"]\n"
+	if err := os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte(configContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	Paths = []string{tmpDir}
+
+	_, err := Load()
+	if !errors.Is(err, ErrNoStunServers) {
+		t.Fatalf("Load() error = %v, want ErrNoStunServers", err)
+	}
+}
+
+// All-empty-string addresses plus a non-empty stun.address is accepted: the
+// deprecated address becomes the only entry.
+func TestLoad_AllEmptyStringAddresses_WithAddress(t *testing.T) {
+	resetConfigGlobals(t)
+
+	tmpDir := t.TempDir()
+	configContent := "stun:\n  address: \"stun.example.com:3478\"\n  addresses: [\"\"]\n"
+	if err := os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte(configContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	Paths = []string{tmpDir}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+
+	want := []string{"stun.example.com:3478"}
+	if !reflect.DeepEqual(cfg.Stun.Addresses, want) {
+		t.Errorf("Stun.Addresses after Load() = %v, want %v", cfg.Stun.Addresses, want)
+	}
+}
+
+// A list mixing real entries and empty strings is accepted; the empty strings
+// are filtered out by GetServers.
+func TestLoad_MixedRealAndEmptyStringAddresses(t *testing.T) {
+	resetConfigGlobals(t)
+
+	tmpDir := t.TempDir()
+	configContent := "stun:\n  addresses: [\"stun.example.com:3478\", \"\"]\n"
+	if err := os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte(configContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	Paths = []string{tmpDir}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+
+	want := []string{"stun.example.com:3478"}
+	if !reflect.DeepEqual(cfg.Stun.Addresses, want) {
+		t.Errorf("Stun.Addresses after Load() = %v, want %v", cfg.Stun.Addresses, want)
+	}
+}
+
 func TestLoad_NoConfigFileAtAll(t *testing.T) {
 	resetConfigGlobals(t)
 
