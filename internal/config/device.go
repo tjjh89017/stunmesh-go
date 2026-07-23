@@ -79,10 +79,7 @@ func (c *DeviceConfig) GetInterfaceProtocol(deviceName string) string {
 }
 
 // GetListenConfig returns the interface's underlay-listen restriction for STUN
-// discovery: the explicit interface names and whether to also include the
-// default-route interface. A nil/empty list with defaultRoute false means
-// "listen on all" -- the zero-breaking default. Only darwin/bsd honor these;
-// Linux ignores them (warned about at config load).
+// discovery; nil list + false means "listen on all" (darwin/bsd only).
 func (c *DeviceConfig) GetListenConfig(deviceName string) (interfaces []string, defaultRoute bool) {
 	device, ok := c.interfaces[deviceName]
 	if !ok {

@@ -17,11 +17,7 @@ var DefaultSet = wire.NewSet(
 	NewDeviceConfig,
 )
 
-// Default values applied by Load when the config file omits the
-// corresponding keys. DefaultStunServer is applied after decoding, only
-// when the user configured no STUN server at all (neither stun.address
-// nor stun.addresses); Stun.GetServers also uses it as an empty-list
-// safety net for direct runtime callers.
+// Defaults applied by Load when the config file omits the corresponding keys.
 const (
 	DefaultRefreshInterval  = 10 * time.Minute
 	DefaultStunServer       = "stun.l.google.com:19302"
@@ -30,25 +26,19 @@ const (
 	DefaultPingFixedRetries = 3
 )
 
-// File, when non-empty, is the exact config file path to read. It takes
-// priority over Dir and the default search paths. Reading it must succeed
-// (no fallback to defaults).
+// File, when non-empty, is the exact config file to read; it overrides Dir
+// and Paths and must be readable (no fallback to defaults).
 var File string
 
-// Dir, when non-empty, points at a directory containing a config file
-// named after one of ConfigFileNames (config.yaml preferred). It
-// takes priority over the default search paths. Reading it must succeed
-// (no fallback to defaults).
+// Dir, when non-empty, is a directory searched for ConfigFileNames; it
+// overrides Paths and must contain a config file (no fallback to defaults).
 var Dir string
 
-// ConfigFileNames is the ordered list of file names looked for inside a
-// candidate directory (Dir override or each entry of Paths). The first
-// name that exists wins; the first entry is also the name reported when
-// an explicit Dir override contains none of them.
+// ConfigFileNames lists candidate file names inside a directory; the first
+// one that exists wins.
 var ConfigFileNames = []string{"config.yaml", "config.yml"}
 
-// Paths is the ordered list of directories (before $-expansion) searched
-// for a config.yaml/config.yml file when neither File nor Dir is set.
+// Paths lists directories (env-expanded) searched when neither File nor Dir is set.
 var Paths []string = []string{
 	"$STUNMESH_CONFIG_DIR",
 	"/etc/stunmesh",
@@ -71,9 +61,8 @@ type Stun struct {
 	Addresses []string `mapstructure:"addresses"`
 }
 
-// GetServers returns the final merged and deduplicated list of STUN server addresses.
-// It prepends the deprecated Address field (if non-empty) to Addresses, deduplicates
-// while preserving order, and falls back to the Google STUN server if the result is empty.
+// GetServers merges the deprecated Address into Addresses, deduplicates
+// preserving order, and falls back to DefaultStunServer if empty.
 func (s *Stun) GetServers() []string {
 	seen := make(map[string]struct{})
 	var servers []string
@@ -118,11 +107,8 @@ type Config struct {
 	PingMonitor     PingMonitor                 `mapstructure:"ping_monitor"`
 }
 
-// findConfigFile resolves which config file (if any) to read, honoring
-// File and Dir overrides before falling back to the default search paths.
-// It returns an empty string (with no error) when no config file is found
-// via the default search, matching prior viper.ConfigFileNotFoundError
-// behavior of proceeding with defaults.
+// findConfigFile resolves the config file path, honoring File and Dir before
+// the Paths search; "" with nil error means not found (proceed with defaults).
 func findConfigFile() (string, error) {
 	if File != "" {
 		return File, nil
@@ -135,9 +121,7 @@ func findConfigFile() (string, error) {
 				return candidate, nil
 			}
 		}
-		// None of the candidates exist; return the primary name so that
-		// the subsequent read fails hard with a clear path, preserving
-		// the "explicit Dir override must succeed" contract.
+		// Explicit Dir override must succeed: return the primary name so the read fails hard.
 		return filepath.Join(Dir, ConfigFileNames[0]), nil
 	}
 
@@ -159,13 +143,9 @@ func findConfigFile() (string, error) {
 
 func Load() (*Config, error) {
 	var cfg Config
-	// Defaults: filled in before Decode so that yaml keys not present in
-	// the file leave the corresponding struct field untouched.
-	// Note: Stun.Address and Stun.Addresses have no pre-Decode defaults.
-	// Addresses must stay nil here so that after decoding we can tell
-	// "key absent" (nil) apart from "explicitly empty list" (non-nil,
-	// len 0); DefaultStunServer is applied after decoding only when the
-	// user configured no STUN server at all.
+	// Pre-Decode defaults; yaml keys absent from the file leave these untouched.
+	// Stun.Addresses must stay nil (not []) so "key absent" is distinguishable
+	// from "explicitly empty list" after decoding.
 	cfg.RefreshInterval = DefaultRefreshInterval
 	cfg.PingMonitor.Interval = DefaultPingInterval
 	cfg.PingMonitor.Timeout = DefaultPingTimeout
@@ -179,9 +159,8 @@ func Load() (*Config, error) {
 	if path != "" {
 		data, err := os.ReadFile(path)
 		if err != nil {
-			// Explicit File/Dir overrides must fail hard; the default
-			// search only reaches here for a path that os.Stat already
-			// confirmed exists, so a read failure here is also an error.
+			// Any read failure is fatal: explicit overrides must fail hard,
+			// and default-search paths already passed os.Stat.
 			return nil, errors.Join(ErrReadConfig, err)
 		}
 
@@ -202,25 +181,14 @@ func Load() (*Config, error) {
 			return nil, errors.Join(ErrUnmarshalConfig, err)
 		}
 	}
-	// path == "" means no config file was found via the default search;
-	// proceed with defaults, matching prior viper.ConfigFileNotFoundError
-	// behavior.
+	// path == "": no config file found; proceed with defaults.
 
-	// Three-way STUN server semantics, relying on the nil vs empty-slice
-	// distinction preserved by the yaml + mapstructure pipeline:
-	//   1. addresses key absent (nil) and address empty -> the user
-	//      configured nothing: apply DefaultStunServer and warn.
-	//   2. addresses explicitly empty (non-nil, len 0) and address empty
-	//      -> the user deliberately disabled all STUN servers, which the
-	//      daemon cannot operate without: hard error.
-	//   3. anything else -> the user provided servers; leave untouched so
-	//      a user-provided list is never implicitly extended with
-	//      DefaultStunServer.
+	// STUN server semantics: key absent (nil) -> default + warn; explicitly
+	// empty list ("addresses: []") -> hard error; otherwise leave the
+	// user-provided list untouched.
 	switch {
 	case cfg.Stun.Addresses == nil && cfg.Stun.Address == "":
-		// The injected zerolog logger is built from this config
-		// (logger.NewLogger), so it does not exist yet; use a minimal
-		// console logger in the same output style.
+		// logger.NewLogger needs this config; use a throwaway console logger here.
 		warnLog := zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout}).With().Timestamp().Logger()
 		warnLog.Warn().Msg("no STUN servers configured, defaulting to " + DefaultStunServer)
 		cfg.Stun.Addresses = []string{DefaultStunServer}
