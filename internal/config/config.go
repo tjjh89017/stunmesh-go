@@ -169,9 +169,17 @@ func Load() (*Config, error) {
 			return nil, errors.Join(ErrReadConfig, err)
 		}
 
+		// Match viper 1.21's defaultDecoderConfig: weakly typed input plus the
+		// duration and comma-separated-string-to-slice hooks, so configs that
+		// loaded on viper (quoted scalars from Ansible/Jinja templates, string
+		// values for list fields, etc.) keep loading after the migration.
 		decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
-			DecodeHook: mapstructure.StringToTimeDurationHookFunc(),
-			Result:     &cfg,
+			DecodeHook: mapstructure.ComposeDecodeHookFunc(
+				mapstructure.StringToTimeDurationHookFunc(),
+				mapstructure.StringToSliceHookFunc(","),
+			),
+			WeaklyTypedInput: true,
+			Result:           &cfg,
 		})
 		if err != nil {
 			return nil, errors.Join(ErrUnmarshalConfig, err)
