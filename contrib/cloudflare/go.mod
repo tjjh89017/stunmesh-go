@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/cloudflare/cloudflare-go v0.117.0
-	github.com/tjjh89017/stunmesh-go v1.8.0
+	github.com/tjjh89017/stunmesh-go v1.10.0
 )
 
 require (

@@ -13,8 +13,8 @@ github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZb
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
-github.com/tjjh89017/stunmesh-go v1.8.0 h1:ZCBAG2zQJ9XbeLh1p+QbCY1BaSDgSAWKr8E2acoh7M8=
-github.com/tjjh89017/stunmesh-go v1.8.0/go.mod h1:6WOlcATCFTGDH9ThebwoDsQcX6E/LaxSxO8trNs27/8=
+github.com/tjjh89017/stunmesh-go v1.10.0 h1:5bh0qYeLQ25RBcVYBMdvnjeLo2EaJVaQheTBM4ZnQAU=
+github.com/tjjh89017/stunmesh-go v1.10.0/go.mod h1:6WOlcATCFTGDH9ThebwoDsQcX6E/LaxSxO8trNs27/8=
 golang.org/x/net v0.57.0 h1:K5+3DljvIuDG9/Jv9rvyMywYNFCQ9RSUY6OOTTkT+tE=
 golang.org/x/net v0.57.0/go.mod h1:KpXc8iv+r3XplLAG/f7Jsf9RPszJzdR0f58q9vGOuEU=
 golang.org/x/text v0.40.0 h1:Ub2Z6/xjgF1WrYQz2nuITOEegKFtiIy+rieRJ5lHZKs=
