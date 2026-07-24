@@ -193,9 +193,8 @@ jobs:
     if: github.event_name == 'push'
     name: Build Docker container
     runs-on: ubuntu-latest
-    needs:
-      - lint-required
-      - test
+    # e2e-required transitively covers lint/test/build/build-plugins.
+    needs: e2e-required
     steps:
       - uses: actions/checkout@v7
       - name: Build and Push Docker
@@ -213,7 +212,11 @@ jobs:
   # test/e2e/.
   e2e:
     name: E2E (${{ matrix.os }}/${{ matrix.arch }})
-    needs: build-required
+    # build-plugins-required is a gate, not an artifact source: e2e uses the
+    # built-in opendht, not the contrib plugins.
+    needs:
+      - build-required
+      - build-plugins-required
     strategy:
       fail-fast: false
       matrix:
@@ -232,3 +235,16 @@ jobs:
           os: ${{ matrix.os }}
           arch: ${{ matrix.arch }}
           app-name: ${{ env.APP }}
+
+  # One stable check aggregating the e2e matrix, mirroring the other summary
+  # gates. It stays advisory (kept out of branch protection): e2e depends on the
+  # public dhtproxy endpoints and outbound STUN, and that flakiness must not
+  # block merges. The single E2E check is for a clean PR view, not to require.
+  e2e-required:
+    name: E2E
+    runs-on: ubuntu-latest
+    needs: e2e
+    if: always()
+    steps:
+      - name: All e2e platforms passed
+        run: '[ "${{ needs.e2e.result }}" = "success" ]'
