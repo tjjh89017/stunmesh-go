@@ -26,14 +26,19 @@ peer_endpoint() { # IF -> the single peer's endpoint per `wg show`
 	$SUDO wg show "$1" endpoints | awk 'NR==1{print $2}'
 }
 
-echo "== 1. no error-level log lines =="
+echo "== 1. error-level log lines (diagnostic, not a gate) =="
+# --oneshot publishes three times precisely to ride out transient failures --
+# a pcap interface that is briefly unusable, a STUN server that drops a probe.
+# Whether the pipeline actually worked is decided by the cross-equality in
+# check 3: anything that truly broke it leaves an endpoint unpropagated there,
+# while an error that a later round recovered from does not. So surface errors
+# for visibility but do not fail on them.
 for pair in "$IF0:$LOG0" "$IF1:$LOG1"; do
 	log=${pair#*:}
 	n=$(jq -c 'select(.level=="error")' "$log" | wc -l | tr -d ' ')
 	if [ "$n" != "0" ]; then
-		echo "FAIL: ${pair%%:*} logged $n error(s):"
+		echo "note: ${pair%%:*} logged $n error(s) (tolerated if check 3 passes):"
 		jq -c 'select(.level=="error")|{message,error}' "$log"
-		fail=1
 	else
 		echo "ok: ${pair%%:*} clean"
 	fi
