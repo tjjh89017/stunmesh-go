@@ -71,7 +71,7 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     needs:
-      - lint
+      - lint-required
       - test
     strategy:
       matrix:
@@ -126,7 +126,7 @@ jobs:
     name: FreeBSD (test + wgctrl build)
     runs-on: ubuntu-latest
     needs:
-      - lint
+      - lint-required
       - test
     steps:
       - uses: actions/checkout@v7
@@ -147,7 +147,7 @@ jobs:
     name: Build Plugins
     runs-on: ubuntu-latest
     needs:
-      - lint
+      - lint-required
       - test
     strategy:
       matrix:
@@ -194,7 +194,7 @@ jobs:
     name: Build Docker container
     runs-on: ubuntu-latest
     needs:
-      - lint
+      - lint-required
       - test
     steps:
       - uses: actions/checkout@v7
@@ -213,7 +213,7 @@ jobs:
   # test/e2e/.
   e2e:
     name: E2E (${{ matrix.os }}/${{ matrix.arch }})
-    needs: build
+    needs: build-required
     strategy:
       fail-fast: false
       matrix:
