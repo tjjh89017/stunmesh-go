@@ -1,8 +1,8 @@
 version: "2"
 run:
+  # builtin_all lints every built-in at once; GOOS is swept by `make lint`.
   build-tags:
-    - builtin_cloudflare
-    - builtin_opendht
+    - builtin_all
 linters:
   enable:
     - protogetter

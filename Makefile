@@ -9,7 +9,6 @@ TRIMPATH ?= 0
 UPX ?= 0
 EXTRA_MIN ?= 0
 BUILTIN ?= all
-ALL_BUILTINS := builtin_cloudflare builtin_opendht
 # Empty selects the per-platform default from the internal/wg build constraints:
 # wgcli on freebsd, wgctrl elsewhere. Set to override.
 BACKEND ?=
@@ -44,9 +43,10 @@ ifneq ($(TRIMPATH),0)
 	TRIMPATH_FLAGS := -trimpath
 endif
 
-# Expand BUILTIN=all to all available built-in plugins
+# builtin_all: every built-in opts in via `|| builtin_all`, no list to maintain.
+# BUILTIN=builtin_<name> picks one, BUILTIN= none.
 ifeq ($(BUILTIN),all)
-	override BUILTIN := $(ALL_BUILTINS)
+	override BUILTIN := builtin_all
 endif
 
 # Combine BUILTIN and BACKEND tags. An empty BACKEND adds no tag, leaving the
@@ -102,10 +102,8 @@ fmt:
 vet:
 	go vet ${TAGS_FLAGS} ./...
 
-# Platforms to lint. golangci-lint only sees the files its GOOS selects, and
-# the darwin/bsd STUN implementation is the most platform-specific code here,
-# so linting the host alone leaves it unchecked. Build tags come from
-# .golangci.yaml so that a bare golangci-lint run agrees with this.
+# golangci-lint only sees the files its GOOS selects, so lint each platform;
+# the darwin/bsd STUN code is the most platform-specific in the tree.
 LINT_PLATFORMS ?= linux darwin freebsd
 
 .PHONY: lint

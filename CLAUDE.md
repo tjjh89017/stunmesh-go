@@ -37,11 +37,10 @@ make lint                        # Lint for linux, darwin and freebsd
 make lint LINT_PLATFORMS=linux   # Just the host, for a faster loop
 ```
 
-Build tags live in `.golangci.yaml` (`run.build-tags`), not in the Makefile, so
-a bare `golangci-lint run` checks the same files CI does. The `GOOS` sweep
-cannot come from the config, which is why `make lint` loops: golangci-lint only
-sees the files its `GOOS` selects, and `internal/stun/stun_darwinbsd.go` is the
-most platform-specific code in the tree. CI runs the same three as a matrix.
+`.golangci.yaml` sets `build-tags: [builtin_all]`, so a bare `golangci-lint run`
+and CI check the same files — the built-ins included, and no list to update when
+one is added. `GOOS` can't come from the config, so `make lint` loops over the
+three platforms and CI runs them as a matrix.
 
 ### Dependency Management
 ```bash
@@ -422,20 +421,21 @@ Common parameters to remember:
 5. See `contrib/README.md` for detailed plugin development guide
 
 ### Adding New Built-in Plugins
-1. Create `internal/plugin/builtin/<name>/<name>.go`, guarded by `//go:build builtin_<name>`
+1. Create `internal/plugin/builtin/<name>/<name>.go`, guarded by `//go:build builtin_<name> || builtin_all`
    - Implement `Store`, plus a constructor matching `registry.Factory`
    - Register it from `init()`: `registry.Register("<name>", New<Name>Plugin)`
-2. Create `internal/plugin/builtin/<name>/stub.go`, guarded by `//go:build !builtin_<name>`, declaring nothing but `package <name>`
+   - The `|| builtin_all` is what enrolls it in the `builtin_all` meta-tag, so nothing else (Makefile, `.golangci.yaml`) needs a list entry
+2. Create `internal/plugin/builtin/<name>/stub.go`, guarded by `//go:build !builtin_<name> && !builtin_all`, declaring nothing but `package <name>`
    - **Required, not optional.** `internal/plugin/imports.go` imports every built-in unconditionally, so without a stub a build that omits the tag fails with `build constraints exclude all Go files`
+   - The `&& !builtin_all` is the mirror of step 1: the stub applies only when this plugin is compiled in via neither its own tag nor `builtin_all`
 3. Add a blank import to `internal/plugin/imports.go`
    - That file carries no build tag, and must not: a blank import names no symbol, so importing a built-in that is tagged out (leaving only its stub) is fine. The tag belongs on the implementation, once
-4. Add `builtin_<name>` to `ALL_BUILTINS` in the `Makefile`
-5. Update the built-in plugin list and configuration example in the docs site ([tjjh89017/stunmesh-docs](https://github.com/tjjh89017/stunmesh-docs), published at docs.stunmesh.dev), and the `BUILTIN` examples in README.md if affected
+4. Update the built-in plugin list and configuration example in the docs site ([tjjh89017/stunmesh-docs](https://github.com/tjjh89017/stunmesh-docs), published at docs.stunmesh.dev), and the `BUILTIN` examples in README.md if affected
 
-Verify every tag combination, since a built-in must be able to compile
-both alone and alongside the others:
+Verify every tag combination, since a built-in must compile alone, under
+`builtin_all`, and alongside the others:
 ```bash
-for t in "" builtin_cloudflare builtin_<name> "builtin_cloudflare builtin_<name>"; do
+for t in "" builtin_all builtin_cloudflare builtin_<name> "builtin_cloudflare builtin_<name>"; do
   go build -tags "$t" -o /dev/null . || echo "FAILED: '$t'"
 done
 ```
