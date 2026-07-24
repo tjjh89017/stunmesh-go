@@ -2,8 +2,8 @@ name: E2E
 
 # Exercises the real publish -> opendht -> establish pipeline on every OS with
 # two live WireGuard interfaces. It depends on the public dhtproxy endpoints and
-# outbound STUN, so it is kept off pull_request (external flakiness must not
-# block PRs) and runs on merges to main, on demand, and weekly.
+# outbound STUN, so its failures are advisory (not a required check), but every
+# change reaching main runs it.
 on:
   # Every change reaching main goes through a PR, so gate all of them -- no
   # path filter, a doc-only change still merges to main and should be covered.
@@ -19,8 +19,14 @@ env:
 
 jobs:
   linux:
-    name: E2E (linux)
-    runs-on: ubuntu-24.04
+    name: E2E (linux/${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: amd64, runner: ubuntu-24.04 }
+          - { arch: arm64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -34,8 +40,14 @@ jobs:
         run: sh test/e2e/run.sh ./stunmesh
 
   macos:
-    name: E2E (macos)
-    runs-on: macos-15
+    name: E2E (macos/${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: arm64, runner: macos-15 }
+          - { arch: amd64, runner: macos-15-intel }
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -49,14 +61,22 @@ jobs:
         run: sh test/e2e/run.sh ./stunmesh
 
   freebsd:
-    name: E2E (freebsd)
-    runs-on: ubuntu-latest
+    name: E2E (freebsd/${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # aarch64 needs an arm64 host so the guest is virtualized natively;
+          # emulating it on an amd64 host is far too slow.
+          - { arch: amd64, host: ubuntu-latest }
+          - { arch: aarch64, host: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.host }}
     steps:
       - uses: actions/checkout@v7
       - name: Run e2e in FreeBSD VM
         uses: vmactions/freebsd-vm@v1
         with:
-          arch: amd64
+          arch: ${{ matrix.arch }}
           sync: sshfs
           prepare: |
             pkg update -f
