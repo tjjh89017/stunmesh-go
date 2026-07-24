@@ -63,11 +63,21 @@ create_iface() {
 		;;
 	Darwin)
 		namefile=$WORK/tun$slot.name
-		$SUDO sh -c "WG_TUN_NAME_FILE=$namefile wireguard-go utun >$WORK/wggo$slot.log 2>&1 &"
-		# wireguard-go (running as root) writes the chosen utunN here once up.
-		for _ in $(seq 1 20); do [ -s "$namefile" ] && break; sleep 0.5; done
+		wgg=$(command -v wireguard-go) || { echo "wireguard-go not in PATH" >&2; exit 1; }
+		log "starting $wgg for slot $slot"
+		# Run in the foreground under sudo but backgrounded by the shell, so
+		# root keeps the utun while PATH still resolves the brew binary. It
+		# writes the chosen utunN to namefile once up.
+		$SUDO env WG_TUN_NAME_FILE="$namefile" WG_PROCESS_FOREGROUND=1 \
+			"$wgg" utun >"$WORK/wggo$slot.log" 2>&1 &
+		for _ in $(seq 1 30); do [ -s "$namefile" ] && break; sleep 0.5; done
+		if ! $SUDO test -s "$namefile"; then
+			echo "wireguard-go never named a utun; its log:" >&2
+			$SUDO cat "$WORK/wggo$slot.log" >&2 || true
+			exit 1
+		fi
 		name=$($SUDO cat "$namefile")
-		eval "PID$slot=\$(pgrep -f \"wireguard-go $name\")"
+		eval "PID$slot=\$(pgrep -f \"$wgg utun\")"
 		;;
 	*) echo "unsupported OS: $OS" >&2; exit 1 ;;
 	esac
@@ -102,6 +112,7 @@ log "OS=$OS  work=$WORK"
 Apriv=$WORK/a.key; Bpriv=$WORK/b.key
 wg genkey > "$Apriv"; wg genkey > "$Bpriv"
 Apub=$(wg pubkey < "$Apriv"); Bpub=$(wg pubkey < "$Bpriv")
+log "keys generated; creating interfaces"
 
 create_iface 0 "$Apriv" "$PORT0" "$Bpub" "$ALLOWED1"
 create_iface 1 "$Bpriv" "$PORT1" "$Apub" "$ALLOWED0"
