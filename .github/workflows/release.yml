@@ -9,29 +9,7 @@ env:
   APP: "stunmesh"
 
 jobs:
-  lint:
-    name: Lint
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        goos: [linux, darwin, freebsd]
-    steps:
-      - uses: actions/checkout@v7
-      - name: Lint
-        uses: ./.github/actions/lint
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          goos: ${{ matrix.goos }}
-
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - name: Test
-        uses: ./.github/actions/test
-        with:
-          go-version: ${{ env.GO_VERSION }}
+  # No lint/test: the tagged main commit already passed the full Build workflow.
 
   # Creates the draft up front so the upload jobs below only ever find it.
   # A draft is invisible to the get-release-by-tag API, so every uploader falls
@@ -40,9 +18,6 @@ jobs:
   create-release:
     name: Create Release
     runs-on: ubuntu-latest
-    needs:
-      - lint
-      - test
     permissions:
       contents: write
     steps:
