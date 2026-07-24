@@ -293,6 +293,17 @@ Environment variables cannot override config values (the former Viper `Automatic
 - Deprecated `stun.address` (single server) is still supported and takes highest priority: it is merged in front of `addresses` and the list is deduplicated preserving order
 - Defaults (refresh interval, STUN server, ping settings) live in the const block at the top of `internal/config/config.go`
 
+### Logging Configuration
+```yaml
+log:
+  level: info      # trace, debug, info, warn, error, fatal, panic, disabled
+  format: console  # console (human-readable) or json
+```
+- `format: json` emits zerolog's native JSON, one object per line; `console` reformats it for humans. There is no CLI flag for either — logging is config-file only, since the flags exist to locate the config file, not to replace its contents
+- `LogLevels` is derived from `zerolog.Level.String()` rather than hand-written, so it tracks whatever zerolog names; validation delegates to `zerolog.ParseLevel`, which is case-insensitive
+- Both default when absent **or explicitly empty** (`level: ""`): `info` and `console`. Unknown values are a startup error
+- An unset level used to fall through to zerolog's own default (trace), so configs that never set `log.level` silently ran at debug verbosity; they now run at `info`
+
 ## Key Implementation Details
 
 ### Wire Interface Bindings

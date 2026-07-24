@@ -11,30 +11,34 @@ import (
 func main() {
 	ctx := context.Background()
 
-	oneshot := flag.Bool("oneshot", false, "run in oneshot mode (publish and establish 3 times, then exit)")
+	var (
+		oneshot    bool
+		configFile string
+		configDir  string
+	)
 
+	// -c and --config are the same destination, so the usage text is shared.
 	const configFileUsage = "path to the config file (takes priority over --config-dir)"
-	var configFile string
+
+	flag.BoolVar(&oneshot, "oneshot", false, "run in oneshot mode (publish and establish 3 times, then exit)")
 	flag.StringVar(&configFile, "c", "", configFileUsage)
 	flag.StringVar(&configFile, "config", "", configFileUsage)
-
-	var configDir string
 	flag.StringVar(&configDir, "config-dir", "", "directory containing config.yaml (ignored if -c/--config is set)")
 
 	flag.Parse()
 
-	config.File = configFile
-	config.Dir = configDir
+	config.ConfigFile = configFile
+	config.ConfigDir = configDir
 
 	daemon, err := setup()
 	if err != nil {
 		panic(err)
 	}
 
-	if *oneshot {
+	if oneshot {
 		daemon.RunOneshot(ctx)
 		os.Exit(0)
-	} else {
-		daemon.Run(ctx)
 	}
+
+	daemon.Run(ctx)
 }

@@ -4,20 +4,22 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 )
 
-// resetConfigGlobals saves File/Dir/Paths and restores them via t.Cleanup, then
-// clears File/Dir. These are shared globals: tests using it must not t.Parallel().
+// resetConfigGlobals saves ConfigFile/ConfigDir/Paths and restores them via t.Cleanup, then
+// clears ConfigFile/ConfigDir. These are shared globals: tests using it must not t.Parallel().
 func resetConfigGlobals(t *testing.T) {
 	t.Helper()
-	origFile, origDir, origPaths := File, Dir, Paths
+	origFile, origDir, origPaths := ConfigFile, ConfigDir, Paths
 	t.Cleanup(func() {
-		File, Dir, Paths = origFile, origDir, origPaths
+		ConfigFile, ConfigDir, Paths = origFile, origDir, origPaths
 	})
-	File = ""
-	Dir = ""
+	ConfigFile = ""
+	ConfigDir = ""
 }
 
 func TestLoad_Success(t *testing.T) {
@@ -427,7 +429,7 @@ func TestValidateConfig_ValidProtocols(t *testing.T) {
 	}
 }
 
-// --- File / Dir / Paths resolution ---
+// --- ConfigFile / ConfigDir / Paths resolution ---
 
 func TestLoad_File_Exists(t *testing.T) {
 	resetConfigGlobals(t)
@@ -438,9 +440,9 @@ func TestLoad_File_Exists(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// File must win even though Paths would never find this file.
+	// ConfigFile must win even though Paths would never find this file.
 	Paths = []string{t.TempDir()}
-	File = path
+	ConfigFile = path
 
 	cfg, err := Load()
 	if err != nil {
@@ -455,11 +457,11 @@ func TestLoad_File_Exists(t *testing.T) {
 func TestLoad_File_NotExists_ErrorsWithoutFallback(t *testing.T) {
 	resetConfigGlobals(t)
 
-	File = filepath.Join(t.TempDir(), "does-not-exist.yaml")
+	ConfigFile = filepath.Join(t.TempDir(), "does-not-exist.yaml")
 
 	_, err := Load()
 	if err == nil {
-		t.Fatal("Load() with nonexistent File should return an error, not fall back to defaults")
+		t.Fatal("Load() with nonexistent ConfigFile should return an error, not fall back to defaults")
 	}
 
 	if !errors.Is(err, ErrReadConfig) {
@@ -475,7 +477,7 @@ func TestLoad_Dir_WithConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	Dir = tmpDir
+	ConfigDir = tmpDir
 
 	cfg, err := Load()
 	if err != nil {
@@ -490,11 +492,11 @@ func TestLoad_Dir_WithConfig(t *testing.T) {
 func TestLoad_Dir_WithoutConfig_ErrorsWithoutFallback(t *testing.T) {
 	resetConfigGlobals(t)
 
-	Dir = t.TempDir()
+	ConfigDir = t.TempDir()
 
 	_, err := Load()
 	if err == nil {
-		t.Fatal("Load() with Dir lacking config.yaml should return an error, not fall back to defaults")
+		t.Fatal("Load() with ConfigDir lacking config.yaml should return an error, not fall back to defaults")
 	}
 
 	if !errors.Is(err, ErrReadConfig) {
@@ -516,8 +518,8 @@ func TestLoad_File_TakesPriorityOverDir(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	File = filePath
-	Dir = dirWithConfig
+	ConfigFile = filePath
+	ConfigDir = dirWithConfig
 
 	cfg, err := Load()
 	if err != nil {
@@ -525,7 +527,7 @@ func TestLoad_File_TakesPriorityOverDir(t *testing.T) {
 	}
 
 	if cfg.RefreshInterval != 21*time.Minute {
-		t.Errorf("RefreshInterval = %v, want 21m (File must win over Dir)", cfg.RefreshInterval)
+		t.Errorf("RefreshInterval = %v, want 21m (ConfigFile must win over ConfigDir)", cfg.RefreshInterval)
 	}
 }
 
@@ -949,5 +951,116 @@ func TestLoad_WeaklyTypedInput_EmptyStringAddresses(t *testing.T) {
 	}
 	if !errors.Is(err, ErrNoStunServers) {
 		t.Errorf("Load() error = %v, want ErrNoStunServers", err)
+	}
+}
+
+func writeLogConfig(t *testing.T, logSection string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	content := logSection + `
+stun:
+  addresses:
+    - stun.example.com:19302
+interfaces:
+  wg0:
+    peers: {}
+`
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+	return path
+}
+
+func TestLoad_LogDefaults(t *testing.T) {
+	resetConfigGlobals(t)
+	ConfigFile = writeLogConfig(t, "")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Log.Format != DefaultLogFormat {
+		t.Errorf("Log.Format = %q, want %q", cfg.Log.Format, DefaultLogFormat)
+	}
+	if cfg.Log.Level != DefaultLogLevel {
+		t.Errorf("Log.Level = %q, want %q", cfg.Log.Level, DefaultLogLevel)
+	}
+}
+
+func TestLoad_LogFromFile(t *testing.T) {
+	resetConfigGlobals(t)
+	ConfigFile = writeLogConfig(t, "log:\n  format: json\n  level: debug\n")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Log.Format != LogFormatJSON {
+		t.Errorf("Log.Format = %q, want %q", cfg.Log.Format, LogFormatJSON)
+	}
+	if cfg.Log.Level != "debug" {
+		t.Errorf("Log.Level = %q, want debug", cfg.Log.Level)
+	}
+}
+
+// An explicit empty value means unset, not invalid.
+func TestLoad_EmptyLogValuesFallBackToDefaults(t *testing.T) {
+	resetConfigGlobals(t)
+	ConfigFile = writeLogConfig(t, "log:\n  format: \"\"\n  level: \"\"\n")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Log.Format != DefaultLogFormat {
+		t.Errorf("Log.Format = %q, want %q", cfg.Log.Format, DefaultLogFormat)
+	}
+	if cfg.Log.Level != DefaultLogLevel {
+		t.Errorf("Log.Level = %q, want %q", cfg.Log.Level, DefaultLogLevel)
+	}
+}
+
+func TestLoad_InvalidLogFormatRejected(t *testing.T) {
+	resetConfigGlobals(t)
+	ConfigFile = writeLogConfig(t, "log:\n  format: yaml\n")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want an invalid log format error")
+	}
+}
+
+func TestLoad_LogLevels(t *testing.T) {
+	// Every level zerolog names must load, in any case; nothing else may.
+	for _, level := range LogLevels {
+		for _, spelling := range []string{level, strings.ToUpper(level)} {
+			t.Run(spelling, func(t *testing.T) {
+				resetConfigGlobals(t)
+				ConfigFile = writeLogConfig(t, "log:\n  level: "+spelling+"\n")
+
+				if _, err := Load(); err != nil {
+					t.Errorf("Load() error = %v, want nil", err)
+				}
+			})
+		}
+	}
+
+	for _, level := range []string{"banana", "verbose"} {
+		t.Run("invalid/"+level, func(t *testing.T) {
+			resetConfigGlobals(t)
+			ConfigFile = writeLogConfig(t, "log:\n  level: "+level+"\n")
+
+			if _, err := Load(); err == nil {
+				t.Errorf("Load() error = nil, want an invalid log level error")
+			}
+		})
+	}
+}
+
+// LogLevels is derived from zerolog rather than hand-written, so pin the set
+// and its severity order.
+func TestLogLevels_FromZerolog(t *testing.T) {
+	want := []string{"trace", "debug", "info", "warn", "error", "fatal", "panic", "disabled"}
+	if !slices.Equal(LogLevels, want) {
+		t.Errorf("LogLevels = %v, want %v", LogLevels, want)
 	}
 }
