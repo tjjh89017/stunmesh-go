@@ -7,10 +7,13 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -23,14 +26,14 @@ func init() {
 }
 
 const (
-	defaultEndpoint = "https://dhtproxy.jami.net"
-	defaultMagic    = "stunmesh-v1"
-	defaultTimeout  = 15 * time.Second
+	defaultMagic   = "stunmesh-v1"
+	defaultTimeout = 15 * time.Second
 
 	// Configuration keys
-	configKeyEndpoint = "endpoint"
-	configKeyMagic    = "magic"
-	configKeyTimeout  = "timeout"
+	configKeyEndpoint  = "endpoint"
+	configKeyEndpoints = "endpoints"
+	configKeyMagic     = "magic"
+	configKeyTimeout   = "timeout"
 )
 
 // An OpenDHT key is an InfoHash: 160 bits, i.e. 40 hex characters. stunmesh
@@ -40,9 +43,9 @@ var keyPattern = regexp.MustCompile(`^[0-9a-fA-F]{40}$`)
 
 // OpenDHTPlugin implements the Store interface
 type OpenDHTPlugin struct {
-	endpoint string
-	magic    string
-	client   *http.Client
+	endpoints []string
+	magic     string
+	client    *http.Client
 }
 
 // envelope wraps the value stored under a key.
@@ -79,6 +82,32 @@ func (c *BuiltinConfig) GetString(key string) (string, bool) {
 	return str, ok
 }
 
+// GetStringSlice reads a list that YAML may deliver as []interface{}, or that
+// mapstructure's weak typing may have already turned into []string.
+func (c *BuiltinConfig) GetStringSlice(key string) ([]string, error) {
+	val, ok := c.config[key]
+	if !ok {
+		return nil, nil
+	}
+
+	switch v := val.(type) {
+	case []string:
+		return v, nil
+	case []interface{}:
+		items := make([]string, 0, len(v))
+		for _, item := range v {
+			str, ok := item.(string)
+			if !ok {
+				return nil, fmt.Errorf("%s must be a list of strings", key)
+			}
+			items = append(items, str)
+		}
+		return items, nil
+	default:
+		return nil, fmt.Errorf("%s must be a list of strings", key)
+	}
+}
+
 // GetDuration reads a timeout expressed either as a duration string such as
 // "20s" or as a plain number of seconds, since a YAML scalar may arrive as
 // either depending on how it was written.
@@ -104,13 +133,69 @@ func (c *BuiltinConfig) GetDuration(key string) (time.Duration, bool, error) {
 	}
 }
 
+// normalizeEndpoint requires an explicit http:// or https:// scheme. Go's http
+// client rejects a bare host with "unsupported protocol scheme", but only once
+// a request is made -- every refresh cycle, long after startup. curl would
+// instead assume http, which for a scheme-less "dhtproxy.jami.net" is a silent
+// downgrade from the https the default endpoint uses. Neither is a good answer
+// to a value that simply does not say what it means.
+func normalizeEndpoint(endpoint string) (string, error) {
+	u, err := url.Parse(endpoint)
+	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+		return "", fmt.Errorf("opendht endpoint %q must start with http:// or https://", endpoint)
+	}
+
+	// doRequest joins with "/key/...", so a trailing slash would double it.
+	return strings.TrimRight(endpoint, "/"), nil
+}
+
+// resolveEndpoints merges the singular endpoint in front of the endpoints list
+// and deduplicates preserving order, the same shape as stun.address feeding
+// stun.addresses. Every entry is validated here so a typo in the third one is
+// not discovered only when the first two happen to be down.
+func resolveEndpoints(cfg *BuiltinConfig) ([]string, error) {
+	list, err := cfg.GetStringSlice(configKeyEndpoints)
+	if err != nil {
+		return nil, err
+	}
+
+	single, _ := cfg.GetString(configKeyEndpoint)
+
+	seen := make(map[string]struct{})
+	endpoints := make([]string, 0, len(list)+1)
+	for _, endpoint := range append([]string{single}, list...) {
+		if endpoint == "" {
+			continue
+		}
+
+		normalized, err := normalizeEndpoint(endpoint)
+		if err != nil {
+			return nil, err
+		}
+
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		endpoints = append(endpoints, normalized)
+	}
+
+	// No default: which proxy to trust is a decision for whoever runs the
+	// mesh, not something to inherit silently. The plugin README suggests some.
+	if len(endpoints) == 0 {
+		return nil, fmt.Errorf("opendht needs %s or %s; see the plugin README for suggested proxies", configKeyEndpoint, configKeyEndpoints)
+	}
+
+	return endpoints, nil
+}
+
 // NewOpenDHTPlugin creates a new OpenDHT plugin instance
 func NewOpenDHTPlugin(config pluginapi.PluginConfig) (pluginapi.Store, error) {
 	cfg := &BuiltinConfig{config: config}
 
-	endpoint, ok := cfg.GetString(configKeyEndpoint)
-	if !ok || endpoint == "" {
-		endpoint = defaultEndpoint
+	endpoints, err := resolveEndpoints(cfg)
+	if err != nil {
+		return nil, err
 	}
 
 	magic, ok := cfg.GetString(configKeyMagic)
@@ -139,14 +224,35 @@ func NewOpenDHTPlugin(config pluginapi.PluginConfig) (pluginapi.Store, error) {
 	}
 
 	return &OpenDHTPlugin{
-		endpoint: endpoint,
-		magic:    magic,
-		client:   client,
+		endpoints: endpoints,
+		magic:     magic,
+		client:    client,
 	}, nil
 }
 
+// doRequest tries each endpoint in order and returns the first success. Only a
+// failed request moves on to the next: a request that succeeds but carries no
+// value for the key is an answer, not a failure, and every endpoint fronts the
+// same DHT so asking another would give the same one.
 func (p *OpenDHTPlugin) doRequest(ctx context.Context, method, key string, body []byte) ([]byte, error) {
-	url := fmt.Sprintf("%s/key/%s", p.endpoint, key)
+	logger := zerolog.Ctx(ctx)
+
+	var errs []error
+	for _, endpoint := range p.endpoints {
+		data, err := p.doRequestTo(ctx, endpoint, method, key, body)
+		if err == nil {
+			return data, nil
+		}
+
+		logger.Warn().Err(err).Str("endpoint", endpoint).Msg("opendht endpoint failed, trying next")
+		errs = append(errs, fmt.Errorf("%s: %w", endpoint, err))
+	}
+
+	return nil, errors.Join(errs...)
+}
+
+func (p *OpenDHTPlugin) doRequestTo(ctx context.Context, endpoint, method, key string, body []byte) ([]byte, error) {
+	url := fmt.Sprintf("%s/key/%s", endpoint, key)
 
 	var bodyReader io.Reader
 	if body != nil {
