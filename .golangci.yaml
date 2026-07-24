@@ -1,4 +1,8 @@
 version: "2"
+run:
+  build-tags:
+    - builtin_cloudflare
+    - builtin_opendht
 linters:
   enable:
     - protogetter

@@ -71,9 +71,9 @@ func TestGetReturnsMostRecentValue(t *testing.T) {
 	// 10-minute expiry leaves several of our own under it at once. The proxy
 	// does not order them, so the newest must be selected by ts.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintln(w, line(t, defaultMagic, 200, "newest"))
-		fmt.Fprintln(w, line(t, defaultMagic, 100, "oldest"))
-		fmt.Fprintln(w, line(t, defaultMagic, 150, "middle"))
+		_, _ = fmt.Fprintln(w, line(t, defaultMagic, 200, "newest"))
+		_, _ = fmt.Fprintln(w, line(t, defaultMagic, 100, "oldest"))
+		_, _ = fmt.Fprintln(w, line(t, defaultMagic, 150, "middle"))
 	}))
 	defer server.Close()
 
@@ -91,9 +91,9 @@ func TestGetIgnoresForeignValues(t *testing.T) {
 	// Anyone may publish under a known key. Values that are not our envelope
 	// must not be returned -- not even one whose ts would otherwise win.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintln(w, rawLine(t, "total garbage not json"))
-		fmt.Fprintln(w, line(t, "someone-else", 1<<40, "hijacked"))
-		fmt.Fprintln(w, line(t, defaultMagic, 100, "ours"))
+		_, _ = fmt.Fprintln(w, rawLine(t, "total garbage not json"))
+		_, _ = fmt.Fprintln(w, line(t, "someone-else", 1<<40, "hijacked"))
+		_, _ = fmt.Fprintln(w, line(t, defaultMagic, 100, "ours"))
 	}))
 	defer server.Close()
 
@@ -120,7 +120,7 @@ func TestGetEmptyKey(t *testing.T) {
 
 func TestGetOnlyForeignValues(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintln(w, line(t, "someone-else", 100, "theirs"))
+		_, _ = fmt.Fprintln(w, line(t, "someone-else", 100, "theirs"))
 	}))
 	defer server.Close()
 
@@ -132,8 +132,8 @@ func TestGetOnlyForeignValues(t *testing.T) {
 
 func TestGetRespectsConfiguredMagic(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintln(w, line(t, defaultMagic, 200, "default-magic"))
-		fmt.Fprintln(w, line(t, "custom", 100, "custom-magic"))
+		_, _ = fmt.Fprintln(w, line(t, defaultMagic, 200, "default-magic"))
+		_, _ = fmt.Fprintln(w, line(t, "custom", 100, "custom-magic"))
 	}))
 	defer server.Close()
 
@@ -252,7 +252,7 @@ func TestRoundTrip(t *testing.T) {
 			stored = string(body)
 			return
 		}
-		fmt.Fprintln(w, stored)
+		_, _ = fmt.Fprintln(w, stored)
 	}))
 	defer server.Close()
 
@@ -519,7 +519,7 @@ func TestFailsOverToNextEndpoint(t *testing.T) {
 			live := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				liveHits++
 				if r.Method == http.MethodGet {
-					fmt.Fprintln(w, line(t, defaultMagic, 1, "payload"))
+					_, _ = fmt.Fprintln(w, line(t, defaultMagic, 1, "payload"))
 					return
 				}
 				w.WriteHeader(http.StatusOK)
@@ -561,7 +561,7 @@ func TestDoesNotTryLaterEndpointsOnSuccess(t *testing.T) {
 	defer second.Close()
 
 	first := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintln(w, line(t, defaultMagic, 1, "payload"))
+		_, _ = fmt.Fprintln(w, line(t, defaultMagic, 1, "payload"))
 	}))
 	defer first.Close()
 

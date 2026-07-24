@@ -31,6 +31,18 @@ go test ./internal/entity -v     # Run entity tests
 go test ./internal/repo -v       # Run repository tests
 ```
 
+### Linting
+```bash
+make lint                        # Lint for linux, darwin and freebsd
+make lint LINT_PLATFORMS=linux   # Just the host, for a faster loop
+```
+
+Build tags live in `.golangci.yaml` (`run.build-tags`), not in the Makefile, so
+a bare `golangci-lint run` checks the same files CI does. The `GOOS` sweep
+cannot come from the config, which is why `make lint` loops: golangci-lint only
+sees the files its `GOOS` selects, and `internal/stun/stun_darwinbsd.go` is the
+most platform-specific code in the tree. CI runs the same three as a matrix.
+
 ### Dependency Management
 ```bash
 go mod tidy                      # Clean up dependencies

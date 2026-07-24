@@ -102,6 +102,19 @@ fmt:
 vet:
 	go vet ${TAGS_FLAGS} ./...
 
+# Platforms to lint. golangci-lint only sees the files its GOOS selects, and
+# the darwin/bsd STUN implementation is the most platform-specific code here,
+# so linting the host alone leaves it unchecked. Build tags come from
+# .golangci.yaml so that a bare golangci-lint run agrees with this.
+LINT_PLATFORMS ?= linux darwin freebsd
+
+.PHONY: lint
+lint:
+	@for os in $(LINT_PLATFORMS); do \
+		echo "Linting GOOS=$$os..."; \
+		GOOS=$$os golangci-lint run || exit 1; \
+	done
+
 .PHONY: install
 install: build
 	install -d $(BINDIR)
