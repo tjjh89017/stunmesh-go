@@ -6,6 +6,10 @@ inputs:
     description: 'Go version to use'
     required: true
     default: 'stable'
+  goos:
+    description: 'GOOS to lint for; golangci-lint only sees the files its GOOS selects'
+    required: false
+    default: 'linux'
 
 runs:
   using: 'composite'
@@ -15,7 +19,11 @@ runs:
         go-version: ${{ inputs.go-version }}
         cache: false
 
+    # Build tags come from .golangci.yaml, so a bare golangci-lint run locally
+    # checks the same files this does.
     - name: golangci-lint
       uses: golangci/golangci-lint-action@v9
       with:
         version: latest
+      env:
+        GOOS: ${{ inputs.goos }}
