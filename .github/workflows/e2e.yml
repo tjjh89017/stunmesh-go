@@ -1,0 +1,69 @@
+name: E2E
+
+# Exercises the real publish -> opendht -> establish pipeline on every OS with
+# two live WireGuard interfaces. It depends on the public dhtproxy endpoints and
+# outbound STUN, so it is kept off pull_request (external flakiness must not
+# block PRs) and runs on merges to main, on demand, and weekly.
+on:
+  push:
+    branches: [main, feat/e2e-workflow]  # TEMP: drop before merge
+    paths:
+      - '**.go'
+      - 'test/e2e/**'
+      - '.github/workflows/e2e.yml'
+  workflow_dispatch:
+  schedule:
+    - cron: '0 6 * * 1'
+
+env:
+  GO_VERSION: "stable"
+
+jobs:
+  linux:
+    name: E2E (linux)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y wireguard-tools jq
+      - name: Build
+        run: make build BUILTIN=builtin_opendht APP=stunmesh
+      - name: Run e2e
+        run: sh test/e2e/run.sh ./stunmesh
+
+  macos:
+    name: E2E (macos)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: Install tools
+        run: brew install wireguard-tools wireguard-go jq
+      - name: Build
+        run: make build BUILTIN=builtin_opendht APP=stunmesh
+      - name: Run e2e
+        run: sh test/e2e/run.sh ./stunmesh
+
+  freebsd:
+    name: E2E (freebsd)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Run e2e in FreeBSD VM
+        uses: vmactions/freebsd-vm@v1
+        with:
+          arch: amd64
+          sync: sshfs
+          prepare: |
+            pkg update -f
+            pkg install -y gmake go wireguard-tools jq
+            kldload if_wg
+          run: |
+            cd $GITHUB_WORKSPACE
+            gmake build BUILTIN=builtin_opendht APP=stunmesh
+            sh test/e2e/run.sh ./stunmesh

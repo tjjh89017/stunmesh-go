@@ -1,0 +1,129 @@
+#!/bin/sh
+# Two-interface stunmesh e2e. Creates two WireGuard interfaces that are each
+# other's peer, runs `stunmesh --oneshot` on both against a shared opendht
+# store, and hands the logs to assert.sh.
+#
+# stunmesh attaches to an existing device (it never creates one), so the wg
+# interface, keys, listen port and peer must be in place before it runs. Only
+# the interface *creation* differs per OS; `wg set`/`wg show` are identical
+# everywhere.
+#
+# Usage: run.sh /path/to/stunmesh
+# Env:   ENDPOINTS  newline/space list of opendht proxy URLs
+#                   (default: dhtproxy2 then dhtproxy3, dhtproxy3 as failover)
+set -eu
+umask 077  # keep the generated private keys off world-readable
+
+BIN=${1:?usage: run.sh /path/to/stunmesh}
+HERE=$(CDPATH='' cd "$(dirname "$0")" && pwd)
+WORK=$(mktemp -d)
+OS=$(uname -s)
+# GitHub's Linux/macOS runners are non-root with passwordless sudo; the FreeBSD
+# VM runs as root and may lack sudo. Resolve once and share with assert.sh.
+[ "$(id -u)" = 0 ] && SUDO='' || SUDO='sudo'
+export SUDO
+# Space- or newline-separated opendht proxy URLs; the second is failover.
+ENDPOINTS=${ENDPOINTS:-'https://dhtproxy2.jami.net https://dhtproxy3.jami.net'}
+
+PORT0=51820; PORT1=51821
+ADDR0=10.66.0.1; ADDR1=10.66.0.2
+IF0=""; IF1=""   # resolved names (utunN on macOS)
+
+log() { echo "[e2e] $*"; }
+
+cleanup() {
+	for slot in 0 1; do
+		eval "name=\$IF$slot"
+		[ -n "$name" ] || continue
+		case "$OS" in
+		Linux)   $SUDO ip link del "$name" 2>/dev/null || true ;;
+		FreeBSD) $SUDO ifconfig "$name" destroy 2>/dev/null || true ;;
+		Darwin)  eval "pid=\$PID$slot"; [ -n "${pid:-}" ] && $SUDO kill "$pid" 2>/dev/null || true ;;
+		esac
+	done
+	rm -rf "$WORK"
+}
+trap cleanup EXIT INT TERM
+
+# create_iface SLOT PRIVKEY_FILE PORT ADDR PEER_PUB PEER_ALLOWED
+# Sets IF$SLOT (and, on Darwin, PID$SLOT) to the resolved interface.
+create_iface() {
+	slot=$1; keyfile=$2; port=$3; addr=$4; peer=$5; allowed=$6
+	case "$OS" in
+	Linux)
+		name=wg$slot
+		$SUDO ip link add "$name" type wireguard
+		$SUDO ip addr add "$addr/24" dev "$name"
+		;;
+	FreeBSD)
+		name=$($SUDO ifconfig wg create)
+		$SUDO ifconfig "$name" inet "$addr/24"
+		;;
+	Darwin)
+		namefile=$WORK/tun$slot.name
+		$SUDO sh -c "WG_TUN_NAME_FILE=$namefile wireguard-go utun >$WORK/wggo$slot.log 2>&1 &"
+		# wireguard-go writes the chosen utunN into namefile once it is up.
+		for _ in $(seq 1 20); do [ -s "$namefile" ] && break; sleep 0.5; done
+		name=$(cat "$namefile")
+		eval "PID$slot=\$(pgrep -f \"wireguard-go $name\")"
+		$SUDO ifconfig "$name" inet "$addr" "$addr" alias
+		;;
+	*) echo "unsupported OS: $OS" >&2; exit 1 ;;
+	esac
+	$SUDO wg set "$name" private-key "$keyfile" listen-port "$port" \
+		peer "$peer" allowed-ips "$allowed/32"
+	case "$OS" in
+	Linux)   $SUDO ip link set "$name" up ;;
+	FreeBSD) $SUDO ifconfig "$name" up ;;
+	Darwin)  $SUDO ifconfig "$name" up ;;
+	esac
+	eval "IF$slot=\$name"
+}
+
+write_config() { # IF PEER_PUB > FILE
+	name=$1; peer=$2; out=$3
+	{
+		echo "log: {level: info, format: json}"
+		echo "stun: {addresses: [\"stun.l.google.com:19302\"]}"
+		echo "plugins:"
+		echo "  dht:"
+		echo "    type: builtin"
+		echo "    name: opendht"
+		echo "    endpoints:"
+		for url in $ENDPOINTS; do echo "      - $url"; done
+		echo "interfaces:"
+		echo "  $name:"
+		echo "    protocol: ipv4"
+		echo "    peers:"
+		echo "      peer:"
+		echo "        public_key: \"$peer\""
+		echo "        plugin: dht"
+		echo "        protocol: ipv4"
+	} > "$out"
+}
+
+log "OS=$OS  work=$WORK"
+Apriv=$WORK/a.key; Bpriv=$WORK/b.key
+wg genkey > "$Apriv"; wg genkey > "$Bpriv"
+Apub=$(wg pubkey < "$Apriv"); Bpub=$(wg pubkey < "$Bpriv")
+
+create_iface 0 "$Apriv" "$PORT0" "$ADDR0" "$Bpub" "$ADDR1"
+create_iface 1 "$Bpriv" "$PORT1" "$ADDR1" "$Apub" "$ADDR0"
+log "interfaces up: $IF0 (peer $Bpub), $IF1 (peer $Apub)"
+
+write_config "$IF0" "$Bpub" "$WORK/cfg0.yaml"
+write_config "$IF1" "$Apub" "$WORK/cfg1.yaml"
+
+log "running --oneshot on both"
+# $WORK is created by mktemp as the current user, so redirecting the root
+# process's output into it as the current user is intended and correct.
+# shellcheck disable=SC2024
+$SUDO "$BIN" --oneshot -c "$WORK/cfg0.yaml" > "$WORK/if0.log" 2>&1 &
+j0=$!
+# shellcheck disable=SC2024
+$SUDO "$BIN" --oneshot -c "$WORK/cfg1.yaml" > "$WORK/if1.log" 2>&1 &
+j1=$!
+wait "$j0"; wait "$j1"
+log "both finished; asserting"
+
+sh "$HERE/assert.sh" "$IF0" "$WORK/if0.log" "$IF1" "$WORK/if1.log"
