@@ -33,7 +33,7 @@ jobs:
             (echo; echo "Unexpected difference in directories after code generation. Run 'wire .' command and commit."; exit 1)
 
   lint:
-    name: Lint
+    name: Lint (${{ matrix.goos }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -45,6 +45,17 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           goos: ${{ matrix.goos }}
+
+  # One stable check the ruleset can require in place of every Lint (<goos>)
+  # cell, so adding or dropping a lint platform never touches branch protection.
+  lint-required:
+    name: Lint
+    runs-on: ubuntu-latest
+    needs: lint
+    if: always()
+    steps:
+      - name: All lint platforms passed
+        run: '[ "${{ needs.lint.result }}" = "success" ]'
 
   test:
     name: Test
