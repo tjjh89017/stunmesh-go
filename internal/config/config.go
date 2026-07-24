@@ -4,6 +4,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/go-viper/mapstructure/v2"
@@ -25,27 +27,64 @@ const (
 	DefaultPingInterval     = 1 * time.Second
 	DefaultPingTimeout      = 1 * time.Second
 	DefaultPingFixedRetries = 3
+	DefaultLogFormat        = LogFormatConsole
+	DefaultLogLevel         = "info"
 )
 
-// File, when non-empty, is the exact config file to read; it overrides Dir
-// and Paths and must be readable (no fallback to defaults).
-var File string
+// Log output formats accepted by log.format and --log-format.
+const (
+	LogFormatConsole = "console"
+	LogFormatJSON    = "json"
+)
 
-// Dir, when non-empty, is a directory searched for ConfigFileNames; it
-// overrides Paths and must contain a config file (no fallback to defaults).
-var Dir string
+// Accepted log settings, both the validation source and the list quoted in
+// the error messages.
+var (
+	LogFormats = []string{LogFormatConsole, LogFormatJSON}
+	LogLevels  = logLevels()
+)
 
-// ConfigFileNames lists candidate file names inside a directory; the first
-// one that exists wins.
-var ConfigFileNames = []string{"config.yaml", "config.yml"}
-
-// Paths lists directories (env-expanded) searched when neither File nor Dir is set.
-var Paths []string = []string{
-	"$STUNMESH_CONFIG_DIR",
-	"/etc/stunmesh",
-	"$HOME/.stunmesh",
-	".",
+// logLevels asks zerolog for its own level names, in increasing severity.
+// NoLevel is skipped: it stringifies to "" and is not a value to configure.
+func logLevels() []string {
+	var names []string
+	for level := zerolog.TraceLevel; level <= zerolog.Disabled; level++ {
+		if name := level.String(); name != "" {
+			names = append(names, name)
+		}
+	}
+	return names
 }
+
+// Command-line overrides, set from main before Load runs. Each takes priority
+// over the corresponding config-file value or search path.
+var (
+	// ConfigFile, when non-empty, is the exact config file to read; it
+	// overrides ConfigDir and Paths and must be readable (no fallback to
+	// defaults).
+	ConfigFile string
+
+	// ConfigDir, when non-empty, is a directory searched for ConfigFileNames;
+	// it overrides Paths and must contain a config file (no fallback to
+	// defaults).
+	ConfigDir string
+)
+
+// Where Load looks for a config file when ConfigFile is unset.
+var (
+	// ConfigFileNames lists candidate file names inside a directory; the first
+	// one that exists wins.
+	ConfigFileNames = []string{"config.yaml", "config.yml"}
+
+	// Paths lists directories (env-expanded) searched when neither ConfigFile
+	// nor ConfigDir is set.
+	Paths = []string{
+		"$STUNMESH_CONFIG_DIR",
+		"/etc/stunmesh",
+		"$HOME/.stunmesh",
+		".",
+	}
+)
 
 var (
 	ErrReadConfig      = errors.New("failed to read config")
@@ -54,7 +93,8 @@ var (
 )
 
 type Logger struct {
-	Level string `mapstructure:"level"`
+	Level  string `mapstructure:"level"`
+	Format string `mapstructure:"format"`
 }
 
 type Stun struct {
@@ -101,22 +141,22 @@ type Config struct {
 	PingMonitor     PingMonitor                           `mapstructure:"ping_monitor"`
 }
 
-// findConfigFile resolves the config file path, honoring File and Dir before
+// findConfigFile resolves the config file path, honoring ConfigFile and ConfigDir before
 // the Paths search; "" with nil error means not found (proceed with defaults).
 func findConfigFile() (string, error) {
-	if File != "" {
-		return File, nil
+	if ConfigFile != "" {
+		return ConfigFile, nil
 	}
 
-	if Dir != "" {
+	if ConfigDir != "" {
 		for _, name := range ConfigFileNames {
-			candidate := filepath.Join(Dir, name)
+			candidate := filepath.Join(ConfigDir, name)
 			if _, err := os.Stat(candidate); err == nil {
 				return candidate, nil
 			}
 		}
-		// Explicit Dir override must succeed: return the primary name so the read fails hard.
-		return filepath.Join(Dir, ConfigFileNames[0]), nil
+		// Explicit ConfigDir override must succeed: return the primary name so the read fails hard.
+		return filepath.Join(ConfigDir, ConfigFileNames[0]), nil
 	}
 
 	for _, path := range Paths {
@@ -144,6 +184,8 @@ func Load() (*Config, error) {
 	cfg.PingMonitor.Interval = DefaultPingInterval
 	cfg.PingMonitor.Timeout = DefaultPingTimeout
 	cfg.PingMonitor.FixedRetries = DefaultPingFixedRetries
+	cfg.Log.Format = DefaultLogFormat
+	cfg.Log.Level = DefaultLogLevel
 
 	path, err := findConfigFile()
 	if err != nil {
@@ -210,6 +252,14 @@ func Load() (*Config, error) {
 	cfg.Stun.Addresses = cfg.Stun.GetServers()
 	cfg.Stun.Address = ""
 
+	// An explicit `format: ""` / `level: ""` means unset, not invalid.
+	if cfg.Log.Format == "" {
+		cfg.Log.Format = DefaultLogFormat
+	}
+	if cfg.Log.Level == "" {
+		cfg.Log.Level = DefaultLogLevel
+	}
+
 	// Validate protocol configurations
 	if err := validateConfig(&cfg); err != nil {
 		return nil, err
@@ -220,6 +270,20 @@ func Load() (*Config, error) {
 
 // validateConfig validates protocol configurations and returns error if invalid
 func validateConfig(cfg *Config) error {
+	// Empty means unset, as it does for the protocol fields below; Load has
+	// already replaced it with the default on the path that reads a file.
+	if cfg.Log.Format != "" && !slices.Contains(LogFormats, cfg.Log.Format) {
+		return errors.New("invalid log format '" + cfg.Log.Format + "', must be one of: " + strings.Join(LogFormats, ", "))
+	}
+
+	// ParseLevel is the authority on what it accepts, including case; LogLevels
+	// only supplies the list its own error message leaves out.
+	if cfg.Log.Level != "" {
+		if _, err := zerolog.ParseLevel(cfg.Log.Level); err != nil {
+			return errors.New("invalid log level '" + cfg.Log.Level + "', must be one of: " + strings.Join(LogLevels, ", "))
+		}
+	}
+
 	for ifaceName, iface := range cfg.Interfaces {
 		// Validate interface protocol
 		if iface.Protocol != "" {

@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"io"
 	"os"
 
 	"github.com/google/wire"
@@ -12,18 +13,23 @@ var DefaultSet = wire.NewSet(
 	NewLogger,
 )
 
-var LevelMap = map[string]zerolog.Level{
-	"debug": zerolog.DebugLevel,
-	"info":  zerolog.InfoLevel,
-	"warn":  zerolog.WarnLevel,
-	"error": zerolog.ErrorLevel,
-}
+func NewLogger(cfg *config.Config) *zerolog.Logger {
+	// zerolog writes JSON natively; ConsoleWriter reformats it for humans.
+	var writer io.Writer = zerolog.ConsoleWriter{Out: os.Stdout}
+	if cfg.Log.Format == config.LogFormatJSON {
+		writer = os.Stdout
+	}
 
-func NewLogger(config *config.Config) *zerolog.Logger {
-	logger := zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout}).With().Timestamp().Logger()
+	logger := zerolog.New(writer).With().Timestamp().Logger()
 
-	if level, ok := LevelMap[config.Log.Level]; ok {
-		logger = logger.Level(level)
+	// Empty is the unset case; ParseLevel would read it as NoLevel and silence
+	// everything, including errors. config.Load has already rejected the rest.
+	level := cfg.Log.Level
+	if level == "" {
+		level = config.DefaultLogLevel
+	}
+	if parsed, err := zerolog.ParseLevel(level); err == nil {
+		logger = logger.Level(parsed)
 	}
 
 	return &logger
