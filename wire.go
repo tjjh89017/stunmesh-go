@@ -16,7 +16,6 @@ import (
 	"github.com/tjjh89017/stunmesh-go/internal/repo"
 	"github.com/tjjh89017/stunmesh-go/internal/stun"
 	"github.com/tjjh89017/stunmesh-go/internal/wg"
-	"github.com/tjjh89017/stunmesh-go/pluginapi"
 )
 
 func setup() (*daemon.Daemon, error) {
@@ -46,16 +45,7 @@ func providePluginManager(config *config.Config) (*plugin.Manager, error) {
 	manager := plugin.NewManager()
 	ctx := context.Background()
 
-	// Convert config.PluginDefinition to pluginapi.PluginDefinition
-	pluginsMap := make(map[string]pluginapi.PluginDefinition)
-	for name, def := range config.Plugins {
-		pluginsMap[name] = pluginapi.PluginDefinition{
-			Type:   def.Type,
-			Config: pluginapi.PluginConfig(def.Config),
-		}
-	}
-
-	if err := manager.LoadPlugins(ctx, pluginsMap); err != nil {
+	if err := manager.LoadPlugins(ctx, config.Plugins); err != nil {
 		return nil, err
 	}
 
