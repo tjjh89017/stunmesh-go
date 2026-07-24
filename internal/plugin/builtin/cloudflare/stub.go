@@ -1,4 +1,4 @@
-//go:build !builtin_cloudflare
+//go:build !builtin_cloudflare && !builtin_all
 
 package cloudflare
 

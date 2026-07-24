@@ -1,4 +1,4 @@
-//go:build builtin_opendht
+//go:build builtin_opendht || builtin_all
 
 package opendht
 
