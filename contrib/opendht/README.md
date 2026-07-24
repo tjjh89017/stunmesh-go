@@ -12,8 +12,8 @@ before deploying this.
 
 - `curl`
 - `jq`
-- **IPv6 connectivity**, if you use the default `dhtproxy.jami.net` endpoint —
-  it does not answer over IPv4 at all. See [Limitations](#limitations).
+- At least one OpenDHT proxy endpoint. There is no default; see
+  [Which proxies to use](#which-proxies-to-use).
 
 Tested on Linux and macOS.
 
@@ -24,7 +24,11 @@ plugins:
   opendht:
     type: exec
     command: /usr/local/bin/stunmesh-opendht
-    args: ["-endpoint", "https://dhtproxy.jami.net"]
+    args:
+      - "-endpoint"
+      - "https://dhtproxy2.jami.net"
+      - "-endpoint"
+      - "https://dhtproxy3.jami.net"
     dedup: false
 
 interfaces:
@@ -39,13 +43,56 @@ interfaces:
 
 | Option | Default | Description |
 |---|---|---|
-| `-endpoint` | `https://dhtproxy.jami.net` | OpenDHT proxy server base URL |
+| `-endpoint` | none, required | OpenDHT proxy base URL, with scheme. Repeat to add fallbacks |
 | `-magic` | `stunmesh-v1` | Envelope tag used to recognise our own values |
 | `-timeout` | `15` | Per-request timeout in seconds |
 
 Do not lower `-timeout` much. A DHT lookup that finds nothing legitimately
 takes ~6 seconds to converge; a short timeout turns a slow success into a
 false "not found".
+
+### Which proxies to use
+
+There is no built-in default. Which proxy you trust is a decision about whose
+infrastructure your mesh depends on, so the plugin makes you name one rather
+than inheriting a choice silently.
+
+Savoir-faire Linux runs several public proxies for Jami. Measured July 2026,
+in the order suggested above:
+
+| Endpoint | Notes |
+|---|---|
+| `https://dhtproxy2.jami.net` | Reachable over IPv4 and IPv6. Hosted in Europe |
+| `https://dhtproxy3.jami.net` | Reachable over IPv4 and IPv6. Hosted in Canada, so it is the better first choice from the Americas |
+| `https://dhtproxy.jami.net` | **Avoid.** See below |
+| `https://dhtproxy1.jami.net` | **Avoid.** IPv6 only in practice |
+
+Order them by whichever is closest to you; the plugin tries them in the order
+given and only moves on when a request fails. Listing two from different
+regions costs nothing until the first one breaks.
+
+### Why not `dhtproxy.jami.net`
+
+It is the name the Jami documentation points at, but it is a rotation over two
+addresses and one of them does not serve:
+
+| Address | TCP 80 | TCP 443 | Reverse DNS |
+|---|---|---|---|
+| `141.94.96.2` | answers | answers | `dhtproxy1.jami.net` |
+| `141.94.96.254` | refused | refused | none |
+
+`141.94.96.254` is what `dhtproxy1.jami.net` resolves to today, and it appeared
+in roughly nine of ten lookups across four resolvers. The AAAA record is
+healthy, so a dual-stack host prefers IPv6 and never notices. An IPv4-only host
+draws a single A record per query with nothing to fall back to, so it fails
+outright — intermittently, which is far more confusing than a clean failure:
+
+```
+exec plugin error: set request failed: curl: (7) Failed to connect to
+dhtproxy.jami.net port 443 after 299 ms: Couldn't connect to server
+```
+
+Naming `dhtproxy2` and `dhtproxy3` explicitly sidesteps the whole thing.
 
 ## `dedup` must stay false
 
@@ -96,30 +143,28 @@ peer would pick an arbitrary one of its own recent endpoints.
 
 ## Limitations
 
-**`dhtproxy.jami.net` is reachable over IPv6 only.** The name resolves to
-both an A record (`141.94.96.254`) and an AAAA record
-(`2001:41d0:403:4702::`), but nothing is listening on the IPv4 address — TCP
-80, 443 and 8080 are all closed there. An IPv4-only host therefore fails at
-connect:
+**Listing several endpoints does not make the DHT more available.** They are
+all entrances to the same DHT, so the fallbacks help when a proxy is down, not
+when a value has expired. If nothing published within the last 10 minutes, no
+endpoint will have it.
 
-```
-exec plugin error: set request failed: curl: (7) Failed to connect to
-dhtproxy.jami.net port 443 after 299 ms: Couldn't connect to server
-```
-
-There is no client-side fix, because the IPv4 endpoint does not exist. Hosts
-without IPv6 have to run their own proxy (see below). This is worth weighing
-before choosing this plugin: NAT traversal is an IPv4 problem, so the peers
-that most need stunmesh are also the ones most likely to lack the IPv6 that
-the default endpoint requires.
-
-**The endpoint is somebody else's infrastructure.** `dhtproxy.jami.net` is
-run by Savoir-faire Linux for the Jami messenger. It publishes no terms of
-service, no SLA and no rate limits for third-party use. It may start refusing
-or throttling stunmesh traffic at any time, with no recourse. The dead A
-record above is what that looks like in practice: a broken record nobody
-announces, fixes on your schedule, or answers questions about. If that
+**The endpoints are somebody else's infrastructure.** The `jami.net` proxies
+are run by Savoir-faire Linux for the Jami messenger. They publish no terms of
+service, no SLA and no rate limits for third-party use. They may start refusing
+or throttling stunmesh traffic at any time, with no recourse. The dead address
+behind `dhtproxy.jami.net` is what that looks like in practice: a broken record
+nobody announces, fixes on your schedule, or answers questions about. If that
 matters to you, run your own proxy (see below).
+
+**IPv4-only hosts should check their endpoints.** NAT traversal is an IPv4
+problem, so the peers that most need stunmesh are also the ones least likely to
+have IPv6 — and a proxy that is IPv6-only, as `dhtproxy1.jami.net` is today,
+looks fine to everyone testing from a dual-stack machine. Verify with `curl -4`
+before relying on one:
+
+```bash
+curl -4 -sS https://dhtproxy2.jami.net/node/info | jq '.ipv4.good'
+```
 
 **The network is small.** `GET /node/info` on the public proxy reports a
 `network_size_estimation` of roughly 4096 IPv4 nodes — this is essentially
@@ -143,9 +188,8 @@ at the cost of managing a second keypair; this plugin does not use it.
 
 ## Running your own proxy
 
-Hosts without IPv6 have to do this, since the default endpoint is
-unreachable for them. Run a node with the proxy interface enabled and point
-`-endpoint` at it:
+The surest way not to depend on somebody else's uptime. Run a node with the
+proxy interface enabled and point `-endpoint` at it:
 
 ```bash
 docker run -d -i --name dhtnode -p 8080:8080 \

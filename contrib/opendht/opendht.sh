@@ -10,7 +10,8 @@
 #     opendht:
 #       type: exec
 #       command: /usr/local/bin/stunmesh-opendht
-#       args: ["-endpoint", "https://dhtproxy.jami.net"]
+#       args: ["-endpoint", "https://dhtproxy2.jami.net",
+#              "-endpoint", "https://dhtproxy3.jami.net"]
 #       dedup: false
 #
 # IMPORTANT: dedup must stay false. OpenDHT values expire after 10 minutes
@@ -21,13 +22,19 @@
 
 set -eu
 
-ENDPOINT="https://dhtproxy.jami.net"
+ENDPOINTS=""
 MAGIC="stunmesh-v1"
 TIMEOUT=15
 
 usage() {
 	cat >&2 <<'EOF'
-Usage: stunmesh-opendht [-endpoint URL] [-magic STRING] [-timeout SECONDS]
+Usage: stunmesh-opendht -endpoint URL [-endpoint URL]... [-magic STRING]
+                        [-timeout SECONDS]
+
+At least one -endpoint is required and each needs an http:// or https://
+scheme. Repeat it to add fallbacks: they are tried in the order given, and
+only a failed request moves on to the next. README.md suggests which
+proxies to use.
 
 Reads an exec-protocol JSON request on stdin and writes a JSON response
 on stdout. Not intended to be run interactively.
@@ -39,7 +46,9 @@ while [ $# -gt 0 ]; do
 	case "$1" in
 	-endpoint)
 		[ $# -ge 2 ] || usage
-		ENDPOINT="$2"
+		# Repeatable. URLs contain no spaces, so a space-separated list
+		# survives the word splitting the loops below rely on.
+		ENDPOINTS="$ENDPOINTS $2"
 		shift 2
 		;;
 	-magic)
@@ -80,6 +89,27 @@ respond_error() {
 
 command -v curl >/dev/null 2>&1 || respond_error "curl not found in PATH"
 
+# No default: which proxy to trust is a decision for whoever runs the mesh,
+# not something to inherit silently. README.md suggests some.
+[ -n "$ENDPOINTS" ] || respond_error "no -endpoint given; see the plugin README for suggested proxies"
+
+# Validate every endpoint up front, so a typo in the third one is not
+# discovered only when the first two happen to be down. curl would read a
+# scheme-less "dhtproxy.jami.net" as http, silently downgrading from the https
+# the default uses, so ask for the scheme instead. Trailing slashes are
+# trimmed because the request URLs append "/key/...".
+checked=""
+for endpoint in $ENDPOINTS; do
+	case "$endpoint" in
+	http://* | https://*) ;;
+	*)
+		respond_error "-endpoint '$endpoint' must start with http:// or https://"
+		;;
+	esac
+	checked="$checked ${endpoint%/}"
+done
+ENDPOINTS="$checked"
+
 request=$(cat)
 
 action=$(printf '%s' "$request" | jq -r '.action // empty' 2>/dev/null) ||
@@ -104,9 +134,24 @@ esac
 
 case "$action" in
 get)
-	if ! body=$(curl -sS -f --max-time "$TIMEOUT" "$ENDPOINT/key/$key" 2>&1); then
-		respond_error "get request failed: $body"
-	fi
+	# Only a failed request moves on to the next endpoint. A request that
+	# succeeds but carries no value is an answer, not a failure, and every
+	# endpoint fronts the same DHT, so asking another would give the same one.
+	# A successful request may return an empty body -- a key with no value --
+	# so completion is tracked separately from what came back.
+	body=""
+	answered=""
+	errors=""
+	for endpoint in $ENDPOINTS; do
+		if body=$(curl -sS -f --max-time "$TIMEOUT" "$endpoint/key/$key" 2>&1); then
+			answered=1
+			break
+		fi
+		errors="$errors; $endpoint: $body"
+		body=""
+	done
+
+	[ -n "$answered" ] || respond_error "get request failed:${errors#;}"
 
 	# The proxy answers with newline-delimited JSON: one value object per
 	# line, since a key holds a set of values rather than a single slot.
@@ -134,13 +179,21 @@ set)
 		'{data: ({magic: $m, ts: $ts, data: $d} | tojson | @base64)}') ||
 		respond_error "failed to build request payload"
 
-	if ! out=$(curl -sS -f --max-time "$TIMEOUT" \
-		-X POST \
-		-H 'Content-Type: application/json' \
-		-d "$payload" \
-		"$ENDPOINT/key/$key" 2>&1); then
-		respond_error "set request failed: $out"
-	fi
+	stored=""
+	errors=""
+	for endpoint in $ENDPOINTS; do
+		if out=$(curl -sS -f --max-time "$TIMEOUT" \
+			-X POST \
+			-H 'Content-Type: application/json' \
+			-d "$payload" \
+			"$endpoint/key/$key" 2>&1); then
+			stored=1
+			break
+		fi
+		errors="$errors; $endpoint: $out"
+	done
+
+	[ -n "$stored" ] || respond_error "set request failed:${errors#;}"
 
 	respond_ok ""
 	;;

@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -304,7 +305,7 @@ func TestKeyMustBeInfoHash(t *testing.T) {
 }
 
 func TestDefaults(t *testing.T) {
-	p, err := NewOpenDHTPlugin(pluginapi.PluginConfig{})
+	p, err := NewOpenDHTPlugin(pluginapi.PluginConfig{configKeyEndpoint: "https://a.example"})
 	if err != nil {
 		t.Fatalf("failed to create plugin: %v", err)
 	}
@@ -312,10 +313,6 @@ func TestDefaults(t *testing.T) {
 	plugin, ok := p.(*OpenDHTPlugin)
 	if !ok {
 		t.Fatal("expected an *OpenDHTPlugin")
-	}
-
-	if plugin.endpoint != defaultEndpoint {
-		t.Errorf("expected endpoint %s, got %s", defaultEndpoint, plugin.endpoint)
 	}
 
 	if plugin.magic != defaultMagic {
@@ -340,7 +337,10 @@ func TestTimeoutConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p, err := NewOpenDHTPlugin(pluginapi.PluginConfig{configKeyTimeout: tt.value})
+			p, err := NewOpenDHTPlugin(pluginapi.PluginConfig{
+				configKeyEndpoint: "https://a.example",
+				configKeyTimeout:  tt.value,
+			})
 			if err != nil {
 				t.Fatalf("failed to create plugin: %v", err)
 			}
@@ -354,8 +354,288 @@ func TestTimeoutConfig(t *testing.T) {
 
 func TestInvalidTimeoutConfig(t *testing.T) {
 	for _, value := range []interface{}{"not-a-duration", true} {
-		if _, err := NewOpenDHTPlugin(pluginapi.PluginConfig{configKeyTimeout: value}); err == nil {
+		config := pluginapi.PluginConfig{
+			configKeyEndpoint: "https://a.example",
+			configKeyTimeout:  value,
+		}
+		if _, err := NewOpenDHTPlugin(config); err == nil {
 			t.Errorf("expected an error for timeout %v", value)
+		}
+	}
+}
+
+// A scheme-less endpoint used to be accepted and then fail on every request
+// with net/http's "unsupported protocol scheme", long after startup.
+func TestEndpointRequiresScheme(t *testing.T) {
+	rejected := []string{
+		"dhtproxy.jami.net",
+		"dhtproxy.jami.net:80",
+		"//dhtproxy.jami.net",
+		"ftp://dhtproxy.jami.net",
+		"https://",
+		"   ",
+	}
+
+	for _, endpoint := range rejected {
+		t.Run(endpoint, func(t *testing.T) {
+			_, err := NewOpenDHTPlugin(pluginapi.PluginConfig{configKeyEndpoint: endpoint})
+			if err == nil {
+				t.Fatalf("expected %q to be rejected", endpoint)
+			}
+			if !strings.Contains(err.Error(), "http:// or https://") {
+				t.Errorf("error should say what is required, got: %v", err)
+			}
+		})
+	}
+
+	accepted := []string{
+		"http://127.0.0.1:8080",
+		"https://dhtproxy.jami.net",
+		"https://dhtproxy.jami.net:443",
+	}
+
+	for _, endpoint := range accepted {
+		t.Run(endpoint, func(t *testing.T) {
+			p, err := NewOpenDHTPlugin(pluginapi.PluginConfig{configKeyEndpoint: endpoint})
+			if err != nil {
+				t.Fatalf("expected %q to be accepted, got: %v", endpoint, err)
+			}
+			if got := p.(*OpenDHTPlugin).endpoints; len(got) != 1 || got[0] != endpoint {
+				t.Errorf("endpoints = %v, want [%q]", got, endpoint)
+			}
+		})
+	}
+}
+
+// A trailing slash would make the request path "//key/...".
+func TestEndpointTrailingSlashTrimmed(t *testing.T) {
+	p, err := NewOpenDHTPlugin(pluginapi.PluginConfig{configKeyEndpoint: "http://127.0.0.1:8080/"})
+	if err != nil {
+		t.Fatalf("failed to create plugin: %v", err)
+	}
+
+	if got := p.(*OpenDHTPlugin).endpoints; len(got) != 1 || got[0] != "http://127.0.0.1:8080" {
+		t.Errorf("endpoints = %v, want the trailing slash removed", got)
+	}
+}
+
+func TestResolveEndpointsMergesAndDeduplicates(t *testing.T) {
+	tests := []struct {
+		name   string
+		config pluginapi.PluginConfig
+		want   []string
+	}{
+		{
+			name:   "singular only",
+			config: pluginapi.PluginConfig{configKeyEndpoint: "https://a.example"},
+			want:   []string{"https://a.example"},
+		},
+		{
+			name:   "list only, order preserved",
+			config: pluginapi.PluginConfig{configKeyEndpoints: []interface{}{"https://a.example", "https://b.example"}},
+			want:   []string{"https://a.example", "https://b.example"},
+		},
+		{
+			name: "singular comes first",
+			config: pluginapi.PluginConfig{
+				configKeyEndpoint:  "https://first.example",
+				configKeyEndpoints: []interface{}{"https://b.example"},
+			},
+			want: []string{"https://first.example", "https://b.example"},
+		},
+		{
+			name: "duplicates collapse, first position wins",
+			config: pluginapi.PluginConfig{
+				configKeyEndpoint:  "https://a.example",
+				configKeyEndpoints: []interface{}{"https://b.example", "https://a.example/"},
+			},
+			want: []string{"https://a.example", "https://b.example"},
+		},
+		{
+			name:   "already []string",
+			config: pluginapi.PluginConfig{configKeyEndpoints: []string{"https://a.example"}},
+			want:   []string{"https://a.example"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p, err := NewOpenDHTPlugin(tt.config)
+			if err != nil {
+				t.Fatalf("failed to create plugin: %v", err)
+			}
+
+			got := p.(*OpenDHTPlugin).endpoints
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("endpoints = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// A bad entry anywhere in the list must fail at startup, not when the earlier
+// endpoints happen to go down.
+func TestResolveEndpointsValidatesEveryEntry(t *testing.T) {
+	_, err := NewOpenDHTPlugin(pluginapi.PluginConfig{
+		configKeyEndpoints: []interface{}{"https://good.example", "bad.example"},
+	})
+	if err == nil {
+		t.Fatal("expected the scheme-less second entry to be rejected")
+	}
+	if !strings.Contains(err.Error(), "bad.example") {
+		t.Errorf("error should name the offending entry, got: %v", err)
+	}
+}
+
+// There is no built-in default: an unconfigured plugin must say so rather
+// than silently adopt somebody else's proxy.
+func TestNoEndpointConfigured(t *testing.T) {
+	_, err := NewOpenDHTPlugin(pluginapi.PluginConfig{})
+	if err == nil {
+		t.Fatal("expected an error when neither endpoint nor endpoints is set")
+	}
+	if !strings.Contains(err.Error(), configKeyEndpoints) {
+		t.Errorf("error should name the config key, got: %v", err)
+	}
+}
+
+func TestResolveEndpointsRejectsNonList(t *testing.T) {
+	_, err := NewOpenDHTPlugin(pluginapi.PluginConfig{configKeyEndpoints: 42})
+	if err == nil {
+		t.Fatal("expected a non-list endpoints value to be rejected")
+	}
+}
+
+// Both Get and Set skip a failing endpoint and keep the first that answers.
+func TestFailsOverToNextEndpoint(t *testing.T) {
+	for _, action := range []string{"get", "set"} {
+		t.Run(action, func(t *testing.T) {
+			dead := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				http.Error(w, "boom", http.StatusInternalServerError)
+			}))
+			defer dead.Close()
+
+			var liveHits int
+			live := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				liveHits++
+				if r.Method == http.MethodGet {
+					fmt.Fprintln(w, line(t, defaultMagic, 1, "payload"))
+					return
+				}
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer live.Close()
+
+			p, err := NewOpenDHTPlugin(pluginapi.PluginConfig{
+				configKeyEndpoints: []interface{}{dead.URL, live.URL},
+			})
+			if err != nil {
+				t.Fatalf("failed to create plugin: %v", err)
+			}
+
+			if action == "get" {
+				got, err := p.Get(context.Background(), testKey)
+				if err != nil {
+					t.Fatalf("Get() error = %v, want the second endpoint to answer", err)
+				}
+				if got != "payload" {
+					t.Errorf("Get() = %q, want payload", got)
+				}
+			} else if err := p.Set(context.Background(), testKey, "payload"); err != nil {
+				t.Fatalf("Set() error = %v, want the second endpoint to accept", err)
+			}
+
+			if liveHits != 1 {
+				t.Errorf("live endpoint hit %d times, want 1", liveHits)
+			}
+		})
+	}
+}
+
+// The first endpoint that answers ends the walk.
+func TestDoesNotTryLaterEndpointsOnSuccess(t *testing.T) {
+	var secondHits int
+	second := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		secondHits++
+	}))
+	defer second.Close()
+
+	first := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintln(w, line(t, defaultMagic, 1, "payload"))
+	}))
+	defer first.Close()
+
+	p, err := NewOpenDHTPlugin(pluginapi.PluginConfig{
+		configKeyEndpoints: []interface{}{first.URL, second.URL},
+	})
+	if err != nil {
+		t.Fatalf("failed to create plugin: %v", err)
+	}
+
+	if _, err := p.Get(context.Background(), testKey); err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+
+	if secondHits != 0 {
+		t.Errorf("second endpoint hit %d times, want 0", secondHits)
+	}
+}
+
+// A key with no value is an answer, not a failure: the walk stops there.
+func TestNoValueDoesNotFailOver(t *testing.T) {
+	var secondHits int
+	second := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		secondHits++
+	}))
+	defer second.Close()
+
+	first := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	defer first.Close()
+
+	p, err := NewOpenDHTPlugin(pluginapi.PluginConfig{
+		configKeyEndpoints: []interface{}{first.URL, second.URL},
+	})
+	if err != nil {
+		t.Fatalf("failed to create plugin: %v", err)
+	}
+
+	if _, err := p.Get(context.Background(), testKey); err == nil {
+		t.Fatal("Get() error = nil, want no value found")
+	}
+
+	if secondHits != 0 {
+		t.Errorf("second endpoint hit %d times, want 0", secondHits)
+	}
+}
+
+// When every endpoint fails the error has to name them all, or a mesh that is
+// down for two different reasons looks like it is down for one.
+func TestAllEndpointsFailingReportsEach(t *testing.T) {
+	first := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "first is unhappy", http.StatusInternalServerError)
+	}))
+	defer first.Close()
+
+	second := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "second is unhappy", http.StatusBadGateway)
+	}))
+	defer second.Close()
+
+	p, err := NewOpenDHTPlugin(pluginapi.PluginConfig{
+		configKeyEndpoints: []interface{}{first.URL, second.URL},
+	})
+	if err != nil {
+		t.Fatalf("failed to create plugin: %v", err)
+	}
+
+	err = p.Set(context.Background(), testKey, "payload")
+	if err == nil {
+		t.Fatal("Set() error = nil, want both endpoints reported")
+	}
+
+	for _, want := range []string{first.URL, second.URL, "first is unhappy", "second is unhappy"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q should mention %q", err, want)
 		}
 	}
 }
