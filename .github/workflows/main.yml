@@ -33,7 +33,7 @@ jobs:
             (echo; echo "Unexpected difference in directories after code generation. Run 'wire .' command and commit."; exit 1)
 
   lint:
-    name: Lint (${{ matrix.goos }})
+    name: Lint
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -68,7 +68,7 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
 
   build:
-    name: Build (${{ matrix.os }}, ${{ matrix.arch }}, ${{ matrix.variant }})
+    name: Build
     runs-on: ubuntu-latest
     needs:
       - lint
@@ -144,7 +144,7 @@ jobs:
             gmake build BACKEND=wgctrl
 
   build-plugins:
-    name: Build Plugins (${{ matrix.os }}, ${{ matrix.arch }})
+    name: Build Plugins
     runs-on: ubuntu-latest
     needs:
       - lint
