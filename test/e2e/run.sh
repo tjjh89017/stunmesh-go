@@ -26,7 +26,7 @@ export SUDO
 ENDPOINTS=${ENDPOINTS:-'https://dhtproxy2.jami.net https://dhtproxy3.jami.net'}
 
 PORT0=51820; PORT1=51821
-ADDR0=10.66.0.1; ADDR1=10.66.0.2
+ALLOWED0=10.66.0.1/32; ALLOWED1=10.66.0.2/32  # placeholder allowed-ips per peer
 IF0=""; IF1=""   # resolved names (utunN on macOS)
 
 log() { echo "[e2e] $*"; }
@@ -45,38 +45,34 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# create_iface SLOT PRIVKEY_FILE PORT ADDR PEER_PUB PEER_ALLOWED
-# Sets IF$SLOT (and, on Darwin, PID$SLOT) to the resolved interface.
+# create_iface SLOT PRIVKEY_FILE PORT PEER_PUB PEER_ALLOWED
+# Sets IF$SLOT (and, on Darwin, PID$SLOT) to the resolved interface. No tunnel
+# address is assigned: stunmesh only needs the device's key, listen port and
+# peer, and STUN runs on its own raw socket, so the overlay IP is irrelevant.
 create_iface() {
-	slot=$1; keyfile=$2; port=$3; addr=$4; peer=$5; allowed=$6
+	slot=$1; keyfile=$2; port=$3; peer=$4; allowed=$5
 	case "$OS" in
 	Linux)
 		name=wg$slot
 		$SUDO ip link add "$name" type wireguard
-		$SUDO ip addr add "$addr/24" dev "$name"
+		$SUDO ip link set "$name" up
 		;;
 	FreeBSD)
 		name=$($SUDO ifconfig wg create)
-		$SUDO ifconfig "$name" inet "$addr/24"
+		$SUDO ifconfig "$name" up
 		;;
 	Darwin)
 		namefile=$WORK/tun$slot.name
 		$SUDO sh -c "WG_TUN_NAME_FILE=$namefile wireguard-go utun >$WORK/wggo$slot.log 2>&1 &"
-		# wireguard-go writes the chosen utunN into namefile once it is up.
+		# wireguard-go (running as root) writes the chosen utunN here once up.
 		for _ in $(seq 1 20); do [ -s "$namefile" ] && break; sleep 0.5; done
-		name=$(cat "$namefile")
+		name=$($SUDO cat "$namefile")
 		eval "PID$slot=\$(pgrep -f \"wireguard-go $name\")"
-		$SUDO ifconfig "$name" inet "$addr" "$addr" alias
 		;;
 	*) echo "unsupported OS: $OS" >&2; exit 1 ;;
 	esac
 	$SUDO wg set "$name" private-key "$keyfile" listen-port "$port" \
-		peer "$peer" allowed-ips "$allowed/32"
-	case "$OS" in
-	Linux)   $SUDO ip link set "$name" up ;;
-	FreeBSD) $SUDO ifconfig "$name" up ;;
-	Darwin)  $SUDO ifconfig "$name" up ;;
-	esac
+		peer "$peer" allowed-ips "$allowed"
 	eval "IF$slot=\$name"
 }
 
@@ -107,8 +103,8 @@ Apriv=$WORK/a.key; Bpriv=$WORK/b.key
 wg genkey > "$Apriv"; wg genkey > "$Bpriv"
 Apub=$(wg pubkey < "$Apriv"); Bpub=$(wg pubkey < "$Bpriv")
 
-create_iface 0 "$Apriv" "$PORT0" "$ADDR0" "$Bpub" "$ADDR1"
-create_iface 1 "$Bpriv" "$PORT1" "$ADDR1" "$Apub" "$ADDR0"
+create_iface 0 "$Apriv" "$PORT0" "$Bpub" "$ALLOWED1"
+create_iface 1 "$Bpriv" "$PORT1" "$Apub" "$ALLOWED0"
 log "interfaces up: $IF0 (peer $Bpub), $IF1 (peer $Apub)"
 
 write_config "$IF0" "$Bpub" "$WORK/cfg0.yaml"
