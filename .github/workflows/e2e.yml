@@ -61,7 +61,7 @@ jobs:
           sync: sshfs
           prepare: |
             pkg update -f
-            pkg install -y gmake go wireguard-tools jq
+            pkg install -y gmake go wireguard-tools jq curl
             kldload if_wg
           run: |
             cd $GITHUB_WORKSPACE
