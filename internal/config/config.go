@@ -9,6 +9,7 @@ import (
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/google/wire"
 	"github.com/rs/zerolog"
+	pluginapi "github.com/tjjh89017/stunmesh-go/pluginapi"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -91,20 +92,13 @@ type PingMonitor struct {
 	FixedRetries int           `mapstructure:"fixed_retries"`
 }
 
-type PluginConfig map[string]interface{}
-
-type PluginDefinition struct {
-	Type   string       `mapstructure:"type"`
-	Config PluginConfig `mapstructure:",remain"`
-}
-
 type Config struct {
-	Interfaces      Interfaces                  `mapstructure:"interfaces"`
-	Plugins         map[string]PluginDefinition `mapstructure:"plugins"`
-	RefreshInterval time.Duration               `mapstructure:"refresh_interval"`
-	Log             Logger                      `mapstructure:"log"`
-	Stun            Stun                        `mapstructure:"stun"`
-	PingMonitor     PingMonitor                 `mapstructure:"ping_monitor"`
+	Interfaces      Interfaces                            `mapstructure:"interfaces"`
+	Plugins         map[string]pluginapi.PluginDefinition `mapstructure:"plugins"`
+	RefreshInterval time.Duration                         `mapstructure:"refresh_interval"`
+	Log             Logger                                `mapstructure:"log"`
+	Stun            Stun                                  `mapstructure:"stun"`
+	PingMonitor     PingMonitor                           `mapstructure:"ping_monitor"`
 }
 
 // findConfigFile resolves the config file path, honoring File and Dir before
