@@ -59,20 +59,38 @@ jobs:
 
   test:
     name: Test
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: linux, runner: ubuntu-latest }
+          - { os: darwin, runner: macos-15 }
+          - { os: freebsd, runner: ubuntu-latest }  # host; tests run in a VM
     steps:
       - uses: actions/checkout@v7
       - name: Test
         uses: ./.github/actions/test
         with:
+          os: ${{ matrix.os }}
           go-version: ${{ env.GO_VERSION }}
+
+  # One stable check the ruleset can require in place of every Test (<os>) cell.
+  test-required:
+    name: Test
+    runs-on: ubuntu-latest
+    needs: test
+    if: always()
+    steps:
+      - name: All test platforms passed
+        run: '[ "${{ needs.test.result }}" = "success" ]'
 
   build:
     name: Build
     runs-on: ubuntu-latest
     needs:
       - lint-required
-      - test
+      - test-required
     strategy:
       matrix:
         os: [linux, darwin, freebsd]
@@ -118,37 +136,12 @@ jobs:
       - name: All build cells passed
         run: '[ "${{ needs.build.result }}" = "success" ]'
 
-  # The only job running on real FreeBSD. It covers the two things the
-  # cross-compiled matrix cannot: the wgcli tests on the platform where wgcli is
-  # the default, and a compile check of wgctrl, which needs CGO and so cannot be
-  # cross-compiled. amd64 only — arm64 runs emulated and is far too slow.
-  freebsd:
-    name: FreeBSD (test + wgctrl build)
-    runs-on: ubuntu-latest
-    needs:
-      - lint-required
-      - test
-    steps:
-      - uses: actions/checkout@v7
-      - name: Test and build
-        uses: vmactions/freebsd-vm@v1
-        with:
-          arch: amd64
-          sync: sshfs
-          prepare: |
-            pkg update -f
-            pkg install -y gmake go
-          run: |
-            cd $GITHUB_WORKSPACE
-            gmake test
-            gmake build BACKEND=wgctrl
-
   build-plugins:
     name: Build Plugins
     runs-on: ubuntu-latest
     needs:
       - lint-required
-      - test
+      - test-required
     strategy:
       matrix:
         os: [linux, darwin, freebsd]
