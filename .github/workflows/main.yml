@@ -164,3 +164,31 @@ jobs:
           app-name: ${{ env.APP }}
           docker-token: ${{ secrets.DOCKER_TOKEN }}
           repository-owner: ${{ github.repository_owner }}
+
+  # Runtime test of the real publish -> opendht -> establish pipeline with two
+  # live WireGuard interfaces, running the exact binary the build stage produced.
+  # It depends on the public dhtproxy endpoints and outbound STUN, so it is not a
+  # required check; failures are advisory. The action branches per os; freebsd
+  # runs in a VM on a Linux host (arm64 -> arm64 host for native virt). See
+  # test/e2e/.
+  e2e:
+    name: E2E (${{ matrix.os }}/${{ matrix.arch }})
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: linux, arch: amd64, runner: ubuntu-24.04 }
+          - { os: linux, arch: arm64, runner: ubuntu-24.04-arm }
+          - { os: darwin, arch: arm64, runner: macos-15 }
+          - { os: darwin, arch: amd64, runner: macos-15-intel }
+          - { os: freebsd, arch: amd64, runner: ubuntu-latest }
+          - { os: freebsd, arch: arm64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/e2e
+        with:
+          os: ${{ matrix.os }}
+          arch: ${{ matrix.arch }}
+          app-name: ${{ env.APP }}

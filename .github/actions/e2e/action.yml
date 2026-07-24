@@ -1,0 +1,57 @@
+name: 'E2E'
+description: 'Run the two-interface stunmesh e2e against a build-stage artifact'
+
+inputs:
+  os:
+    description: 'Target OS (linux, darwin, freebsd)'
+    required: true
+  arch:
+    description: 'Target architecture (amd64, arm64)'
+    required: true
+  app-name:
+    description: 'Application name; the artifact is <app-name>-<os>-<arch>'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - uses: actions/download-artifact@v7
+      with:
+        name: ${{ inputs.app-name }}-${{ inputs.os }}-${{ inputs.arch }}
+
+    # os is an input, not runner.os: freebsd runs in a VM on a Linux host, so
+    # runner.os is Linux for both the linux and freebsd targets.
+    - name: Install tools (Linux)
+      if: inputs.os == 'linux'
+      shell: bash
+      run: sudo apt-get update && sudo apt-get install -y wireguard-tools jq
+
+    - name: Install tools (macOS)
+      if: inputs.os == 'darwin'
+      shell: bash
+      run: brew install wireguard-tools wireguard-go jq
+
+    - name: Run e2e
+      if: inputs.os == 'linux' || inputs.os == 'darwin'
+      shell: bash
+      run: |
+        bin=${{ inputs.app-name }}-${{ inputs.os }}-${{ inputs.arch }}
+        chmod +x "$bin"
+        sh test/e2e/run.sh "./$bin"
+
+    # FreeBSD runs everything inside the guest; aarch64 needs an arm64 host so
+    # the guest is virtualized natively rather than emulated.
+    - name: Run e2e (FreeBSD VM)
+      if: inputs.os == 'freebsd'
+      uses: vmactions/freebsd-vm@v1
+      with:
+        arch: ${{ inputs.arch == 'arm64' && 'aarch64' || inputs.arch }}
+        sync: sshfs
+        prepare: |
+          pkg install -y wireguard-tools jq curl
+          kldload if_wg
+        run: |
+          cd $GITHUB_WORKSPACE
+          bin=${{ inputs.app-name }}-freebsd-${{ inputs.arch }}
+          chmod +x "$bin"
+          sh test/e2e/run.sh "./$bin"
