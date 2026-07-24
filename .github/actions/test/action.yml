@@ -1,7 +1,11 @@
 name: 'Run Tests'
-description: 'Run Go tests with coverage'
+description: 'Run Go tests with coverage on the given OS'
 
 inputs:
+  os:
+    description: 'Target OS (linux, darwin, freebsd)'
+    required: true
+    default: 'linux'
   go-version:
     description: 'Go version to use'
     required: true
@@ -10,14 +14,29 @@ inputs:
 runs:
   using: 'composite'
   steps:
+    # os is an input, not runner.os: freebsd runs in a VM on a Linux host.
     - uses: actions/setup-go@v7
+      if: inputs.os == 'linux' || inputs.os == 'darwin'
       with:
         go-version: ${{ inputs.go-version }}
 
-    # Run as root so the tests that need CAP_NET_RAW / CAP_NET_ADMIN actually
-    # execute instead of skipping themselves. `sudo -E env "PATH=$PATH"` rather
-    # than a bare `sudo`, because sudo's secure_path drops the Go that
-    # setup-go put on PATH.
+    # Run as root so the tests that need CAP_NET_RAW / raw sockets execute
+    # instead of skipping. sudo -E env "PATH=$PATH" because sudo's secure_path
+    # drops the Go that setup-go put on PATH.
     - name: Test
+      if: inputs.os == 'linux' || inputs.os == 'darwin'
       shell: bash
       run: sudo -E env "PATH=$PATH" make test
+
+    # FreeBSD runs the tests in the guest, where the process is already root.
+    - name: Test (FreeBSD VM)
+      if: inputs.os == 'freebsd'
+      uses: vmactions/freebsd-vm@v1
+      with:
+        arch: amd64
+        sync: sshfs
+        prepare: |
+          pkg install -y gmake go
+        run: |
+          cd $GITHUB_WORKSPACE
+          gmake test
