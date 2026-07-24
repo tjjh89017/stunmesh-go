@@ -5,17 +5,11 @@ name: E2E
 # outbound STUN, so it is kept off pull_request (external flakiness must not
 # block PRs) and runs on merges to main, on demand, and weekly.
 on:
+  # Every change reaching main goes through a PR, so gate all of them -- no
+  # path filter, a doc-only change still merges to main and should be covered.
   pull_request:
-    paths:
-      - '**.go'
-      - 'test/e2e/**'
-      - '.github/workflows/e2e.yml'
   push:
     branches: [main]
-    paths:
-      - '**.go'
-      - 'test/e2e/**'
-      - '.github/workflows/e2e.yml'
   workflow_dispatch:
   schedule:
     - cron: '0 6 * * 1'
