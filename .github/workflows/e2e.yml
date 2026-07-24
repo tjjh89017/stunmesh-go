@@ -5,8 +5,13 @@ name: E2E
 # outbound STUN, so it is kept off pull_request (external flakiness must not
 # block PRs) and runs on merges to main, on demand, and weekly.
 on:
+  pull_request:
+    paths:
+      - '**.go'
+      - 'test/e2e/**'
+      - '.github/workflows/e2e.yml'
   push:
-    branches: [main, feat/e2e-workflow]  # TEMP: drop before merge
+    branches: [main]
     paths:
       - '**.go'
       - 'test/e2e/**'
