@@ -39,15 +39,30 @@ for pair in "$IF0:$LOG0" "$IF1:$LOG1"; do
 	fi
 done
 
-echo "== 2. STUN IP matches api.ipify.org =="
-oracle=$(curl -4 -sS -m 15 https://api.ipify.org)
+echo "== 2. STUN discovered a real public IPv4 =="
+# The gate is that STUN found a routable public address, not garbage or a
+# private/reserved one. Matching api.ipify.org exactly is only informational:
+# cloud runners (e.g. Azure) egress UDP and TCP through different SNAT IPs, so
+# the STUN IP and an HTTPS oracle legitimately differ.
+oracle=$(curl -4 -sS -m 15 https://api.ipify.org || echo "")
+is_public_ipv4() {
+	case $1 in
+	*[!0-9.]* | '' | *..* | .* | *.) return 1 ;;  # non-numeric or malformed
+	0.* | 10.* | 127.* | 169.254.* | 192.168.* | \
+	172.1[6-9].* | 172.2[0-9].* | 172.3[0-1].*) return 1 ;;  # private/reserved
+	*.*.*.*) return 0 ;;
+	*) return 1 ;;
+	esac
+}
 d0=$(discovered "$LOG0"); d1=$(discovered "$LOG1")
 for pair in "$IF0:$d0" "$IF1:$d1"; do
 	ip=${pair#*:}; ip=${ip%:*}
-	if [ "$ip" = "$oracle" ]; then
-		echo "ok: ${pair%%:*} discovered $ip == oracle"
+	if is_public_ipv4 "$ip"; then
+		note=""
+		[ "$ip" = "$oracle" ] || note=" (oracle $oracle differs -- normal on split-egress runners)"
+		echo "ok: ${pair%%:*} discovered public IP $ip$note"
 	else
-		echo "FAIL: ${pair%%:*} discovered '$ip', oracle '$oracle'"
+		echo "FAIL: ${pair%%:*} discovered '$ip', not a public IPv4"
 		fail=1
 	fi
 done
