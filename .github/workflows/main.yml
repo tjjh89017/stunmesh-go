@@ -199,10 +199,9 @@ jobs:
 
   # Runtime test of the real publish -> opendht -> establish pipeline with two
   # live WireGuard interfaces, running the exact binary the build stage produced.
-  # It depends on the public dhtproxy endpoints and outbound STUN, so it is not a
-  # required check; failures are advisory. The action branches per os; freebsd
-  # runs in a VM on a Linux host (arm64 -> arm64 host for native virt). See
-  # test/e2e/.
+  # It depends on the public dhtproxy endpoints and outbound STUN, so a flaky
+  # endpoint can block merges. The action branches per os; freebsd runs in a VM
+  # on a Linux host (arm64 -> arm64 host for native virt). See test/e2e/.
   e2e:
     name: E2E (${{ matrix.os }}/${{ matrix.arch }})
     # build-plugins-required is a gate, not an artifact source: e2e uses the
@@ -230,9 +229,7 @@ jobs:
           app-name: ${{ env.APP }}
 
   # One stable check aggregating the e2e matrix, mirroring the other summary
-  # gates. It stays advisory (kept out of branch protection): e2e depends on the
-  # public dhtproxy endpoints and outbound STUN, and that flakiness must not
-  # block merges. The single E2E check is for a clean PR view, not to require.
+  # gates. The ruleset requires it, so all six cells must pass to merge.
   e2e-required:
     name: E2E
     runs-on: ubuntu-latest
