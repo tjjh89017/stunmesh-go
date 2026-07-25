@@ -94,6 +94,19 @@ clean:
 test:
 	go test -cover -v ${TAGS_FLAGS} ./...
 
+.PHONY: test-race
+test-race:
+	go test -race ${TAGS_FLAGS} ./...
+
+# Payload size (1420) and GOMAXPROCS=4 are pinned inside bench_test.go.
+.PHONY: bench
+bench:
+	go test ./internal/wgproxy -bench BenchmarkRelay -benchtime 2s -run '^$$'
+
+.PHONY: bench-floor
+bench-floor:
+	STUNMESH_BENCH_FLOOR=1 go test ./internal/wgproxy -run TestRelayThroughputFloor -count=1
+
 .PHONY: fmt
 fmt:
 	go fmt ./...
