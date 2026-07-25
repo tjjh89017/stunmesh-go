@@ -26,6 +26,7 @@ For best results, ensure at least one peer is behind a cone NAT type.
 - **Linux** (amd64, arm, arm64, mipsle) - Normal and UPX-compressed binaries
 - **macOS** (amd64, arm64) - Normal binaries only
 - **FreeBSD** (amd64, arm64) - Normal binaries only, requires `wireguard-tools`
+- **Windows** (amd64, arm64) - Normal binaries only, shipped as `stunmesh-windows-<arch>-<tag>.zip`, requires the official WireGuard for Windows client
 
 > [!IMPORTANT]
 > FreeBSD binaries use the `wgcli` backend, which invokes `wg(8)`. The base system ships the
@@ -43,7 +44,7 @@ Download a binary from the [releases page](https://github.com/tjjh89017/stunmesh
 docker pull tjjh89017/stunmesh
 ```
 
-stunmesh-go needs raw socket access, so run it as root next to an already-configured WireGuard interface:
+On Linux, macOS, and FreeBSD, stunmesh-go needs raw socket access, so run it as root next to an already-configured WireGuard interface (Windows differs — see [Windows](#windows) below):
 
 ```bash
 sudo ./stunmesh-go
@@ -82,6 +83,37 @@ Run the same setup on the other node (with this node's public key), wait roughly
 > interface is recreated, the listen port or fwmark changes, or `config.yaml` is edited.
 > Under systemd, bind it to the WireGuard unit (`After=` + `BindsTo=`) so this is enforced
 > automatically. See [when stunmesh-go must be restarted](https://docs.stunmesh.dev/getting-started#when-stunmesh-go-must-be-restarted).
+
+### Windows
+
+Windows has no equivalent of the raw sockets (Linux) or pcap (macOS/BSD) stunmesh-go uses to share
+WireGuard's UDP port, so it instead runs a local UDP proxy that owns the public-facing socket, performs
+STUN on it, and relays WireGuard packets to per-peer loopback listeners. The official
+[WireGuard for Windows](https://www.wireguard.com/install/) client stays the data plane, and stunmesh-go
+rewrites each peer's endpoint to its loopback listener itself — there is nothing to change by hand in the
+tunnel.
+
+1. Install the official WireGuard for Windows client and create the tunnel.
+2. Activate the tunnel **before** starting stunmesh-go.
+3. Run stunmesh-go from an **Administrator** console. The WireGuard service requires the same privilege;
+   without it stunmesh-go fails at the first device access with a "run stunmesh as Administrator" error.
+4. Allow inbound UDP for the executable. The rule must be per-program, not per-port — the public port is
+   ephemeral by design and changes on every restart:
+
+```powershell
+netsh advfirewall firewall add rule name="stunmesh" dir=in action=allow protocol=UDP program="C:\stunmesh\stunmesh.exe" enable=yes
+```
+
+The configuration file is unchanged from the other platforms and the proxy needs no configuration of its
+own; set `interfaces.<name>.proxy.listen` only if you need a fixed outer port for port forwarding or a
+port-based firewall.
+
+> [!IMPORTANT]
+> Deactivating and reactivating a tunnel in the WireGuard UI wipes the endpoints stunmesh-go set, because
+> the service re-applies the `.conf` file. Restart stunmesh-go after any tunnel toggle or restart.
+
+> [!NOTE]
+> ICMP ping monitoring is not implemented on Windows yet; stunmesh-go logs this and continues without it.
 
 ## Documentation
 
