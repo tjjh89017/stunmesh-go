@@ -1,3 +1,5 @@
+//go:build windows || wgproxy
+
 package wgproxy_test
 
 import (
@@ -24,8 +26,7 @@ func newTestDemux(t *testing.T) *wgproxy.Demux {
 	return wgproxy.NewDemux(&logger)
 }
 
-// stunMessage builds a minimal STUN message (header only) with the given
-// message type and transaction ID.
+// stunMessage builds a header-only STUN message.
 func stunMessage(msgType uint16, txn wgproxy.TxnID) []byte {
 	b := make([]byte, 20)
 	binary.BigEndian.PutUint16(b[0:2], msgType)
@@ -35,8 +36,7 @@ func stunMessage(msgType uint16, txn wgproxy.TxnID) []byte {
 	return b
 }
 
-// wgMessage builds a WireGuard-shaped packet: type byte, three reserved
-// zero bytes, zero-filled body up to size.
+// wgMessage builds a WireGuard-shaped packet of the given type and size.
 func wgMessage(msgType byte, size int) []byte {
 	b := make([]byte, size)
 	b[0] = msgType

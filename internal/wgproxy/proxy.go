@@ -1,11 +1,10 @@
-// This file holds the socket relay: one Proxy instance per WireGuard
-// interface, owning the per-family outer sockets and the per-peer inner
-// loopback sockets. Classification of inbound outer packets lives in demux.go.
-//
-// Port lifetime invariant: every socket here is bound exactly once, at
-// creation, and is never rebound, recreated, or closed-and-reopened for the
-// life of the process. Read errors retry in place. Close is for process
-// shutdown only. There deliberately is no Stop.
+//go:build windows || wgproxy
+
+// Socket relay: one Proxy per WireGuard interface, owning the per-family
+// outer sockets and per-peer inner loopback sockets (classification lives in
+// demux.go). Port lifetime invariant: every socket is bound exactly once and
+// never rebound; read errors retry in place, Close is process-shutdown only,
+// and there deliberately is no Stop.
 package wgproxy
 
 import (
@@ -35,11 +34,9 @@ var (
 	ErrNoFamilies = errors.New("wgproxy: no protocol families enabled")
 	// ErrProxyClosed is returned for operations on a closed proxy.
 	ErrProxyClosed = errors.New("wgproxy: proxy closed")
-	// ErrFamilyNotEnabled is returned when an operation targets an address
-	// whose protocol family has no outer socket.
+	// ErrFamilyNotEnabled marks an address whose family has no outer socket.
 	ErrFamilyNotEnabled = errors.New("wgproxy: protocol family not enabled")
-	// ErrExchangeTimeout is returned by Exchange when no response arrives in
-	// time.
+	// ErrExchangeTimeout is returned when no response arrives in time.
 	ErrExchangeTimeout = errors.New("wgproxy: STUN exchange timed out")
 )
 
@@ -88,8 +85,7 @@ type outerSocket struct {
 type peerState struct {
 	inner     *net.UDPConn
 	innerAddr netip.AddrPort
-	// remote is programmed exclusively via SetPeerEndpoint, never from
-	// inbound packets.
+	// remote is programmed via SetPeerEndpoint only, never from packets.
 	remote atomic.Pointer[netip.AddrPort]
 }
 
@@ -117,8 +113,8 @@ type Proxy struct {
 	writeErrs  atomic.Uint64
 }
 
-// New binds one outer socket per requested family (port 0 = ephemeral, the
-// default; non-zero is an explicit override) and starts its receive loop.
+// New binds one outer socket per requested family (port 0 = ephemeral) and
+// starts its receive loop.
 func New(logger *zerolog.Logger, families map[Family]uint16) (*Proxy, error) {
 	if len(families) == 0 {
 		return nil, ErrNoFamilies
@@ -152,9 +148,8 @@ func New(logger *zerolog.Logger, families map[Family]uint16) (*Proxy, error) {
 	return p, nil
 }
 
-// SetWGTarget records the real WireGuard device listen port; inbound relay
-// packets are written to 127.0.0.1:<port> from the receiving peer's inner
-// socket.
+// SetWGTarget records the real WireGuard listen port that inbound relay
+// packets are written to.
 func (p *Proxy) SetWGTarget(port uint16) {
 	p.wgPort.Store(uint32(port))
 }
@@ -192,8 +187,7 @@ func (p *Proxy) AddPeer(key PeerKey) (netip.AddrPort, error) {
 }
 
 // SetPeerEndpoint programs the peer's inbound demux mapping and outbound
-// remote; the outer socket is selected by remote.Addr().Is4(). This is the
-// only way forwarding state changes (establish-driven).
+// remote — the only way forwarding state changes.
 func (p *Proxy) SetPeerEndpoint(key PeerKey, remote netip.AddrPort) {
 	remote = normalize(remote)
 	p.demux.Program(key, remote)
@@ -207,8 +201,8 @@ func (p *Proxy) SetPeerEndpoint(key PeerKey, remote netip.AddrPort) {
 	ps.remote.Store(&remote)
 }
 
-// OuterPort reports the local port of the family's outer socket, or 0 when
-// the family is not enabled; it never changes for the life of the proxy.
+// OuterPort reports the family's outer-socket port (0 when not enabled); it
+// never changes for the life of the proxy.
 func (p *Proxy) OuterPort(fam Family) uint16 {
 	if sock, ok := p.outer[fam]; ok {
 		return sock.port
@@ -226,9 +220,8 @@ func (p *Proxy) Truncated() uint64 {
 	return p.truncated.Load()
 }
 
-// Exchange registers the transaction, writes the request on the
-// family-matching outer socket, and returns the raw demux-routed response;
-// parsing is the STUN client's job. Timeouts use select — never socket read
+// Exchange sends the request on the family-matching outer socket and returns
+// the raw demux-routed response. Timeouts use select — never socket read
 // deadlines, which would break the relay loop sharing the socket.
 func (p *Proxy) Exchange(ctx context.Context, server netip.AddrPort, txnID TxnID, packet []byte) ([]byte, error) {
 	sock, ok := p.outer[familyOf(server)]
@@ -257,8 +250,7 @@ func (p *Proxy) Exchange(ctx context.Context, server netip.AddrPort, txnID TxnID
 	}
 }
 
-// Close stops all relay goroutines and closes every socket; process-shutdown
-// only, idempotent.
+// Close stops all relay goroutines and closes every socket; idempotent.
 func (p *Proxy) Close() error {
 	p.mu.Lock()
 	if p.closed {
@@ -289,9 +281,9 @@ func (p *Proxy) isClosed() bool {
 	return p.closed
 }
 
-// outerLoop owns one outer socket: receive, classify, and on a relay decision
-// write to the WG-side target from the destination peer's inner socket (so
-// WireGuardNT sees the source port it dialed).
+// outerLoop owns one outer socket: receive, classify, and relay to the
+// WG-side target from the peer's inner socket (so WireGuardNT sees the source
+// port it dialed).
 func (p *Proxy) outerLoop(fam Family, conn *net.UDPConn) {
 	defer p.loops.Done()
 	buf := make([]byte, relayBufSize)
@@ -328,8 +320,8 @@ func (p *Proxy) outerLoop(fam Family, conn *net.UDPConn) {
 	}
 }
 
-// innerLoop owns one peer's inner socket: receive from the WG device, write
-// to the peer's current remote via the family-matching outer socket.
+// innerLoop owns one peer's inner socket: relay WG output to the peer's
+// current remote via the family-matching outer socket.
 func (p *Proxy) innerLoop(ps *peerState) {
 	defer p.loops.Done()
 	buf := make([]byte, relayBufSize)

@@ -1,3 +1,5 @@
+//go:build windows || wgproxy
+
 package wg
 
 import (
@@ -9,20 +11,15 @@ import (
 	"github.com/tjjh89017/stunmesh-go/internal/wgproxy"
 )
 
-// ProxyConfig provides the per-device settings the proxy decorator needs;
-// satisfied by *config.DeviceConfig. Platform gating (the proxy is
-// Windows-only; other platforms warn on a configured proxy.listen) is wiring's
-// responsibility, not this decorator's.
+// ProxyConfig provides the per-device settings the decorator needs; satisfied
+// by *config.DeviceConfig. Platform gating is wiring's responsibility.
 type ProxyConfig interface {
 	GetInterfaceProtocol(deviceName string) string
 	GetProxyListenPort(deviceName string) uint16
 }
 
 // proxyClient decorates a Client so every device is fronted by a wgproxy
-// relay: Device() registers the device's proxy and peers, and
-// UpdatePeerEndpoint() programs the proxy with the real remote while pointing
-// WireGuard at the peer's loopback inner socket. Controllers see the plain
-// Client interface and stay unmodified.
+// relay; controllers see the plain Client interface and stay unmodified.
 type proxyClient struct {
 	inner   Client
 	manager *wgproxy.Manager
@@ -40,9 +37,8 @@ func NewProxyClient(inner Client, manager *wgproxy.Manager, config ProxyConfig, 
 	}
 }
 
-// Device delegates, then ensures the device's proxy exists, feeds it the real
-// listen port as the WG-side target, and registers every peer. The DeviceInfo
-// is returned unchanged — ListenPort stays the real WireGuard port.
+// Device delegates, then feeds the proxy the WG-side target and registers
+// every peer. DeviceInfo is returned unchanged — ListenPort stays real.
 func (c *proxyClient) Device(name string) (*DeviceInfo, error) {
 	info, err := c.inner.Device(name)
 	if err != nil {
@@ -61,8 +57,8 @@ func (c *proxyClient) Device(name string) (*DeviceInfo, error) {
 	return info, nil
 }
 
-// UpdatePeerEndpoint programs the proxy with the peer's real remote, then
-// delegates with the endpoint replaced by the peer's loopback inner socket.
+// UpdatePeerEndpoint programs the proxy with the real remote, then delegates
+// with the endpoint replaced by the peer's loopback inner socket.
 func (c *proxyClient) UpdatePeerEndpoint(u PeerEndpointUpdate) error {
 	addr, err := netip.ParseAddr(u.Host)
 	if err != nil {

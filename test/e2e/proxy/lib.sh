@@ -102,7 +102,7 @@ make_wg() {
 
 build_runner() {
 	RUNNER_BIN=$WORK/wgproxy-runner
-	(cd "$ROOT" && go build -o "$RUNNER_BIN" ./test/e2e/proxy/runner)
+	(cd "$ROOT" && go build -tags wgproxy -o "$RUNNER_BIN" ./test/e2e/proxy/runner)
 }
 
 # start_runner [extra runner flags...] — always in ns A, peer B, wg-port A.

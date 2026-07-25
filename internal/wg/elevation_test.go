@@ -12,8 +12,7 @@ func TestElevationHint_NilPassthrough(t *testing.T) {
 }
 
 func TestElevationHint_OrdinaryErrorPassthrough(t *testing.T) {
-	// A plain error is not access-denied on any platform, so it must pass
-	// through unwrapped.
+	// A plain error must pass through unwrapped.
 	err := errors.New("device not found")
 	if got := elevationHint(err); got != err {
 		t.Fatalf("elevationHint(%v) = %v, want identity", err, got)

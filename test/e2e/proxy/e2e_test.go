@@ -1,9 +1,10 @@
-// Package proxy holds the netns e2e harness for internal/wgproxy: two Linux
-// network namespaces joined by a veth pair, kernel WireGuard on both sides,
-// the wgproxy relay fronting side A. Everything is gated so a plain
-// `go test ./...` skips on any machine; run with:
+//go:build wgproxy
+
+// Package proxy is the netns e2e harness for internal/wgproxy: two namespaces
+// on a veth pair, kernel WireGuard both sides, the relay fronting side A.
+// Run with:
 //
-//	sudo env STUNMESH_E2E_PROXY=1 go test ./test/e2e/proxy -v
+//	sudo env STUNMESH_E2E_PROXY=1 go test -tags wgproxy ./test/e2e/proxy -v
 package proxy
 
 import (

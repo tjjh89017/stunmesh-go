@@ -1,7 +1,8 @@
-// Package wgproxy implements the portable core of the UDP proxy that fronts a
-// WireGuard interface on platforms without raw-socket port sharing (Windows).
-// This file holds the inbound packet classifier and the STUN transaction
-// registry; the socket relay lives in proxy.go.
+//go:build windows || wgproxy
+
+// Package wgproxy is the UDP proxy fronting a WireGuard interface on
+// platforms without raw-socket port sharing (Windows). This file holds the
+// packet classifier and STUN transaction registry; the relay is in proxy.go.
 package wgproxy
 
 import (
@@ -14,13 +15,12 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// PeerKey is a WireGuard peer public key, aliased so values are
-// interchangeable with wg.Key without importing that package.
+// PeerKey is a WireGuard peer public key, aliased to interoperate with wg.Key
+// without importing that package.
 type PeerKey = [32]byte
 
-// TxnID is a STUN 96-bit transaction ID (RFC 8489 section 5), aliased (like
-// PeerKey) so Proxy.Exchange structurally satisfies stun.StunTransport
-// without that package importing this one.
+// TxnID is a STUN 96-bit transaction ID (RFC 8489), aliased so Proxy.Exchange
+// structurally satisfies stun.StunTransport.
 type TxnID = [12]byte
 
 const (
@@ -31,8 +31,7 @@ const (
 	stunBindingError   = 0x0111
 )
 
-// ErrTxnExists is returned by TxnRegistry.Register when the transaction ID is
-// already pending.
+// ErrTxnExists is returned by Register when the transaction ID is pending.
 var ErrTxnExists = errors.New("wgproxy: transaction already registered")
 
 // Bucket is the demux classification of an inbound outer-socket packet.
@@ -54,9 +53,8 @@ type Decision struct {
 	Peer   PeerKey
 }
 
-// TxnRegistry tracks pending STUN transactions and routes binding responses
-// (success and error alike) to the waiting goroutine. Timeouts are the
-// caller's job — select on the reply channel, never socket read deadlines.
+// TxnRegistry routes binding responses to the waiting goroutine. Timeouts are
+// the caller's job — select on the channel, never socket read deadlines.
 type TxnRegistry struct {
 	mu      sync.Mutex
 	pending map[TxnID]pendingTxn
@@ -71,9 +69,9 @@ func NewTxnRegistry() *TxnRegistry {
 	return &TxnRegistry{pending: make(map[TxnID]pendingTxn)}
 }
 
-// Register records a pending transaction and returns its response channel.
-// Responses from any source other than server are rejected (RFC 8489
-// section 7.2.3). The caller must Unregister when done.
+// Register records a pending transaction and returns its response channel;
+// responses from other sources are rejected (RFC 8489 7.2.3). Callers must
+// Unregister when done.
 func (r *TxnRegistry) Register(id TxnID, server netip.AddrPort) (<-chan []byte, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -95,8 +93,7 @@ func (r *TxnRegistry) Unregister(id TxnID) {
 	delete(r.pending, id)
 }
 
-// route delivers a STUN-shaped packet to its waiter, reporting false for
-// non-responses, unknown transactions, or an unexpected source address.
+// route delivers a STUN-shaped packet to its waiter, false when unmatched.
 func (r *TxnRegistry) route(src netip.AddrPort, b []byte) bool {
 	msgType := binary.BigEndian.Uint16(b[0:2])
 	if msgType != stunBindingSuccess && msgType != stunBindingError {
@@ -122,9 +119,9 @@ func (r *TxnRegistry) route(src netip.AddrPort, b []byte) bool {
 	}
 }
 
-// Demux classifies outer-socket packets with a fixed three-bucket rule:
-// STUN-shaped, programmed peer relay, drop. Peer mappings change only through
-// Program/Unprogram — never from inbound packet source addresses.
+// Demux classifies outer-socket packets: STUN-shaped, programmed peer relay,
+// or drop. Mappings change only via Program/Unprogram — never learned from
+// inbound source addresses.
 type Demux struct {
 	txns   *TxnRegistry
 	logger zerolog.Logger
@@ -151,8 +148,7 @@ func (d *Demux) Registry() *TxnRegistry {
 	return d.txns
 }
 
-// Program maps a peer's outer source address to the peer, replacing any
-// previous mapping. Called from the establish flow only.
+// Program maps a peer's outer source address, replacing any previous mapping.
 func (d *Demux) Program(peer PeerKey, remote netip.AddrPort) {
 	remote = normalize(remote)
 	d.mu.Lock()
@@ -174,9 +170,8 @@ func (d *Demux) Unprogram(peer PeerKey) {
 	}
 }
 
-// Classify applies the three-bucket rule to one packet. b is only read during
-// the call — routed STUN responses are copied, so the caller may reuse the
-// buffer immediately.
+// Classify buckets one packet. b is only read during the call — routed STUN
+// responses are copied, so the caller may reuse the buffer.
 func (d *Demux) Classify(src netip.AddrPort, b []byte) Decision {
 	if isSTUNShaped(b) {
 		if !d.txns.route(src, b) {
@@ -201,8 +196,7 @@ func (d *Demux) DroppedSTUN() uint64 {
 	return d.droppedSTUN.Load()
 }
 
-// DroppedUnattributable reports how many non-STUN packets had no programmed
-// peer mapping.
+// DroppedUnattributable reports non-STUN packets with no peer mapping.
 func (d *Demux) DroppedUnattributable() uint64 {
 	return d.droppedOther.Load()
 }
@@ -222,8 +216,7 @@ func isSTUNShaped(b []byte) bool {
 		binary.BigEndian.Uint32(b[4:8]) == stunMagicCookie
 }
 
-// normalize strips the 4-in-6 mapped form so addresses compare equal no matter
-// which representation the socket layer reported.
+// normalize strips the 4-in-6 mapped form so addresses compare equal.
 func normalize(ap netip.AddrPort) netip.AddrPort {
 	return netip.AddrPortFrom(ap.Addr().Unmap(), ap.Port())
 }

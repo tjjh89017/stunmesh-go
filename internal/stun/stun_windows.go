@@ -9,16 +9,13 @@ import (
 
 const PacketSize = 1500
 
-// ErrProxyTransportRequired is returned by the Windows New: there is no
-// raw-socket/pcap port-sharing path here, so STUN must ride the UDP proxy's
-// outer socket. Wire injects NewProxyBackedFactory (closing over the proxy
-// transport) via NewResolverWithFactory; this default is only reached when
-// proxy mode is not wired.
+// ErrProxyTransportRequired is returned by the Windows New: STUN must ride
+// the UDP proxy's outer socket; this is only reached when proxy mode is not
+// wired.
 var ErrProxyTransportRequired = errors.New("STUN on windows requires the wgproxy transport; use the proxy-backed client factory")
 
-// Stun mirrors the exported surface of the socket-owning platform
-// implementations. New always fails, so no instance is ever created at
-// runtime; the real Windows client is ProxyBacked (proxy_client.go).
+// Stun mirrors the socket-owning platforms' surface; New always fails, so no
+// instance ever exists — the real Windows client is ProxyBacked.
 type Stun struct{}
 
 // New always returns ErrProxyTransportRequired on Windows.

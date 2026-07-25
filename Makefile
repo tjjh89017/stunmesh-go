@@ -99,13 +99,14 @@ test-race:
 	go test -race ${TAGS_FLAGS} ./...
 
 # Payload size (1420) and GOMAXPROCS=4 are pinned inside bench_test.go.
+# The wgproxy tag is required: an explicit package path errors without it.
 .PHONY: bench
 bench:
-	go test ./internal/wgproxy -bench BenchmarkRelay -benchtime 2s -run '^$$'
+	go test -tags wgproxy ./internal/wgproxy -bench BenchmarkRelay -benchtime 2s -run '^$$'
 
 .PHONY: bench-floor
 bench-floor:
-	STUNMESH_BENCH_FLOOR=1 go test ./internal/wgproxy -run TestRelayThroughputFloor -count=1
+	STUNMESH_BENCH_FLOOR=1 go test -tags wgproxy ./internal/wgproxy -run TestRelayThroughputFloor -count=1
 
 .PHONY: fmt
 fmt:

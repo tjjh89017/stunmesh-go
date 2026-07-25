@@ -35,8 +35,7 @@ func NewBootstrapController(wg WireGuardClient, config *config.Config, deviceCon
 func (ctrl *BootstrapController) Execute(ctx context.Context) {
 	for deviceName := range ctrl.config.Interfaces {
 		if err := ctrl.registerDevice(ctx, deviceName); err != nil {
-			// Elevation is unrecoverable and affects every device: fail fast
-			// with the clear message instead of limping on (plan Phase 3.4).
+			// Elevation is unrecoverable and affects every device: fail fast.
 			if errors.Is(err, wg.ErrElevationRequired) {
 				ctrl.logger.Fatal().Err(err).Str("device", deviceName).Msg("insufficient privileges for the WireGuard device; run stunmesh as Administrator")
 			}

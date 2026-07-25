@@ -1,5 +1,6 @@
-// This file holds the process-level Manager: one memoized Proxy per WireGuard
-// interface, never shared between interfaces, alive until process shutdown.
+//go:build windows || wgproxy
+
+// Process-level Manager: one memoized Proxy per WireGuard interface.
 package wgproxy
 
 import (
@@ -13,8 +14,7 @@ import (
 // ErrManagerClosed is returned by For after the manager has been closed.
 var ErrManagerClosed = errors.New("wgproxy: manager closed")
 
-// ErrProxyNotReady is returned by Get for a device whose proxy has not been
-// created yet; the decorator's Device() (via For) must run first.
+// ErrProxyNotReady is returned by Get before For has created the proxy.
 var ErrProxyNotReady = errors.New("wgproxy: proxy not initialized yet")
 
 // Manager owns one Proxy per WireGuard interface for the life of the process.
@@ -34,12 +34,9 @@ func NewManager(logger *zerolog.Logger) *Manager {
 	}
 }
 
-// For returns the device's proxy, creating it on the first call. Later calls
-// return the same instance and ignore families entirely — a proxy's sockets
-// are bound exactly once and its ports never change (port lifetime
-// invariant). After Close, For returns ErrManagerClosed: the closed sockets'
-// ports are already published, so handing out a freshly-bound proxy would
-// silently rotate them.
+// For returns the device's proxy, creating it on the first call; later calls
+// ignore families — sockets are bound exactly once, ports never change. After
+// Close it errors: a freshly-bound proxy would silently rotate published ports.
 func (m *Manager) For(deviceName string, families map[Family]uint16) (*Proxy, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -58,8 +55,7 @@ func (m *Manager) For(deviceName string, families map[Family]uint16) (*Proxy, er
 	return p, nil
 }
 
-// Get returns the device's existing proxy without creating one — only For
-// binds sockets (port lifetime invariant).
+// Get returns the existing proxy without creating one — only For binds sockets.
 func (m *Manager) Get(deviceName string) (*Proxy, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

@@ -8,15 +8,12 @@ import (
 	"time"
 )
 
-// ErrICMPNotImplemented signals that ping monitoring is not available on
-// Windows yet. NewICMPConn returning it makes the ping monitor controller
-// take its graceful-degradation path: it logs the error and continues
+// ErrICMPNotImplemented makes the ping monitor controller log and continue
 // without ping monitoring for the device.
 var ErrICMPNotImplemented = errors.New("ICMP ping monitoring is not implemented on windows yet")
 
-// ICMPConn is a placeholder ICMP connection for Windows. The real
-// implementation (IcmpSendEcho2 via iphlpapi) is deferred; until then
-// NewICMPConn always fails and no ICMPConn instance is ever created.
+// ICMPConn is a Windows placeholder (real impl: IcmpSendEcho2 via iphlpapi,
+// deferred); NewICMPConn always fails, so no instance is ever created.
 type ICMPConn struct{}
 
 // compile-time guarantee that the placeholder keeps the full platform surface

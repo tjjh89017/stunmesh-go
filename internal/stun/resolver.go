@@ -18,11 +18,9 @@ type StunClient interface {
 	Connect(ctx context.Context, addr string) (string, int, error)
 }
 
-// ClientFactory builds the StunClient used for one Resolve call. It is the
-// injection seam for platform-specific clients: the per-GOOS default wraps
-// the package-level New, while alternative factories (e.g. a proxy-backed
-// Windows client that captures its own transport) can be supplied via
-// NewResolverWithFactory without changing the Resolver.
+// ClientFactory builds the StunClient for one Resolve call — the injection
+// seam for platform-specific clients (per-GOOS default, or proxy-backed via
+// NewResolverWithFactory).
 type ClientFactory func(ctx context.Context, deviceName string, port uint16, protocol string, firewallMark int, listenInterfaces []string, listenDefaultRoute bool) (StunClient, error)
 
 type Resolver struct {
