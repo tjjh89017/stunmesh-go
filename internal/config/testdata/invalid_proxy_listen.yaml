@@ -1,0 +1,9 @@
+interfaces:
+  wg0:
+    protocol: ipv4
+    proxy:
+      listen: 70000
+    peers: {}
+
+stun:
+  address: stun.example.com:3478
