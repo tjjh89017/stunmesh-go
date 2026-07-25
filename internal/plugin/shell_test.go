@@ -96,6 +96,7 @@ func TestNewShellPlugin_NoArgs(t *testing.T) {
 }
 
 func TestShellPlugin_Get_Success(t *testing.T) {
+	skipOnWindows(t)
 	// Skip if test plugin doesn't exist
 	pluginPath := getTestPluginPath("shell_test_plugin.sh")
 	if _, err := os.Stat(pluginPath); os.IsNotExist(err) {
@@ -138,6 +139,7 @@ func TestShellPlugin_Get_Success(t *testing.T) {
 }
 
 func TestShellPlugin_Get_NotFound(t *testing.T) {
+	skipOnWindows(t)
 	// Skip if test plugin doesn't exist
 	pluginPath := getTestPluginPath("shell_test_plugin.sh")
 	if _, err := os.Stat(pluginPath); os.IsNotExist(err) {
@@ -175,6 +177,7 @@ func TestShellPlugin_Get_NotFound(t *testing.T) {
 }
 
 func TestShellPlugin_Set_Success(t *testing.T) {
+	skipOnWindows(t)
 	// Skip if test plugin doesn't exist
 	pluginPath := getTestPluginPath("shell_test_plugin.sh")
 	if _, err := os.Stat(pluginPath); os.IsNotExist(err) {
@@ -225,6 +228,7 @@ func TestShellPlugin_CommandNotFound(t *testing.T) {
 }
 
 func TestShellPlugin_PluginFailure(t *testing.T) {
+	skipOnWindows(t)
 	// Skip if test plugin doesn't exist
 	pluginPath := getTestPluginPath("shell_fail_plugin.sh")
 	if _, err := os.Stat(pluginPath); os.IsNotExist(err) {
@@ -258,6 +262,7 @@ func TestShellPlugin_PluginFailure(t *testing.T) {
 }
 
 func TestShellPlugin_SetFailure(t *testing.T) {
+	skipOnWindows(t)
 	// Skip if test plugin doesn't exist
 	pluginPath := getTestPluginPath("shell_fail_plugin.sh")
 	if _, err := os.Stat(pluginPath); os.IsNotExist(err) {
@@ -291,6 +296,7 @@ func TestShellPlugin_SetFailure(t *testing.T) {
 }
 
 func TestShellPlugin_WithArgs(t *testing.T) {
+	skipOnWindows(t)
 	config := pluginapi.PluginConfig{
 		"command": "/bin/sh",
 		"args":    []string{"-c", "eval \"$(cat)\" && echo \"$STUNMESH_KEY\""},
@@ -320,6 +326,7 @@ func TestShellPlugin_WithArgs(t *testing.T) {
 }
 
 func TestShellPlugin_EmptyStdout(t *testing.T) {
+	skipOnWindows(t)
 	config := pluginapi.PluginConfig{
 		"command": "/bin/sh",
 		"args":    []string{"-c", "exit 0"},
@@ -344,6 +351,7 @@ func TestShellPlugin_EmptyStdout(t *testing.T) {
 }
 
 func TestShellPlugin_StdinVariables(t *testing.T) {
+	skipOnWindows(t)
 	// Test that shell variables are properly sent via stdin
 	config := pluginapi.PluginConfig{
 		"command": "/bin/sh",
@@ -380,6 +388,7 @@ func TestShellPlugin_StdinVariables(t *testing.T) {
 }
 
 func TestShellPlugin_SetStdinVariables(t *testing.T) {
+	skipOnWindows(t)
 	// Test that shell variables including value are properly sent via stdin for Set
 	config := pluginapi.PluginConfig{
 		"command": "/bin/sh",
