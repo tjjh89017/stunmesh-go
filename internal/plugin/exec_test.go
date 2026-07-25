@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	pluginapi "github.com/tjjh89017/stunmesh-go/pluginapi"
@@ -11,6 +12,13 @@ import (
 
 func getTestPluginPath(filename string) string {
 	return filepath.Join("testdata", filename)
+}
+
+func skipOnWindows(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("plugin exec tests use .sh fixtures")
+	}
 }
 
 func TestNewExecPlugin_Success(t *testing.T) {
@@ -101,6 +109,7 @@ func TestNewExecPlugin_NoArgs(t *testing.T) {
 }
 
 func TestExecPlugin_Get_Success(t *testing.T) {
+	skipOnWindows(t)
 	// Skip if test plugin doesn't exist
 	pluginPath := getTestPluginPath("exec_test_plugin.sh")
 	if _, err := os.Stat(pluginPath); os.IsNotExist(err) {
@@ -143,6 +152,7 @@ func TestExecPlugin_Get_Success(t *testing.T) {
 }
 
 func TestExecPlugin_Get_NotFound(t *testing.T) {
+	skipOnWindows(t)
 	// Skip if test plugin doesn't exist
 	pluginPath := getTestPluginPath("exec_test_plugin.sh")
 	if _, err := os.Stat(pluginPath); os.IsNotExist(err) {
@@ -175,6 +185,7 @@ func TestExecPlugin_Get_NotFound(t *testing.T) {
 }
 
 func TestExecPlugin_Set_Success(t *testing.T) {
+	skipOnWindows(t)
 	// Skip if test plugin doesn't exist
 	pluginPath := getTestPluginPath("exec_test_plugin.sh")
 	if _, err := os.Stat(pluginPath); os.IsNotExist(err) {
@@ -225,6 +236,7 @@ func TestExecPlugin_CommandNotFound(t *testing.T) {
 }
 
 func TestExecPlugin_InvalidJSON(t *testing.T) {
+	skipOnWindows(t)
 	// Skip if test plugin doesn't exist
 	pluginPath := getTestPluginPath("exec_invalid_json.sh")
 	if _, err := os.Stat(pluginPath); os.IsNotExist(err) {
@@ -250,6 +262,7 @@ func TestExecPlugin_InvalidJSON(t *testing.T) {
 }
 
 func TestExecPlugin_PluginFailure(t *testing.T) {
+	skipOnWindows(t)
 	// Skip if test plugin doesn't exist
 	pluginPath := getTestPluginPath("exec_fail_plugin.sh")
 	if _, err := os.Stat(pluginPath); os.IsNotExist(err) {
@@ -275,6 +288,7 @@ func TestExecPlugin_PluginFailure(t *testing.T) {
 }
 
 func TestExecPlugin_SetFailure(t *testing.T) {
+	skipOnWindows(t)
 	// Skip if test plugin doesn't exist
 	pluginPath := getTestPluginPath("exec_fail_plugin.sh")
 	if _, err := os.Stat(pluginPath); os.IsNotExist(err) {
@@ -300,6 +314,7 @@ func TestExecPlugin_SetFailure(t *testing.T) {
 }
 
 func TestExecPlugin_WithArgs(t *testing.T) {
+	skipOnWindows(t)
 	config := pluginapi.PluginConfig{
 		"command": "/bin/sh",
 		"args":    []string{"-c", "cat > /dev/null && echo '{\"success\":true,\"value\":\"test\"}'"},
