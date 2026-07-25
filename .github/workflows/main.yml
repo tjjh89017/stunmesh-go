@@ -253,10 +253,20 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
       - name: Install tools
         run: sudo apt-get update && sudo apt-get install -y wireguard-tools
-      - name: Run proxy e2e
-        run: sudo -E env "PATH=$PATH" STUNMESH_E2E_PROXY=1 go test ./test/e2e/proxy -v -count=1
       - name: Relay throughput floor
         run: STUNMESH_BENCH_FLOOR=1 go test ./internal/wgproxy -run TestRelayThroughputFloor -count=1
+      - name: Run proxy e2e
+        run: sudo -E env "PATH=$PATH" STUNMESH_E2E_PROXY=1 go test ./test/e2e/proxy -v -count=1
+      # Running go under sudo leaves root-owned files in the build cache and
+      # workspace; restore ownership so later steps and git cleanup succeed.
+      - name: Fix cache ownership
+        if: always()
+        run: |
+          for dir in "$HOME/.cache/go-build" "$GITHUB_WORKSPACE"; do
+            if [ -d "$dir" ]; then
+              sudo chown -R "$(id -u):$(id -g)" "$dir"
+            fi
+          done
 
   # One stable check aggregating the e2e matrix and the proxy cell, mirroring
   # the other summary gates. The ruleset requires it, so every cell must pass
