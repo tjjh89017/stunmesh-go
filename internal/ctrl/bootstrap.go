@@ -2,10 +2,12 @@ package ctrl
 
 import (
 	"context"
+	"errors"
 
 	"github.com/rs/zerolog"
 	"github.com/tjjh89017/stunmesh-go/internal/config"
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
+	"github.com/tjjh89017/stunmesh-go/internal/wg"
 )
 
 type BootstrapController struct {
@@ -33,6 +35,11 @@ func NewBootstrapController(wg WireGuardClient, config *config.Config, deviceCon
 func (ctrl *BootstrapController) Execute(ctx context.Context) {
 	for deviceName := range ctrl.config.Interfaces {
 		if err := ctrl.registerDevice(ctx, deviceName); err != nil {
+			// Elevation is unrecoverable and affects every device: fail fast
+			// with the clear message instead of limping on (plan Phase 3.4).
+			if errors.Is(err, wg.ErrElevationRequired) {
+				ctrl.logger.Fatal().Err(err).Str("device", deviceName).Msg("insufficient privileges for the WireGuard device; run stunmesh as Administrator")
+			}
 			ctrl.logger.Error().Err(err).Str("device", deviceName).Msg("failed to register device")
 			continue
 		}

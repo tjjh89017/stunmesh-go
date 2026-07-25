@@ -129,3 +129,37 @@ func TestManagerClose_IdempotentAndForErrors(t *testing.T) {
 		t.Fatalf("expected ErrManagerClosed, got %v", err)
 	}
 }
+
+func TestManagerGet_BeforeForReturnsNotReady(t *testing.T) {
+	m := newTestManager(t)
+
+	if _, err := m.Get("wg0"); !errors.Is(err, wgproxy.ErrProxyNotReady) {
+		t.Fatalf("expected ErrProxyNotReady, got %v", err)
+	}
+	// Get must never create: a later For should still be the first binding.
+	p, err := m.For("wg0", ipv4Families())
+	if err != nil {
+		t.Fatalf("For: %v", err)
+	}
+	got, err := m.Get("wg0")
+	if err != nil {
+		t.Fatalf("Get after For: %v", err)
+	}
+	if got != p {
+		t.Fatal("expected Get to return the memoized proxy instance")
+	}
+}
+
+func TestManagerGet_AfterCloseReturnsClosed(t *testing.T) {
+	logger := zerolog.Nop()
+	m := wgproxy.NewManager(&logger)
+	if _, err := m.For("wg0", ipv4Families()); err != nil {
+		t.Fatalf("For: %v", err)
+	}
+	if err := m.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if _, err := m.Get("wg0"); !errors.Is(err, wgproxy.ErrManagerClosed) {
+		t.Fatalf("expected ErrManagerClosed, got %v", err)
+	}
+}

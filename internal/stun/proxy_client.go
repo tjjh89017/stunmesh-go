@@ -48,13 +48,31 @@ func NewProxyBacked(transport StunTransport, protocol string, logger *zerolog.Lo
 	}
 }
 
-// NewProxyBackedFactory adapts a transport into the resolver's ClientFactory.
-// The factory arguments that only make sense for socket-owning clients (port,
-// firewallMark, listenInterfaces, listenDefaultRoute) are ignored, with one
-// warning for the process lifetime.
+// NewProxyBackedFactory adapts a single fixed transport into the resolver's
+// ClientFactory; see NewProxyLookupFactory for the ignored-argument policy.
 func NewProxyBackedFactory(transport StunTransport, logger *zerolog.Logger) ClientFactory {
+	return NewProxyLookupFactory(func(string) (StunTransport, error) {
+		return transport, nil
+	}, logger)
+}
+
+// TransportLookup resolves a device name to the transport carrying its STUN
+// exchanges (the device's proxy outer sockets). It must never create the
+// transport — proxies are bound by the wg decorator's Device() call, which
+// bootstrap runs before any Resolve.
+type TransportLookup func(deviceName string) (StunTransport, error)
+
+// NewProxyLookupFactory builds a ClientFactory that resolves the transport
+// per device on every Resolve. The factory arguments that only make sense for
+// socket-owning clients (port, firewallMark, listenInterfaces,
+// listenDefaultRoute) are ignored, with one warning for the process lifetime.
+func NewProxyLookupFactory(lookup TransportLookup, logger *zerolog.Logger) ClientFactory {
 	var warnIgnored sync.Once
-	return func(_ context.Context, _ string, port uint16, protocol string, firewallMark int, listenInterfaces []string, listenDefaultRoute bool) (StunClient, error) {
+	return func(_ context.Context, deviceName string, port uint16, protocol string, firewallMark int, listenInterfaces []string, listenDefaultRoute bool) (StunClient, error) {
+		transport, err := lookup(deviceName)
+		if err != nil {
+			return nil, err
+		}
 		if port != 0 || firewallMark != 0 || len(listenInterfaces) > 0 || listenDefaultRoute {
 			warnIgnored.Do(func() {
 				logger.Warn().Msg("port/fwmark/listen_interfaces/listen_default_route are ignored by the proxy-backed STUN client (it borrows the proxy's outer socket)")

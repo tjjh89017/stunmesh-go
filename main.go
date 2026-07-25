@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"flag"
-	"os"
 
 	"github.com/tjjh89017/stunmesh-go/internal/config"
 )
@@ -30,14 +29,15 @@ func main() {
 	config.ConfigFile = configFile
 	config.ConfigDir = configDir
 
-	daemon, err := setup()
+	daemon, cleanup, err := setup()
 	if err != nil {
 		panic(err)
 	}
+	defer cleanup()
 
 	if oneshot {
 		daemon.RunOneshot(ctx)
-		os.Exit(0)
+		return
 	}
 
 	daemon.Run(ctx)
