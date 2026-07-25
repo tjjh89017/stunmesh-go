@@ -3,7 +3,7 @@ description: 'Run Go tests with coverage on the given OS'
 
 inputs:
   os:
-    description: 'Target OS (linux, darwin, freebsd)'
+    description: 'Target OS (linux, darwin, freebsd, windows)'
     required: true
     default: 'linux'
   go-version:
@@ -16,7 +16,7 @@ runs:
   steps:
     # os is an input, not runner.os: freebsd runs in a VM on a Linux host.
     - uses: actions/setup-go@v7
-      if: inputs.os == 'linux' || inputs.os == 'darwin'
+      if: inputs.os != 'freebsd'
       with:
         go-version: ${{ inputs.go-version }}
 
@@ -27,6 +27,13 @@ runs:
       if: inputs.os == 'linux' || inputs.os == 'darwin'
       shell: bash
       run: sudo -E env "PATH=$PATH" make test
+
+    # Windows runs only the proxy-relevant packages: the plugin tests exec .sh
+    # fixtures and the full suite is not windows-clean yet.
+    - name: Test (Windows)
+      if: inputs.os == 'windows'
+      shell: bash
+      run: go test -race ./internal/wgproxy/... ./internal/wg/... ./internal/stun/...
 
     # FreeBSD runs the tests in the guest, where the process is already root.
     - name: Test (FreeBSD VM)

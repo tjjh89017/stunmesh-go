@@ -49,7 +49,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	defer proxy.Close()
+	defer func() { _ = proxy.Close() }()
 
 	proxy.SetWGTarget(uint16(*wgPort))
 	inner, err := proxy.AddPeer(key)

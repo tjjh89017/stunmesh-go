@@ -44,7 +44,7 @@ jobs:
       contents: write
     strategy:
       matrix:
-        os: [linux, darwin, freebsd]
+        os: [linux, darwin, freebsd, windows]
         arch: [amd64, arm64, arm, mipsle]
         variant: [normal, extra-min]
         exclude:
@@ -59,6 +59,12 @@ jobs:
           - os: freebsd
             arch: mipsle
           - os: freebsd
+            variant: extra-min
+          - os: windows
+            arch: arm
+          - os: windows
+            arch: mipsle
+          - os: windows
             variant: extra-min
     steps:
       - uses: actions/checkout@v7
@@ -75,10 +81,21 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           tag: ${{ steps.tag.outputs.TAG }}
           variant: ${{ matrix.variant }}
+      # Windows ships as a zip of the .exe; the other platforms ship the raw
+      # binary. package.outputs.file is empty when the step is skipped, so the
+      # || falls back to the binary.
+      - name: Package (Windows)
+        if: matrix.os == 'windows'
+        id: package
+        run: |
+          zip "${BINARY%.exe}.zip" "$BINARY"
+          echo "file=${BINARY%.exe}.zip" >> "$GITHUB_OUTPUT"
+        env:
+          BINARY: ${{ steps.build.outputs.binary-name }}
       - name: Release
         uses: softprops/action-gh-release@v3
         with:
-          files: ${{ steps.build.outputs.binary-name }}
+          files: ${{ steps.package.outputs.file || steps.build.outputs.binary-name }}
           draft: true
           prerelease: >-
             ${{
