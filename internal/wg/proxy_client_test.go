@@ -68,7 +68,7 @@ func TestProxyClient_Device_ReturnsInfoUnchangedAndRegistersPeers(t *testing.T) 
 	if err != nil {
 		t.Fatalf("bind fake WG socket: %v", err)
 	}
-	defer wgSock.Close()
+	defer func() { _ = wgSock.Close() }()
 	wgPort := wgSock.LocalAddr().(*net.UDPAddr).Port
 
 	peer := testKey(0x01)
@@ -96,7 +96,7 @@ func TestProxyClient_Device_ReturnsInfoUnchangedAndRegistersPeers(t *testing.T) 
 	if err != nil {
 		t.Fatalf("bind remote socket: %v", err)
 	}
-	defer remote.Close()
+	defer func() { _ = remote.Close() }()
 	remotePort := remote.LocalAddr().(*net.UDPAddr).Port
 
 	if err := pc.UpdatePeerEndpoint(PeerEndpointUpdate{

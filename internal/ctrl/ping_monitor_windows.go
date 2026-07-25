@@ -17,9 +17,7 @@ var ErrICMPNotImplemented = errors.New("ICMP ping monitoring is not implemented 
 // ICMPConn is a placeholder ICMP connection for Windows. The real
 // implementation (IcmpSendEcho2 via iphlpapi) is deferred; until then
 // NewICMPConn always fails and no ICMPConn instance is ever created.
-type ICMPConn struct {
-	deviceName string
-}
+type ICMPConn struct{}
 
 // compile-time guarantee that the placeholder keeps the full platform surface
 var _ ICMPConnection = (*ICMPConn)(nil)

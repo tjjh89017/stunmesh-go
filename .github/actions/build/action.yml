@@ -3,7 +3,7 @@ description: 'Build the application for specified OS and architecture'
 
 inputs:
   os:
-    description: 'Target OS (linux, darwin, freebsd)'
+    description: 'Target OS (linux, darwin, freebsd, windows)'
     required: true
   arch:
     description: 'Target architecture (amd64, arm64, arm, mipsle)'
@@ -39,6 +39,9 @@ runs:
         SUFFIX=""
         if [ "${{ inputs.variant }}" = "extra-min" ]; then
           SUFFIX="-upx"
+        fi
+        if [ "${{ inputs.os }}" = "windows" ]; then
+          SUFFIX="${SUFFIX}.exe"
         fi
 
         if [ -n "${{ inputs.tag }}" ]; then

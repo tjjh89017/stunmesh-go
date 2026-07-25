@@ -104,7 +104,7 @@ vet:
 
 # golangci-lint only sees the files its GOOS selects, so lint each platform;
 # the darwin/bsd STUN code is the most platform-specific in the tree.
-LINT_PLATFORMS ?= linux darwin freebsd
+LINT_PLATFORMS ?= linux darwin freebsd windows
 
 .PHONY: lint
 lint:
