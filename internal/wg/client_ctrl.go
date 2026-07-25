@@ -24,7 +24,7 @@ func New() (Client, error) {
 func (cc *ctrlClient) Device(name string) (*DeviceInfo, error) {
 	d, err := cc.c.Device(name)
 	if err != nil {
-		return nil, err
+		return nil, elevationHint(err)
 	}
 
 	peerKeys := make([]Key, 0, len(d.Peers))
@@ -55,7 +55,7 @@ func (cc *ctrlClient) UpdatePeerEndpoint(u PeerEndpointUpdate) error {
 			},
 		},
 	}
-	return cc.c.ConfigureDevice(u.DeviceName, cfg)
+	return elevationHint(cc.c.ConfigureDevice(u.DeviceName, cfg))
 }
 
 func (cc *ctrlClient) Close() error {

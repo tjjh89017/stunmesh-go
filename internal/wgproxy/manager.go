@@ -4,6 +4,7 @@ package wgproxy
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/rs/zerolog"
@@ -11,6 +12,10 @@ import (
 
 // ErrManagerClosed is returned by For after the manager has been closed.
 var ErrManagerClosed = errors.New("wgproxy: manager closed")
+
+// ErrProxyNotReady is returned by Get for a device whose proxy has not been
+// created yet; the decorator's Device() (via For) must run first.
+var ErrProxyNotReady = errors.New("wgproxy: proxy not initialized yet")
 
 // Manager owns one Proxy per WireGuard interface for the life of the process.
 type Manager struct {
@@ -50,6 +55,21 @@ func (m *Manager) For(deviceName string, families map[Family]uint16) (*Proxy, er
 	}
 	m.proxies[deviceName] = p
 	m.logger.Info().Str("device", deviceName).Msg("proxy created")
+	return p, nil
+}
+
+// Get returns the device's existing proxy without creating one — only For
+// binds sockets (port lifetime invariant).
+func (m *Manager) Get(deviceName string) (*Proxy, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.closed {
+		return nil, ErrManagerClosed
+	}
+	p, ok := m.proxies[deviceName]
+	if !ok {
+		return nil, fmt.Errorf("%w: %s", ErrProxyNotReady, deviceName)
+	}
 	return p, nil
 }
 

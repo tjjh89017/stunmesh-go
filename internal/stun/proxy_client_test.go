@@ -223,3 +223,64 @@ func TestProxyBackedFactory_NoWarnWithoutIgnoredArgs(t *testing.T) {
 		t.Fatalf("unexpected ignored-args warning: %s", buf.String())
 	}
 }
+
+func TestProxyLookupFactory_ResolvesTransportPerDevice(t *testing.T) {
+	byDevice := map[string]*fakeTransport{
+		"wg0": {respond: func(txnID [12]byte, _ []byte) ([]byte, error) {
+			return bindingSuccess(t, txnID, net.ParseIP("203.0.113.1"), 1111), nil
+		}},
+		"wg1": {respond: func(txnID [12]byte, _ []byte) ([]byte, error) {
+			return bindingSuccess(t, txnID, net.ParseIP("203.0.113.2"), 2222), nil
+		}},
+	}
+	logger := zerolog.Nop()
+	factory := NewProxyLookupFactory(func(deviceName string) (StunTransport, error) {
+		ft, ok := byDevice[deviceName]
+		if !ok {
+			return nil, errors.New("unknown device")
+		}
+		return ft, nil
+	}, &logger)
+
+	for device, wantPort := range map[string]int{"wg0": 1111, "wg1": 2222} {
+		client, err := factory(context.Background(), device, 0, "ipv4", 0, nil, false)
+		if err != nil {
+			t.Fatalf("factory(%s): %v", device, err)
+		}
+		_, port, err := client.Connect(context.Background(), "192.0.2.1:3478")
+		if err != nil {
+			t.Fatalf("Connect(%s): %v", device, err)
+		}
+		if port != wantPort {
+			t.Fatalf("Connect(%s) port = %d, want %d", device, port, wantPort)
+		}
+	}
+}
+
+func TestProxyLookupFactory_LookupErrorPropagates(t *testing.T) {
+	logger := zerolog.Nop()
+	wantErr := errors.New("proxy not initialized yet")
+	factory := NewProxyLookupFactory(func(string) (StunTransport, error) {
+		return nil, wantErr
+	}, &logger)
+
+	if _, err := factory(context.Background(), "wg0", 0, "ipv4", 0, nil, false); !errors.Is(err, wantErr) {
+		t.Fatalf("expected lookup error, got %v", err)
+	}
+}
+
+func TestProxyLookupFactory_WarnsOnceForIgnoredArgs(t *testing.T) {
+	ft := &fakeTransport{respond: func(_ [12]byte, _ []byte) ([]byte, error) { return nil, errors.New("unused") }}
+	var buf bytes.Buffer
+	logger := zerolog.New(&buf)
+	factory := NewProxyLookupFactory(func(string) (StunTransport, error) { return ft, nil }, &logger)
+
+	for i := 0; i < 3; i++ {
+		if _, err := factory(context.Background(), "wg0", 51820, "ipv4", 0, nil, false); err != nil {
+			t.Fatalf("factory cycle %d: %v", i, err)
+		}
+	}
+	if got := strings.Count(buf.String(), "ignored"); got != 1 {
+		t.Fatalf("ignored-args warning logged %d times, want exactly 1; log: %s", got, buf.String())
+	}
+}
