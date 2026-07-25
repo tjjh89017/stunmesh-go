@@ -49,15 +49,10 @@ func newTestResolver(t *testing.T, client *mockStunClient, servers []string) *Re
 
 	logger := zerolog.Nop()
 
-	r := &Resolver{
-		config:       cfg,
-		deviceConfig: &config.DeviceConfig{},
-		logger:       logger,
-		newClient: func(_ context.Context, _ string, _ uint16, _ string, _ int, _ []string, _ bool) (StunClient, error) {
-			return client, nil
-		},
-	}
-	return r
+	factory := ClientFactory(func(_ context.Context, _ string, _ uint16, _ string, _ int, _ []string, _ bool) (StunClient, error) {
+		return client, nil
+	})
+	return NewResolverWithFactory(cfg, &config.DeviceConfig{}, &logger, factory)
 }
 
 // The mark only does its job if it reaches the socket, so pin the handoff:
@@ -81,17 +76,14 @@ func TestResolver_ForwardsFirewallMarkToClient(t *testing.T) {
 
 			gotMark := -1
 			logger := zerolog.Nop()
-			r := &Resolver{
-				config: &config.Config{
-					Stun: config.Stun{Addresses: []string{"stun.example.com:3478"}},
-				},
-				deviceConfig: &config.DeviceConfig{},
-				logger:       logger,
-				newClient: func(_ context.Context, _ string, _ uint16, _ string, firewallMark int, _ []string, _ bool) (StunClient, error) {
+			cfg := &config.Config{
+				Stun: config.Stun{Addresses: []string{"stun.example.com:3478"}},
+			}
+			r := NewResolverWithFactory(cfg, &config.DeviceConfig{}, &logger,
+				func(_ context.Context, _ string, _ uint16, _ string, firewallMark int, _ []string, _ bool) (StunClient, error) {
 					gotMark = firewallMark
 					return client, nil
-				},
-			}
+				})
 
 			if _, _, err := r.Resolve(context.Background(), "wg0", 51820, "ipv4", tt.mark); err != nil {
 				t.Fatalf("Resolve: unexpected error: %v", err)
@@ -241,6 +233,33 @@ func TestResolver_InvalidEndpointSkipped(t *testing.T) {
 	}
 	if client.callCount != 2 {
 		t.Errorf("expected Connect called 2 times, got %d", client.callCount)
+	}
+}
+
+// NewResolver must install the per-GOOS default factory so callers that never
+// heard of the factory seam (wire_gen.go) keep working unchanged.
+func TestNewResolver_InstallsDefaultFactory(t *testing.T) {
+	logger := zerolog.Nop()
+	r := NewResolver(&config.Config{}, &config.DeviceConfig{}, &logger)
+	if r.newClient == nil {
+		t.Fatal("expected NewResolver to install a default client factory, got nil")
+	}
+}
+
+func TestResolver_FactoryErrorPropagates(t *testing.T) {
+	factoryErr := errors.New("factory failed")
+	logger := zerolog.Nop()
+	cfg := &config.Config{
+		Stun: config.Stun{Addresses: []string{"stun.example.com:3478"}},
+	}
+	r := NewResolverWithFactory(cfg, &config.DeviceConfig{}, &logger,
+		func(_ context.Context, _ string, _ uint16, _ string, _ int, _ []string, _ bool) (StunClient, error) {
+			return nil, factoryErr
+		})
+
+	_, _, err := r.Resolve(context.Background(), "wg0", 51820, "ipv4", 0)
+	if !errors.Is(err, factoryErr) {
+		t.Errorf("expected factory error to propagate, got: %v", err)
 	}
 }
 

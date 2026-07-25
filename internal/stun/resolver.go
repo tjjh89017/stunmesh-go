@@ -18,22 +18,33 @@ type StunClient interface {
 	Connect(ctx context.Context, addr string) (string, int, error)
 }
 
+// ClientFactory builds the StunClient used for one Resolve call. It is the
+// injection seam for platform-specific clients: the per-GOOS default wraps
+// the package-level New, while alternative factories (e.g. a proxy-backed
+// Windows client that captures its own transport) can be supplied via
+// NewResolverWithFactory without changing the Resolver.
+type ClientFactory func(ctx context.Context, deviceName string, port uint16, protocol string, firewallMark int, listenInterfaces []string, listenDefaultRoute bool) (StunClient, error)
+
 type Resolver struct {
 	config       *config.Config
 	deviceConfig *config.DeviceConfig
 	logger       zerolog.Logger
 	mu           sync.Mutex
-	newClient    func(ctx context.Context, deviceName string, port uint16, protocol string, firewallMark int, listenInterfaces []string, listenDefaultRoute bool) (StunClient, error)
+	newClient    ClientFactory
 }
 
+// NewResolver builds a Resolver using the platform's default client factory.
 func NewResolver(config *config.Config, deviceConfig *config.DeviceConfig, logger *zerolog.Logger) *Resolver {
+	return NewResolverWithFactory(config, deviceConfig, logger, defaultClientFactory)
+}
+
+// NewResolverWithFactory builds a Resolver with an explicit client factory.
+func NewResolverWithFactory(config *config.Config, deviceConfig *config.DeviceConfig, logger *zerolog.Logger, factory ClientFactory) *Resolver {
 	return &Resolver{
 		config:       config,
 		deviceConfig: deviceConfig,
 		logger:       logger.With().Str("component", "stun").Logger(),
-		newClient: func(ctx context.Context, deviceName string, port uint16, protocol string, firewallMark int, listenInterfaces []string, listenDefaultRoute bool) (StunClient, error) {
-			return New(ctx, deviceName, port, protocol, firewallMark, listenInterfaces, listenDefaultRoute)
-		},
+		newClient:    factory,
 	}
 }
 
