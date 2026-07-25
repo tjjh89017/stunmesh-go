@@ -9,19 +9,21 @@ import (
 
 const PacketSize = 1500
 
-// ErrNotImplemented is returned by the Windows STUN stub. Windows has no
-// raw-socket/pcap port-sharing path; STUN will instead ride the UDP proxy's
-// outer socket via a StunTransport (proxy-backed STUN arrives in Phase 3).
-var ErrNotImplemented = errors.New("STUN is not implemented yet on windows; proxy-backed STUN arrives in Phase 3")
+// ErrProxyTransportRequired is returned by the Windows New: there is no
+// raw-socket/pcap port-sharing path here, so STUN must ride the UDP proxy's
+// outer socket. Wire injects NewProxyBackedFactory (closing over the proxy
+// transport) via NewResolverWithFactory; this default is only reached when
+// proxy mode is not wired.
+var ErrProxyTransportRequired = errors.New("STUN on windows requires the wgproxy transport; use the proxy-backed client factory")
 
-// Stun is a Phase 0 compile stub mirroring the exported surface of the
-// linux/darwin/freebsd implementations. New always fails, so no instance
-// is ever created at runtime.
+// Stun mirrors the exported surface of the socket-owning platform
+// implementations. New always fails, so no instance is ever created at
+// runtime; the real Windows client is ProxyBacked (proxy_client.go).
 type Stun struct{}
 
-// New always returns ErrNotImplemented on Windows
+// New always returns ErrProxyTransportRequired on Windows.
 func New(ctx context.Context, excludeInterface string, port uint16, protocol string, firewallMark int, listenInterfaces []string, listenDefaultRoute bool) (*Stun, error) {
-	return nil, ErrNotImplemented
+	return nil, ErrProxyTransportRequired
 }
 
 // Start is unreachable on Windows since New never succeeds
@@ -34,5 +36,5 @@ func (s *Stun) Stop() error {
 
 // Connect is unreachable on Windows since New never succeeds
 func (s *Stun) Connect(ctx context.Context, stunAddr string) (string, int, error) {
-	return "", 0, ErrNotImplemented
+	return "", 0, ErrProxyTransportRequired
 }

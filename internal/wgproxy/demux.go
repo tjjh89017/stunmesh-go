@@ -18,8 +18,10 @@ import (
 // interchangeable with wg.Key without importing that package.
 type PeerKey = [32]byte
 
-// TxnID is a STUN 96-bit transaction ID (RFC 8489 section 5).
-type TxnID [12]byte
+// TxnID is a STUN 96-bit transaction ID (RFC 8489 section 5), aliased (like
+// PeerKey) so Proxy.Exchange structurally satisfies stun.StunTransport
+// without that package importing this one.
+type TxnID = [12]byte
 
 const (
 	stunHeaderLen   = 20
