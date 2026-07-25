@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -285,6 +286,11 @@ func validateConfig(cfg *Config) error {
 	}
 
 	for ifaceName, iface := range cfg.Interfaces {
+		// 0 means unset (ephemeral); reject anything outside the port range.
+		if iface.Proxy.Listen < 0 || iface.Proxy.Listen > 65535 {
+			return errors.New("invalid proxy listen port " + strconv.Itoa(iface.Proxy.Listen) + " for interface '" + ifaceName + "', must be between 1 and 65535")
+		}
+
 		// Validate interface protocol
 		if iface.Protocol != "" {
 			switch iface.Protocol {

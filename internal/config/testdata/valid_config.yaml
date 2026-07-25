@@ -1,11 +1,16 @@
 interfaces:
   wg0:
     protocol: ipv4
+    proxy:
+      listen: 51999
     peers:
       peer1:
         public_key: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
         plugin: test_plugin
         protocol: ipv4
+  wg1:
+    protocol: ipv4
+    peers: {}
 
 plugins:
   test_plugin:

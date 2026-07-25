@@ -33,8 +33,18 @@ func (p *Peer) GetProtocol() string {
 	return p.Protocol
 }
 
+// Proxy configures the UDP proxy that fronts a WireGuard interface
+// (windows only; other platforms warn and ignore it at the consumer).
+type Proxy struct {
+	// Listen is an optional local port for the proxy's outer sockets.
+	// 0 (the default, key absent) means ephemeral; 1-65535 pins the port
+	// for users doing port forwarding or running port-based firewalls.
+	Listen int `mapstructure:"listen"`
+}
+
 type Interface struct {
 	Protocol string `mapstructure:"protocol"`
+	Proxy    Proxy  `mapstructure:"proxy"`
 	// ListenInterfaces restricts which underlay interfaces STUN discovery
 	// listens on (darwin/bsd only; Linux uses a system-wide raw socket and
 	// ignores it). Empty means "all eligible interfaces" -- the default.
@@ -86,6 +96,17 @@ func (c *DeviceConfig) GetListenConfig(deviceName string) (interfaces []string, 
 		return nil, false
 	}
 	return device.ListenInterfaces, device.ListenDefaultRoute
+}
+
+// GetProxyListenPort returns the interface's proxy.listen override; 0 means
+// unset (ephemeral). Out-of-range values are caught during config validation
+// in Load().
+func (c *DeviceConfig) GetProxyListenPort(deviceName string) uint16 {
+	device, ok := c.interfaces[deviceName]
+	if !ok {
+		return 0
+	}
+	return uint16(device.Proxy.Listen)
 }
 
 func (c *DeviceConfig) GetConfigPeers(ctx context.Context, deviceName string, localPublicKey []byte) ([]*entity.Peer, error) {
