@@ -1,3 +1,5 @@
+//go:build windows || wgproxy
+
 package wgproxy_test
 
 import (
@@ -14,8 +16,7 @@ import (
 
 const testReadTimeout = 2 * time.Second
 
-// newTestProxy creates an IPv4-only proxy with an ephemeral outer port and
-// registers cleanup.
+// newTestProxy creates an IPv4-only proxy with an ephemeral outer port.
 func newTestProxy(t *testing.T) *wgproxy.Proxy {
 	t.Helper()
 	logger := zerolog.Nop()
@@ -27,8 +28,7 @@ func newTestProxy(t *testing.T) *wgproxy.Proxy {
 	return p
 }
 
-// newLoopbackConn opens a real UDP socket on 127.0.0.1 with an ephemeral port,
-// standing in for the WG device or a remote peer.
+// newLoopbackConn opens a UDP socket standing in for WG or a remote peer.
 func newLoopbackConn(t *testing.T) (*net.UDPConn, netip.AddrPort) {
 	t.Helper()
 	conn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
@@ -40,8 +40,8 @@ func newLoopbackConn(t *testing.T) (*net.UDPConn, netip.AddrPort) {
 	return conn, netip.AddrPortFrom(addr.Addr().Unmap(), addr.Port())
 }
 
-// readPacket reads one datagram with a deadline (deadlines on test-owned
-// sockets are fine; the constraint forbids them only on proxy sockets).
+// readPacket reads one datagram with a deadline (fine on test-owned sockets;
+// forbidden only on proxy sockets).
 func readPacket(t *testing.T, conn *net.UDPConn) ([]byte, netip.AddrPort) {
 	t.Helper()
 	buf := make([]byte, 65535)
@@ -71,8 +71,7 @@ func expectNoPacket(t *testing.T, conn *net.UDPConn, window time.Duration) {
 	}
 }
 
-// startStunServer runs a minimal STUN server on loopback that answers every
-// binding request with a binding success carrying the same transaction ID.
+// startStunServer answers every binding request with a matching-ID success.
 func startStunServer(t *testing.T) netip.AddrPort {
 	t.Helper()
 	conn, addr := newLoopbackConn(t)
@@ -96,8 +95,7 @@ func startStunServer(t *testing.T) netip.AddrPort {
 	return addr
 }
 
-// proxyOuterAddr is the loopback address a fake remote peer dials to reach the
-// proxy's outer socket.
+// proxyOuterAddr is the loopback address remotes dial to reach the outer socket.
 func proxyOuterAddr(t *testing.T, p *wgproxy.Proxy, fam wgproxy.Family) netip.AddrPort {
 	t.Helper()
 	port := p.OuterPort(fam)
@@ -303,11 +301,8 @@ func TestProxy_Exchange_DuplicateTxnFails(t *testing.T) {
 	}
 }
 
-// TestProxy_OuterPortStableAcrossCycles is the KR5 regression guard: many
-// Exchange + SetPeerEndpoint reprogramming cycles must never change the outer
-// port, and the outer socket must stay usable throughout. The Proxy API has no
-// Stop() by design — the structural defense — so "usable after Stop" reduces
-// to "usable after every completed Exchange cycle".
+// Regression guard: many Exchange + SetPeerEndpoint cycles must never change
+// the outer port, and the outer socket must stay usable throughout.
 func TestProxy_OuterPortStableAcrossCycles(t *testing.T) {
 	p := newTestProxy(t)
 	server := startStunServer(t)
@@ -412,9 +407,8 @@ func TestProxy_IPv6RoundTrip(t *testing.T) {
 }
 
 func TestProxy_TruncationCounter(t *testing.T) {
-	// A 65535-byte read cannot be produced by a real UDP datagram (payload max
-	// is 65507), so the counter logic is unit-tested through the exported test
-	// hook instead.
+	// A real UDP datagram can't fill a 65535-byte buffer (payload max 65507),
+	// so the counter is tested through the exported hook.
 	p := newTestProxy(t)
 	if got := p.Truncated(); got != 0 {
 		t.Fatalf("Truncated() = %d before any reads, want 0", got)

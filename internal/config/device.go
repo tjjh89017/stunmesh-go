@@ -33,12 +33,9 @@ func (p *Peer) GetProtocol() string {
 	return p.Protocol
 }
 
-// Proxy configures the UDP proxy that fronts a WireGuard interface
-// (windows only; other platforms warn and ignore it at the consumer).
+// Proxy configures the UDP proxy fronting a WireGuard interface (Windows only).
 type Proxy struct {
-	// Listen is an optional local port for the proxy's outer sockets.
-	// 0 (the default, key absent) means ephemeral; 1-65535 pins the port
-	// for users doing port forwarding or running port-based firewalls.
+	// Listen pins the outer-socket port; 0 (the default) means ephemeral.
 	Listen int `mapstructure:"listen"`
 }
 
@@ -98,9 +95,7 @@ func (c *DeviceConfig) GetListenConfig(deviceName string) (interfaces []string, 
 	return device.ListenInterfaces, device.ListenDefaultRoute
 }
 
-// GetProxyListenPort returns the interface's proxy.listen override; 0 means
-// unset (ephemeral). Out-of-range values are caught during config validation
-// in Load().
+// GetProxyListenPort returns the proxy.listen override; 0 means ephemeral.
 func (c *DeviceConfig) GetProxyListenPort(deviceName string) uint16 {
 	device, ok := c.interfaces[deviceName]
 	if !ok {

@@ -254,9 +254,9 @@ jobs:
       - name: Install tools
         run: sudo apt-get update && sudo apt-get install -y wireguard-tools
       - name: Relay throughput floor
-        run: STUNMESH_BENCH_FLOOR=1 go test ./internal/wgproxy -run TestRelayThroughputFloor -count=1
+        run: STUNMESH_BENCH_FLOOR=1 go test -tags wgproxy ./internal/wgproxy -run TestRelayThroughputFloor -count=1
       - name: Run proxy e2e
-        run: sudo -E env "PATH=$PATH" STUNMESH_E2E_PROXY=1 go test ./test/e2e/proxy -v -count=1
+        run: sudo -E env "PATH=$PATH" STUNMESH_E2E_PROXY=1 go test -tags wgproxy ./test/e2e/proxy -v -count=1
       # Running go under sudo leaves root-owned files in the build cache and
       # workspace; restore ownership so later steps and git cleanup succeed.
       - name: Fix cache ownership

@@ -25,8 +25,7 @@ interfaces:
 	}
 }
 
-// TestGetProxyListenPort_Absent pins the zero-breaking default: no proxy key
-// means ephemeral (0).
+// No proxy key means ephemeral (0) — the zero-breaking default.
 func TestGetProxyListenPort_Absent(t *testing.T) {
 	cfg := loadConfigFromYAML(t, `
 interfaces:
@@ -118,8 +117,7 @@ interfaces:
 	}
 }
 
-// Quoted scalar keeps loading, matching the WeaklyTypedInput contract of the
-// other numeric fields.
+// Quoted scalar keeps loading, matching WeaklyTypedInput on other numeric fields.
 func TestLoad_ProxyListen_QuotedScalar(t *testing.T) {
 	cfg := loadConfigFromYAML(t, `
 interfaces:

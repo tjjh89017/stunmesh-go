@@ -236,8 +236,7 @@ func TestResolver_InvalidEndpointSkipped(t *testing.T) {
 	}
 }
 
-// NewResolver must install the per-GOOS default factory so callers that never
-// heard of the factory seam (wire_gen.go) keep working unchanged.
+// NewResolver must install the per-GOOS default factory.
 func TestNewResolver_InstallsDefaultFactory(t *testing.T) {
 	logger := zerolog.Nop()
 	r := NewResolver(&config.Config{}, &config.DeviceConfig{}, &logger)

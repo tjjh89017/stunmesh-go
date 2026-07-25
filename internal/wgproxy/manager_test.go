@@ -1,3 +1,5 @@
+//go:build windows || wgproxy
+
 package wgproxy_test
 
 import (
@@ -33,8 +35,8 @@ func TestManagerFor_MemoizesPerDevice(t *testing.T) {
 		t.Fatal("expected a bound outer port")
 	}
 
-	// Second call with a different families argument must still return the
-	// same instance with the same outer port — never a freshly-bound proxy.
+	// A second For with different families must return the same instance and
+	// port — never a freshly-bound proxy.
 	second, err := m.For("wg0", map[wgproxy.Family]uint16{wgproxy.FamilyIPv6: 0})
 	if err != nil {
 		t.Fatalf("For (second): %v", err)

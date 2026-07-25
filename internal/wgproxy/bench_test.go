@@ -1,3 +1,5 @@
+//go:build windows || wgproxy
+
 package wgproxy_test
 
 import (
@@ -22,9 +24,8 @@ const (
 	// finished means the remaining packets were dropped, not delayed.
 	senderIdleWindow = 200 * time.Millisecond
 
-	// benchSocketBuf is applied to TEST-owned sockets only (never proxy-owned):
-	// loopback UDP drops under burst, and larger buffers keep the loss small
-	// without touching proxy internals.
+	// benchSocketBuf is applied to TEST-owned sockets only: larger buffers
+	// keep burst loss small without touching proxy internals.
 	benchSocketBuf = 4 << 20
 )
 
@@ -78,12 +79,9 @@ func newRelayEnv(tb testing.TB) *relayEnv {
 	}
 }
 
-// measureRelay pushes count payload packets from src toward target and counts
-// what dst receives through the proxy. Loss tolerance: pps is delivered
-// packets over the first-send-to-last-receive interval, so kernel drops shrink
-// the numerator instead of stalling the run; dst reads with deadlines
-// (test-owned socket — deadlines on proxy-owned sockets are forbidden), so
-// total loss ends the measurement rather than deadlocking.
+// measureRelay pushes count packets from src and counts what dst receives.
+// pps counts delivered packets, so kernel drops shrink the numerator instead
+// of stalling; dst reads with deadlines so total loss ends the run.
 func measureRelay(tb testing.TB, src, dst *net.UDPConn, target netip.AddrPort, count int) (received int, elapsed time.Duration) {
 	tb.Helper()
 	payload := wgMessage(4, benchPayloadSize)
@@ -169,9 +167,8 @@ func BenchmarkRelay(b *testing.B) {
 	})
 }
 
-// TestRelayThroughputFloor enforces the 50k pps floor from the plan's Phase 1
-// acceptance. Env-gated because loopback throughput on arbitrary dev machines
-// is not a correctness signal; only the ubuntu-24.04 CI cell sets the variable.
+// TestRelayThroughputFloor enforces a 50k pps relay floor; env-gated because
+// only the pinned ubuntu-24.04 CI cell gives comparable numbers.
 func TestRelayThroughputFloor(t *testing.T) {
 	if os.Getenv("STUNMESH_BENCH_FLOOR") != "1" {
 		t.Skip("set STUNMESH_BENCH_FLOOR=1 to enforce the relay throughput floor (ubuntu-24.04 CI only)")

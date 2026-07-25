@@ -1,3 +1,5 @@
+//go:build windows || wgproxy
+
 package stun
 
 import (
@@ -14,8 +16,7 @@ import (
 	"github.com/tjjh89017/stunmesh-go/internal/wgproxy"
 )
 
-// The production package deliberately does not import wgproxy; this guards the
-// structural satisfaction (via the TxnID = [12]byte alias) at compile time.
+// Compile-time guard: *wgproxy.Proxy satisfies StunTransport structurally.
 var _ StunTransport = (*wgproxy.Proxy)(nil)
 
 // fakeTransport records Exchange calls and replies from a scripted function.
@@ -160,8 +161,7 @@ func TestProxyBackedConnect_TransportError(t *testing.T) {
 	}
 }
 
-// The §3 regression guard: Stop has nothing it could close, so the transport
-// stays usable across Start/Stop cycles (resolver calls them on every Resolve).
+// Stop must leave the transport usable across Start/Stop cycles.
 func TestProxyBackedStopLeavesTransportUsable(t *testing.T) {
 	ft := &fakeTransport{
 		respond: func(txnID [12]byte, _ []byte) ([]byte, error) {

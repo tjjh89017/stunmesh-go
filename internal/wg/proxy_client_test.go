@@ -1,3 +1,5 @@
+//go:build windows || wgproxy
+
 package wg
 
 import (
@@ -109,7 +111,7 @@ func TestProxyClient_Device_ReturnsInfoUnchangedAndRegistersPeers(t *testing.T) 
 	}
 
 	// A packet from the programmed remote must relay to the WG socket fed via
-	// Device(): proves both SetWGTarget and AddPeer ran there.
+	// Device(), proving SetWGTarget and AddPeer both ran there.
 	proxy, err := manager.For("wg0", nil)
 	if err != nil {
 		t.Fatalf("manager.For: %v", err)

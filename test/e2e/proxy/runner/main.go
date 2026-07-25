@@ -1,11 +1,9 @@
-// Command runner drives internal/wgproxy directly for the netns e2e harness
-// (test/e2e/proxy). Test-only: running the proxy on Linux is unsupported and
-// undocumented (plan section 7); the proxy has no CLI entry in stunmesh itself.
-//
-// It binds one IPv4 outer socket (ephemeral), opens one inner socket for the
-// single peer, prints OUTER_PORT= and INNER_PORT= lines on stdout, and then
-// blocks until SIGINT/SIGTERM. SIGHUP re-prints OUTER_PORT so the harness can
-// assert port stability across injected disruptions.
+//go:build wgproxy
+
+// Command runner drives internal/wgproxy for the netns e2e harness
+// (test-only). It binds one IPv4 outer socket and one inner socket, prints
+// OUTER_PORT=/INNER_PORT= on stdout, and blocks until SIGINT/SIGTERM; SIGHUP
+// re-prints OUTER_PORT so the harness can assert port stability.
 package main
 
 import (
