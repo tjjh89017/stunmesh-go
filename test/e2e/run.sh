@@ -18,10 +18,15 @@ BIN=${1:?usage: run.sh /path/to/stunmesh}
 HERE=$(CDPATH='' cd "$(dirname "$0")" && pwd)
 WORK=$(mktemp -d)
 OS=$(uname -s)
+# Git Bash reports MINGW64_NT-<ver>/MSYS_NT-<ver>; fold to one name.
+case "$OS" in MINGW* | MSYS* | CYGWIN*) OS=Windows ;; esac
 # GitHub's Linux/macOS runners are non-root with passwordless sudo; the FreeBSD
-# VM runs as root and may lack sudo. Resolve once and share with assert.sh.
-[ "$(id -u)" = 0 ] && SUDO='' || SUDO='sudo'
+# VM runs as root and may lack sudo. Windows has no sudo at all -- the runner
+# shell is already elevated, which stunmesh requires there. Resolve once and
+# share with assert.sh.
+if [ "$OS" = Windows ] || [ "$(id -u)" = 0 ]; then SUDO=''; else SUDO='sudo'; fi
 export SUDO
+export E2E_OS="$OS"
 # Space- or newline-separated opendht proxy URLs; the second is failover.
 ENDPOINTS=${ENDPOINTS:-'https://dhtproxy2.jami.net https://dhtproxy3.jami.net'}
 
@@ -39,6 +44,8 @@ cleanup() {
 		Linux)   $SUDO ip link del "$name" 2>/dev/null || true ;;
 		FreeBSD) $SUDO ifconfig "$name" destroy 2>/dev/null || true ;;
 		Darwin)  eval "pid=\$PID$slot"; [ -n "${pid:-}" ] && $SUDO kill "$pid" 2>/dev/null || true ;;
+		Windows) MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' \
+			wireguard.exe /uninstalltunnelservice "$name" 2>/dev/null || true ;;
 		esac
 	done
 	rm -rf "$WORK"
@@ -79,17 +86,50 @@ create_iface() {
 		name=$($SUDO cat "$namefile")
 		eval "PID$slot=\$(pgrep -f \"$wgg utun\")"
 		;;
+	Windows)
+		# WireGuardNT: the tunnel service owns the adapter and applies the
+		# whole config from the .conf (name = file basename), so key, port
+		# and peer are set here rather than via `wg set` below. stunmesh's
+		# UDP proxy is the outward socket; the adapter only talks loopback.
+		name=stunmesh$slot
+		conf=$WORK/$name.conf
+		{
+			echo "[Interface]"
+			echo "PrivateKey = $(cat "$keyfile")"
+			echo "ListenPort = $port"
+			echo ""
+			echo "[Peer]"
+			echo "PublicKey = $peer"
+			echo "AllowedIPs = $allowed"
+		} > "$conf"
+		# MSYS_NO_PATHCONV stops Git Bash rewriting /installtunnelservice as
+		# a POSIX path; the conf path is pre-converted with cygpath instead.
+		MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' \
+			wireguard.exe /installtunnelservice "$(cygpath -w "$conf")"
+		up=""
+		for _ in $(seq 1 60); do
+			if wg show "$name" >/dev/null 2>&1; then up=1; break; fi
+			sleep 0.5
+		done
+		[ -n "$up" ] || { echo "tunnel $name never came up" >&2; exit 1; }
+		;;
 	*) echo "unsupported OS: $OS" >&2; exit 1 ;;
 	esac
-	$SUDO wg set "$name" private-key "$keyfile" listen-port "$port" \
-		peer "$peer" allowed-ips "$allowed"
+	if [ "$OS" != Windows ]; then
+		$SUDO wg set "$name" private-key "$keyfile" listen-port "$port" \
+			peer "$peer" allowed-ips "$allowed"
+	fi
 	eval "IF$slot=\$name"
 }
 
 write_config() { # IF PEER_PUB > FILE
 	name=$1; peer=$2; out=$3
+	# Windows asserts on the proxy's debug-level endpoint-substitution log
+	# line (see assert.sh check 3), so it needs the lower level.
+	lvl=info
+	[ "$OS" = Windows ] && lvl=debug
 	{
-		echo "log: {level: info, format: json}"
+		echo "log: {level: $lvl, format: json}"
 		echo "stun: {addresses: [\"stun.l.google.com:19302\"]}"
 		echo "plugins:"
 		echo "  dht:"
