@@ -9,6 +9,9 @@ TRIMPATH ?= 1
 UPX ?= 0
 EXTRA_MIN ?= 0
 BUILTIN ?= all
+# EMBED_CA=1 embeds the Mozilla root bundle (build tag embedca), used only
+# when the system has no CA store. For images without ca-certificates.
+EMBED_CA ?= 0
 # Empty selects the per-platform default from the internal/wg build constraints:
 # wgcli on freebsd, wgctrl elsewhere. Set to override.
 BACKEND ?=
@@ -49,9 +52,14 @@ ifeq ($(BUILTIN),all)
 	override BUILTIN := builtin_all
 endif
 
-# Combine BUILTIN and BACKEND tags. An empty BACKEND adds no tag, leaving the
-# backend choice to the build constraints in internal/wg.
-ALL_TAGS := $(strip $(BUILTIN) $(BACKEND))
+CA_TAG =
+ifneq ($(EMBED_CA),0)
+	CA_TAG := embedca
+endif
+
+# Combine BUILTIN, BACKEND and EMBED_CA tags. An empty BACKEND adds no tag,
+# leaving the backend choice to the build constraints in internal/wg.
+ALL_TAGS := $(strip $(BUILTIN) $(BACKEND) $(CA_TAG))
 TAGS_FLAGS = $(if $(ALL_TAGS),-tags '$(ALL_TAGS)',)
 
 UPX_TARGET =

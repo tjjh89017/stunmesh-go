@@ -3,6 +3,7 @@ run:
   # builtin_all lints every built-in at once; GOOS is swept by `make lint`.
   build-tags:
     - builtin_all
+    - embedca
 linters:
   enable:
     - protogetter
