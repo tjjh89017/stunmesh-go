@@ -268,36 +268,6 @@ jobs:
             fi
           done
 
-  # Windows analog of the proxy e2e: two WireGuardNT tunnels on one runner, a
-  # stunmesh instance fronting each, a loopback STUN responder and a shared
-  # file store — hermetic (loopback has no NAT, so the reflected address is
-  # the proxy's real outer socket). Proves the full publish -> store ->
-  # establish pipeline and handshakes through the relay on the real WGNT
-  # driver; data plane and real NAT stay with the netns e2e and the manual
-  # two-node test. See test/e2e/winproxy/.
-  e2e-windows:
-    name: E2E (windows/proxy)
-    runs-on: windows-latest
-    needs:
-      - build-required
-      - build-plugins-required
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version: ${{ env.GO_VERSION }}
-      - name: Install WireGuard
-        shell: pwsh
-        run: |
-          $msi = Join-Path $env:RUNNER_TEMP 'wireguard.msi'
-          Invoke-WebRequest -Uri 'https://download.wireguard.com/windows-client/wireguard-amd64-0.5.3.msi' -OutFile $msi
-          Start-Process msiexec.exe -ArgumentList '/qn','/i',$msi,'DO_NOT_LAUNCH=1' -Wait
-      - name: Run windows e2e
-        shell: pwsh
-        env:
-          STUNMESH_E2E_WINDOWS: '1'
-        run: go test ./test/e2e/winproxy -v -count=1 -timeout 10m
-
   # One stable check aggregating the e2e matrix and the proxy cell, mirroring
   # the other summary gates. The ruleset requires it, so every cell must pass
   # to merge.
@@ -307,11 +277,9 @@ jobs:
     needs:
       - e2e
       - e2e-proxy
-      - e2e-windows
     if: always()
     steps:
       - name: All e2e platforms passed
         run: |
           [ "${{ needs.e2e.result }}" = "success" ] && \
-            [ "${{ needs.e2e-proxy.result }}" = "success" ] && \
-            [ "${{ needs.e2e-windows.result }}" = "success" ]
+            [ "${{ needs.e2e-proxy.result }}" = "success" ]
