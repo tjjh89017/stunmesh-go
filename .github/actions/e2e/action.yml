@@ -31,16 +31,22 @@ runs:
       shell: bash
       run: brew install wireguard-tools wireguard-go jq
 
-    # Pinned MSI rather than the latest installer so runs stay reproducible.
-    # The runner shell is already elevated, which the tunnel service install
-    # and stunmesh itself both require.
+    # The official installer always installs the latest client and picks the
+    # arch itself -- deliberate: the weekly scheduled run then doubles as an
+    # early warning when a new WireGuard release breaks us. The runner shell
+    # is already elevated, which the tunnel service and stunmesh both require.
+    # The installer hands off to a child MSI process, so poll for the binary
+    # instead of trusting -Wait alone.
     - name: Install tools (Windows)
       if: inputs.os == 'windows'
       shell: pwsh
       run: |
-        $msi = Join-Path $env:RUNNER_TEMP 'wireguard.msi'
-        Invoke-WebRequest -Uri 'https://download.wireguard.com/windows-client/wireguard-${{ inputs.arch }}-1.1.msi' -OutFile $msi
-        Start-Process msiexec.exe -ArgumentList '/qn','/i',$msi,'DO_NOT_LAUNCH=1' -Wait
+        $installer = Join-Path $env:RUNNER_TEMP 'wireguard-installer.exe'
+        Invoke-WebRequest -Uri 'https://download.wireguard.com/windows-client/wireguard-installer.exe' -OutFile $installer
+        Start-Process $installer -ArgumentList '/install','/quiet' -Wait
+        $wg = 'C:\Program Files\WireGuard\wireguard.exe'
+        for ($i = 0; $i -lt 60 -and -not (Test-Path $wg); $i++) { Start-Sleep 2 }
+        if (-not (Test-Path $wg)) { throw 'WireGuard install did not complete' }
         Add-Content $env:GITHUB_PATH 'C:\Program Files\WireGuard'
 
     # Git Bash: run.sh branches on uname (MINGW* -> Windows) and drives
