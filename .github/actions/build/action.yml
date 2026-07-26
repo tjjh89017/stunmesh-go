@@ -19,6 +19,10 @@ inputs:
     description: 'Tag to append to binary name'
     required: false
     default: ''
+  embedca:
+    description: 'Embed the Mozilla CA bundle when not 0 (passed to make as EMBED_CA)'
+    required: false
+    default: '0'
 
 outputs:
   binary-name:
@@ -32,15 +36,15 @@ runs:
       id: build-info
       shell: bash
       run: |
-        SUFFIX=""
-        if [ "${{ inputs.os }}" = "windows" ]; then
-          SUFFIX="${SUFFIX}.exe"
+        BINARY_NAME="${{ inputs.app-name }}-${{ inputs.os }}-${{ inputs.arch }}"
+        if [ "${{ inputs.embedca }}" != "0" ]; then
+          BINARY_NAME="${BINARY_NAME}-ca"
         fi
-
         if [ -n "${{ inputs.tag }}" ]; then
-          BINARY_NAME="${{ inputs.app-name }}-${{ inputs.os }}-${{ inputs.arch }}-${{ inputs.tag }}${SUFFIX}"
-        else
-          BINARY_NAME="${{ inputs.app-name }}-${{ inputs.os }}-${{ inputs.arch }}${SUFFIX}"
+          BINARY_NAME="${BINARY_NAME}-${{ inputs.tag }}"
+        fi
+        if [ "${{ inputs.os }}" = "windows" ]; then
+          BINARY_NAME="${BINARY_NAME}.exe"
         fi
         echo "binary-name=$BINARY_NAME" >> "$GITHUB_OUTPUT"
 
@@ -50,7 +54,7 @@ runs:
 
     - name: Build
       shell: bash
-      run: make APP=${{ steps.build-info.outputs.binary-name }}
+      run: make APP=${{ steps.build-info.outputs.binary-name }} EMBED_CA=${{ inputs.embedca }}
       env:
         GOARCH: ${{ inputs.arch }}
         GOOS: ${{ inputs.os }}
