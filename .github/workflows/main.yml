@@ -227,6 +227,7 @@ jobs:
           - { os: freebsd, arch: amd64, runner: ubuntu-latest }
           - { os: freebsd, arch: arm64, runner: ubuntu-24.04-arm }
           - { os: windows, arch: amd64, runner: windows-latest }
+          - { os: windows, arch: arm64, runner: windows-11-arm }
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v7
