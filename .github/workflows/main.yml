@@ -96,26 +96,19 @@ jobs:
       matrix:
         os: [linux, darwin, freebsd, windows]
         arch: [amd64, arm64, arm, mipsle]
-        variant: [normal, extra-min]
         exclude:
           - os: darwin
             arch: arm
           - os: darwin
             arch: mipsle
-          - os: darwin
-            variant: extra-min
           - os: freebsd
             arch: arm
           - os: freebsd
             arch: mipsle
-          - os: freebsd
-            variant: extra-min
           - os: windows
             arch: arm
           - os: windows
             arch: mipsle
-          - os: windows
-            variant: extra-min
     steps:
       - uses: actions/checkout@v7
       - name: Build
@@ -126,14 +119,13 @@ jobs:
           arch: ${{ matrix.arch }}
           app-name: ${{ env.APP }}
           go-version: ${{ env.GO_VERSION }}
-          variant: ${{ matrix.variant }}
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.build.outputs.binary-name }}
           path: ${{ steps.build.outputs.binary-name }}
 
   # One stable check for the whole build matrix, so the ruleset requires Build
-  # once instead of listing individual os/arch/variant cells.
+  # once instead of listing individual os/arch cells.
   build-required:
     name: Build
     runs-on: ubuntu-latest
