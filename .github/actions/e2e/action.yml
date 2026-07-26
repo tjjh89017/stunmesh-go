@@ -3,7 +3,7 @@ description: 'Run the two-interface stunmesh e2e against a build-stage artifact'
 
 inputs:
   os:
-    description: 'Target OS (linux, darwin, freebsd)'
+    description: 'Target OS (linux, darwin, freebsd, windows)'
     required: true
   arch:
     description: 'Target architecture (amd64, arm64)'
@@ -17,7 +17,7 @@ runs:
   steps:
     - uses: actions/download-artifact@v7
       with:
-        name: ${{ inputs.app-name }}-${{ inputs.os }}-${{ inputs.arch }}
+        name: ${{ inputs.app-name }}-${{ inputs.os }}-${{ inputs.arch }}${{ inputs.os == 'windows' && '.exe' || '' }}
 
     # os is an input, not runner.os: freebsd runs in a VM on a Linux host, so
     # runner.os is Linux for both the linux and freebsd targets.
@@ -30,6 +30,25 @@ runs:
       if: inputs.os == 'darwin'
       shell: bash
       run: brew install wireguard-tools wireguard-go jq
+
+    # Pinned MSI rather than the latest installer so runs stay reproducible.
+    # The runner shell is already elevated, which the tunnel service install
+    # and stunmesh itself both require.
+    - name: Install tools (Windows)
+      if: inputs.os == 'windows'
+      shell: pwsh
+      run: |
+        $msi = Join-Path $env:RUNNER_TEMP 'wireguard.msi'
+        Invoke-WebRequest -Uri 'https://download.wireguard.com/windows-client/wireguard-amd64-0.5.3.msi' -OutFile $msi
+        Start-Process msiexec.exe -ArgumentList '/qn','/i',$msi,'DO_NOT_LAUNCH=1' -Wait
+        Add-Content $env:GITHUB_PATH 'C:\Program Files\WireGuard'
+
+    # Git Bash: run.sh branches on uname (MINGW* -> Windows) and drives
+    # wireguard.exe /installtunnelservice; jq and curl ship with the runner.
+    - name: Run e2e (Windows)
+      if: inputs.os == 'windows'
+      shell: bash
+      run: sh test/e2e/run.sh "./${{ inputs.app-name }}-windows-${{ inputs.arch }}.exe"
 
     - name: Run e2e
       if: inputs.os == 'linux' || inputs.os == 'darwin'

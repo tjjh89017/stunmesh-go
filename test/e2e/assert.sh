@@ -74,18 +74,55 @@ done
 
 echo "== 3. cross-equality of endpoints =="
 e0=$(peer_endpoint "$IF0"); e1=$(peer_endpoint "$IF1")
-# IF0's peer is IF1, so IF0's peer endpoint must equal what IF1 discovered.
-if [ -n "$d1" ] && [ "$e0" = "$d1" ]; then
-	echo "ok: $IF0 peer endpoint $e0 == $IF1 discovered"
+if [ "${E2E_OS-}" = "Windows" ]; then
+	# Proxy mode: WGNT's peer endpoint is the proxy's loopback inner listener
+	# and the real remote lives in the proxy mapping, so the cross-equality is
+	# asserted through the substitution log line, which carries both:
+	#   .remote == what the other side discovered  (pipeline moved the endpoint)
+	#   .inner  == the endpoint `wg show` reports  (WGNT points at the relay)
+	substituted() { # LOG FIELD -> last value the proxy programmed
+		jq -rc "select(.message==\"peer endpoint substituted with proxy inner socket\")|.$2" "$1" | tail -1
+	}
+	r0=$(substituted "$LOG0" remote); i0=$(substituted "$LOG0" inner)
+	r1=$(substituted "$LOG1" remote); i1=$(substituted "$LOG1" inner)
+	if [ -n "$d1" ] && [ "$r0" = "$d1" ]; then
+		echo "ok: $IF0 proxy remote $r0 == $IF1 discovered"
+	else
+		echo "FAIL: $IF0 proxy remote '$r0' != $IF1 discovered '$d1'"
+		fail=1
+	fi
+	if [ -n "$d0" ] && [ "$r1" = "$d0" ]; then
+		echo "ok: $IF1 proxy remote $r1 == $IF0 discovered"
+	else
+		echo "FAIL: $IF1 proxy remote '$r1' != $IF0 discovered '$d0'"
+		fail=1
+	fi
+	if [ -n "$i0" ] && [ "$e0" = "$i0" ]; then
+		echo "ok: $IF0 peer endpoint $e0 == its proxy inner listener"
+	else
+		echo "FAIL: $IF0 peer endpoint '$e0' != proxy inner '$i0'"
+		fail=1
+	fi
+	if [ -n "$i1" ] && [ "$e1" = "$i1" ]; then
+		echo "ok: $IF1 peer endpoint $e1 == its proxy inner listener"
+	else
+		echo "FAIL: $IF1 peer endpoint '$e1' != proxy inner '$i1'"
+		fail=1
+	fi
 else
-	echo "FAIL: $IF0 peer endpoint '$e0' != $IF1 discovered '$d1'"
-	fail=1
-fi
-if [ -n "$d0" ] && [ "$e1" = "$d0" ]; then
-	echo "ok: $IF1 peer endpoint $e1 == $IF0 discovered"
-else
-	echo "FAIL: $IF1 peer endpoint '$e1' != $IF0 discovered '$d0'"
-	fail=1
+	# IF0's peer is IF1, so IF0's peer endpoint must equal what IF1 discovered.
+	if [ -n "$d1" ] && [ "$e0" = "$d1" ]; then
+		echo "ok: $IF0 peer endpoint $e0 == $IF1 discovered"
+	else
+		echo "FAIL: $IF0 peer endpoint '$e0' != $IF1 discovered '$d1'"
+		fail=1
+	fi
+	if [ -n "$d0" ] && [ "$e1" = "$d0" ]; then
+		echo "ok: $IF1 peer endpoint $e1 == $IF0 discovered"
+	else
+		echo "FAIL: $IF1 peer endpoint '$e1' != $IF0 discovered '$d0'"
+		fail=1
+	fi
 fi
 
 if [ "$fail" = "0" ]; then

@@ -226,6 +226,10 @@ jobs:
           - { os: darwin, arch: amd64, runner: macos-15-intel }
           - { os: freebsd, arch: amd64, runner: ubuntu-latest }
           - { os: freebsd, arch: arm64, runner: ubuntu-24.04-arm }
+          # Proxy mode: assert.sh swaps check 3 for the substitution-log
+          # cross-equality, since WGNT's visible peer endpoint is the proxy's
+          # loopback inner listener. See test/e2e/run.sh (Windows branch).
+          - { os: windows, arch: amd64, runner: windows-latest }
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v7
