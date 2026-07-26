@@ -19,10 +19,6 @@ inputs:
     description: 'Tag to append to binary name'
     required: false
     default: ''
-  variant:
-    description: 'Build variant (normal or extra-min)'
-    required: false
-    default: 'normal'
 
 outputs:
   binary-name:
@@ -37,9 +33,6 @@ runs:
       shell: bash
       run: |
         SUFFIX=""
-        if [ "${{ inputs.variant }}" = "extra-min" ]; then
-          SUFFIX="-upx"
-        fi
         if [ "${{ inputs.os }}" = "windows" ]; then
           SUFFIX="${SUFFIX}.exe"
         fi
@@ -51,27 +44,13 @@ runs:
         fi
         echo "binary-name=$BINARY_NAME" >> "$GITHUB_OUTPUT"
 
-        # Set EXTRA_MIN flag
-        if [ "${{ inputs.variant }}" = "extra-min" ]; then
-          echo "extra-min=1" >> "$GITHUB_OUTPUT"
-        else
-          echo "extra-min=0" >> "$GITHUB_OUTPUT"
-        fi
-    
     - uses: actions/setup-go@v7
       with:
         go-version: ${{ inputs.go-version }}
 
-    - name: Install UPX
-      if: inputs.variant == 'extra-min'
-      shell: bash
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y upx-ucl
-
     - name: Build
       shell: bash
-      run: make APP=${{ steps.build-info.outputs.binary-name }} EXTRA_MIN=${{ steps.build-info.outputs.extra-min }}
+      run: make APP=${{ steps.build-info.outputs.binary-name }}
       env:
         GOARCH: ${{ inputs.arch }}
         GOOS: ${{ inputs.os }}

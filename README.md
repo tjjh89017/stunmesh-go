@@ -23,10 +23,10 @@ For best results, ensure at least one peer is behind a cone NAT type.
 
 ## Supported Platforms
 
-- **Linux** (amd64, arm, arm64, mipsle) - Normal and UPX-compressed binaries
-- **macOS** (amd64, arm64) - Normal binaries only
-- **FreeBSD** (amd64, arm64) - Normal binaries only, requires `wireguard-tools`
-- **Windows** (amd64, arm64) - Normal binaries only, shipped as `stunmesh-windows-<arch>-<tag>.zip`, requires the official WireGuard for Windows client
+- **Linux** (amd64, arm, arm64, mipsle)
+- **macOS** (amd64, arm64)
+- **FreeBSD** (amd64, arm64) - requires `wireguard-tools`
+- **Windows** (amd64, arm64) - shipped as `stunmesh-windows-<arch>-<tag>.zip`, requires the official WireGuard for Windows client
 
 > [!IMPORTANT]
 > FreeBSD binaries use the `wgcli` backend, which invokes `wg(8)`. The base system ships the
