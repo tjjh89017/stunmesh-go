@@ -46,19 +46,26 @@ jobs:
       matrix:
         os: [linux, darwin, freebsd, windows]
         arch: [amd64, arm64, arm, mipsle]
+        embedca: [0, 1]
         exclude:
           - os: darwin
             arch: arm
           - os: darwin
             arch: mipsle
+          - os: darwin
+            embedca: 1
           - os: freebsd
             arch: arm
           - os: freebsd
             arch: mipsle
+          - os: freebsd
+            embedca: 1
           - os: windows
             arch: arm
           - os: windows
             arch: mipsle
+          - os: windows
+            embedca: 1
     steps:
       - uses: actions/checkout@v7
       - name: tag
@@ -73,6 +80,7 @@ jobs:
           app-name: ${{ env.APP }}
           go-version: ${{ env.GO_VERSION }}
           tag: ${{ steps.tag.outputs.TAG }}
+          embedca: ${{ matrix.embedca }}
       # Windows ships as a zip of the .exe; the other platforms ship the raw
       # binary. package.outputs.file is empty when the step is skipped, so the
       # || falls back to the binary.
