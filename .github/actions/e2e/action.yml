@@ -15,7 +15,7 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    - uses: actions/download-artifact@v7
+    - uses: actions/download-artifact@v8
       with:
         name: ${{ inputs.app-name }}-${{ inputs.os }}-${{ inputs.arch }}${{ inputs.os == 'windows' && '.exe' || '' }}
 
