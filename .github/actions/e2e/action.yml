@@ -39,7 +39,7 @@ runs:
       shell: pwsh
       run: |
         $msi = Join-Path $env:RUNNER_TEMP 'wireguard.msi'
-        Invoke-WebRequest -Uri 'https://download.wireguard.com/windows-client/wireguard-amd64-0.5.3.msi' -OutFile $msi
+        Invoke-WebRequest -Uri 'https://download.wireguard.com/windows-client/wireguard-${{ inputs.arch }}-1.1.msi' -OutFile $msi
         Start-Process msiexec.exe -ArgumentList '/qn','/i',$msi,'DO_NOT_LAUNCH=1' -Wait
         Add-Content $env:GITHUB_PATH 'C:\Program Files\WireGuard'
 
