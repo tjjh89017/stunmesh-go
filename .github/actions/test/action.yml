@@ -28,12 +28,13 @@ runs:
       shell: bash
       run: sudo -E env "PATH=$PATH" make test
 
-    # Windows runs only the proxy-relevant packages: the plugin tests exec .sh
-    # fixtures and the full suite is not windows-clean yet.
+    # Windows runs the full suite (the .sh-fixture plugin tests self-skip
+    # there), keeping -race from the original scoped cell so the relay
+    # retains race coverage on a real windows.
     - name: Test (Windows)
       if: inputs.os == 'windows'
       shell: bash
-      run: go test -race ./internal/wgproxy/... ./internal/wg/... ./internal/stun/...
+      run: go test -race -tags builtin_all ./...
 
     # FreeBSD runs the tests in the guest, where the process is already root.
     - name: Test (FreeBSD VM)
