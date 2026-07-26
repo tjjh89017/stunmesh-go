@@ -65,7 +65,7 @@ jobs:
       matrix:
         include:
           - { os: linux, runner: ubuntu-latest }
-          - { os: darwin, runner: macos-15 }
+          - { os: darwin, runner: macos-26 }
           - { os: freebsd, runner: ubuntu-latest }  # host; tests run in a VM
           - { os: windows, runner: windows-latest }
     steps:
@@ -222,8 +222,8 @@ jobs:
         include:
           - { os: linux, arch: amd64, runner: ubuntu-24.04 }
           - { os: linux, arch: arm64, runner: ubuntu-24.04-arm }
-          - { os: darwin, arch: arm64, runner: macos-15 }
-          - { os: darwin, arch: amd64, runner: macos-15-intel }
+          - { os: darwin, arch: arm64, runner: macos-26 }
+          - { os: darwin, arch: amd64, runner: macos-26-intel }
           - { os: freebsd, arch: amd64, runner: ubuntu-latest }
           - { os: freebsd, arch: arm64, runner: ubuntu-24.04-arm }
           - { os: windows, arch: amd64, runner: windows-latest }
