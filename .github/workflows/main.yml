@@ -1,12 +1,9 @@
-name: Build
+name: CI
 on:
   pull_request:
   push:
     branches:
       - main
-  # A weekly run rebuilds and re-runs e2e with no code change, catching bit-rot
-  # and external regressions (a dhtproxy endpoint going away). workflow_dispatch
-  # allows the same on demand.
   schedule:
     - cron: '0 6 * * 1'
   workflow_dispatch:
