@@ -98,9 +98,6 @@ tunnel.
 3. Run stunmesh-go from an **Administrator** console. The WireGuard service requires the same privilege;
    without it stunmesh-go fails at the first device access with a "run stunmesh as Administrator" error.
 
-No firewall rule is needed: the proxy always initiates outbound first (STUN, then the WireGuard
-handshake), so Windows Firewall admits the return traffic on its own.
-
 The configuration file is unchanged from the other platforms and the proxy needs no configuration of its
 own; set `interfaces.<name>.proxy.listen` only if you need a fixed outer port for port forwarding or a
 port-based firewall.
