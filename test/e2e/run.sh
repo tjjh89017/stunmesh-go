@@ -77,7 +77,7 @@ create_iface() {
 		# writes the chosen utunN to namefile once up.
 		$SUDO env WG_TUN_NAME_FILE="$namefile" WG_PROCESS_FOREGROUND=1 \
 			"$wgg" utun >"$WORK/wggo$slot.log" 2>&1 &
-		for _ in $(seq 1 30); do [ -s "$namefile" ] && break; sleep 0.5; done
+		for _ in $(seq 1 60); do [ -s "$namefile" ] && break; sleep 1; done
 		if ! $SUDO test -s "$namefile"; then
 			echo "wireguard-go never named a utun; its log:" >&2
 			$SUDO cat "$WORK/wggo$slot.log" >&2 || true
@@ -109,7 +109,7 @@ create_iface() {
 		up=""
 		for _ in $(seq 1 60); do
 			if wg show "$name" >/dev/null 2>&1; then up=1; break; fi
-			sleep 0.5
+			sleep 1
 		done
 		[ -n "$up" ] || { echo "tunnel $name never came up" >&2; exit 1; }
 		;;
