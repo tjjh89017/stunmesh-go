@@ -209,11 +209,23 @@ start_daemon
 case "$ROLE" in
 anchor)
 	split_tunnel_anchor || true
+	# Hold as the far end until the subject's run is over. SUBJECT_DONE_CMD
+	# (CI: subject-done.sh) turns the fixed window into a cap: the anchor
+	# releases as soon as the subject completes, and only a dead subject or
+	# a manual run sleeps the window out.
 	left=$((ANCHOR_HOLD_SECS - ($(date +%s) - START_TS)))
-	if [ "$left" -gt 0 ]; then
-		log "holding as far end for another ${left}s"
-		sleep "$left"
-	fi
+	log "holding as far end for up to ${left}s"
+	released=full
+	while [ "$left" -gt 0 ]; do
+		if [ -n "${SUBJECT_DONE_CMD:-}" ] && sh -c "$SUBJECT_DONE_CMD" >/dev/null 2>&1; then
+			log "subject run completed; releasing the hold early"
+			released=early
+			break
+		fi
+		sleep 30
+		left=$((ANCHOR_HOLD_SECS - ($(date +%s) - START_TS)))
+	done
+	rec hold_released "$released"
 	;;
 subject)
 	# The full-tunnel checks are relative to the split-tunnel baseline: they

@@ -75,6 +75,9 @@ runs:
           go build -o "$out/canary" ./test/e2e/realnet/canary
         fi
 
+    # The anchor gets a done-probe for its pair's subject job, so its hold
+    # window becomes a cap rather than a fixed sleep; gh needs only
+    # actions:read on the job token for that.
     - name: Run peer
       if: inputs.os == 'linux' || inputs.os == 'darwin'
       shell: bash
@@ -84,6 +87,8 @@ runs:
         PEER_PUBLIC_KEY: ${{ inputs.peer-public-key }}
         RESULT_DIR: ${{ runner.temp }}/realnet
         CANARY_BIN: ${{ runner.temp }}/canary
+        GH_TOKEN: ${{ github.token }}
+        SUBJECT_DONE_CMD: ${{ inputs.role == 'anchor' && format('sh test/e2e/realnet/subject-done.sh {0}', inputs.pair) || '' }}
       run: |
         mkdir -p "$RESULT_DIR"
         sh test/e2e/realnet/run-peer.sh "$RUNNER_TEMP/stunmesh"
