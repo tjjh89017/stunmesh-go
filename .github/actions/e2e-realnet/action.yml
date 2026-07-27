@@ -111,7 +111,7 @@ runs:
       if: inputs.os == 'freebsd'
       uses: vmactions/freebsd-vm@v1
       with:
-        arch: x86-64
+        arch: amd64
         sync: sshfs
         envs: 'ROLE WG_PRIVATE_KEY PEER_PUBLIC_KEY'
         prepare: |
