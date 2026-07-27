@@ -335,7 +335,7 @@ jobs:
   # are wider for the pairs whose subject boots slowly (brew, the FreeBSD
   # VM, the WireGuard installer).
   e2e-realnet-anchor:
-    name: E2E realnet (anchor/${{ matrix.pair }})
+    name: E2E realnet (linux anchor for ${{ matrix.pair }})
     runs-on: ubuntu-latest
     continue-on-error: true
     needs: e2e-realnet-keys
