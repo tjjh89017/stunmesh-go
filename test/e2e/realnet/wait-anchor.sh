@@ -25,6 +25,6 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
 		;;
 	esac
 	echo "anchor for '$pair' is '${status:-unknown}'; waiting"
-	sleep 15
+	sleep 30
 done
 echo "anchor for '$pair' never started within ${ANCHOR_WAIT_SECS:-600}s; proceeding anyway"
