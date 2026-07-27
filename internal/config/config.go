@@ -207,10 +207,8 @@ func Load() (*Config, error) {
 			return nil, errors.Join(ErrReadConfig, err)
 		}
 
-		// Match viper 1.21's defaultDecoderConfig: weakly typed input plus the
-		// duration and comma-separated-string-to-slice hooks, so configs that
-		// loaded on viper (quoted scalars from Ansible/Jinja templates, string
-		// values for list fields, etc.) keep loading after the migration.
+		// Weakly typed input plus the duration and comma-separated-string-to-slice
+		// hooks are required so quoted scalars and string list values still decode.
 		decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
 			DecodeHook: mapstructure.ComposeDecodeHookFunc(
 				mapstructure.StringToTimeDurationHookFunc(),
@@ -250,7 +248,6 @@ func Load() (*Config, error) {
 		return nil, ErrNoStunServers
 	}
 
-	// Merge deprecated Address into Addresses: prepend Address if non-empty, then deduplicate.
 	cfg.Stun.Addresses = cfg.Stun.GetServers()
 	cfg.Stun.Address = ""
 
@@ -262,7 +259,6 @@ func Load() (*Config, error) {
 		cfg.Log.Level = DefaultLogLevel
 	}
 
-	// Validate protocol configurations
 	if err := validateConfig(&cfg); err != nil {
 		return nil, err
 	}
@@ -270,7 +266,6 @@ func Load() (*Config, error) {
 	return &cfg, nil
 }
 
-// validateConfig validates protocol configurations and returns error if invalid
 func validateConfig(cfg *Config) error {
 	return validateConfigForGOOS(cfg, runtime.GOOS)
 }
@@ -312,22 +307,18 @@ func validateConfigForGOOS(cfg *Config, goos string) error {
 			return errors.New("invalid proxy.enabled 'false' for interface '" + ifaceName + "': Windows has no non-proxy mode")
 		}
 
-		// Validate interface protocol
 		if iface.Protocol != "" {
 			switch iface.Protocol {
 			case "ipv4", "ipv6", "dualstack":
-				// Valid
 			default:
 				return errors.New("invalid interface protocol '" + iface.Protocol + "' for interface '" + ifaceName + "', must be one of: ipv4, ipv6, dualstack")
 			}
 		}
 
-		// Validate peer protocols
 		for peerName, peer := range iface.Peers {
 			if peer.Protocol != "" {
 				switch peer.Protocol {
 				case "ipv4", "ipv6", "prefer_ipv4", "prefer_ipv6":
-					// Valid
 				default:
 					return errors.New("invalid peer protocol '" + peer.Protocol + "' for peer '" + peerName + "' on interface '" + ifaceName + "', must be one of: ipv4, ipv6, prefer_ipv4, prefer_ipv6")
 				}

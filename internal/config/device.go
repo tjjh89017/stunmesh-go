@@ -23,12 +23,11 @@ type Peer struct {
 	Ping        *PingConfig `mapstructure:"ping"`
 }
 
-// GetProtocol returns the peer's protocol, defaulting to "ipv4" for backward compatibility
-// Valid values: "ipv4", "ipv6", "prefer_ipv4", "prefer_ipv6"
-// Note: Invalid values are caught during config validation in Load()
+// GetProtocol returns the peer's protocol ("ipv4", "ipv6", "prefer_ipv4", or
+// "prefer_ipv6"), defaulting to "ipv4" for backward compatibility.
 func (p *Peer) GetProtocol() string {
 	if p.Protocol == "" {
-		return "ipv4" // Default for backward compatibility
+		return "ipv4"
 	}
 	return p.Protocol
 }
@@ -78,12 +77,11 @@ type Interface struct {
 	Peers              map[string]Peer `mapstructure:"peers"`
 }
 
-// GetProtocol returns the configured protocol, defaulting to "ipv4" for backward compatibility
-// Valid values: "ipv4", "ipv6", "dualstack"
-// Note: Invalid values are caught during config validation in Load()
+// GetProtocol returns the configured protocol ("ipv4", "ipv6", or
+// "dualstack"), defaulting to "ipv4" for backward compatibility.
 func (i *Interface) GetProtocol() string {
 	if i.Protocol == "" {
-		return "ipv4" // Default for backward compatibility
+		return "ipv4"
 	}
 	return i.Protocol
 }
@@ -179,7 +177,6 @@ func (c *DeviceConfig) GetConfigPeers(ctx context.Context, deviceName string, lo
 
 		peerId := entity.NewPeerId(localPublicKey, peerPublicKey)
 
-		// Convert config.PingConfig to entity.PeerPingConfig
 		var pingConfig entity.PeerPingConfig
 		if configPeer.Ping != nil {
 			pingConfig = entity.PeerPingConfig{
@@ -189,7 +186,6 @@ func (c *DeviceConfig) GetConfigPeers(ctx context.Context, deviceName string, lo
 				Timeout:  configPeer.Ping.Timeout,
 			}
 		} else {
-			// Default to disabled if no ping config provided
 			pingConfig = entity.PeerPingConfig{
 				Enabled: false,
 			}
