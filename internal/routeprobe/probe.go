@@ -35,3 +35,17 @@ func Probe(family Family, tunnelIfaces TunnelInterfaces) (bool, error) {
 
 	return HasCoveringDefault(routes, family, tunnelIfaces.Contains), nil
 }
+
+// DefaultRouteInterface returns the interface carrying the current physical
+// (non-tunnel) default route for family — see chooseDefaultInterface for the
+// selection rule. ok is false when no such route exists; err is non-nil only
+// when the route table itself could not be read (same distinction as Probe).
+func DefaultRouteInterface(family Family, tunnelIfaces TunnelInterfaces) (Route, bool, error) {
+	routes, err := currentRoutes(family)
+	if err != nil {
+		return Route{}, false, err
+	}
+
+	route, ok := chooseDefaultInterface(routes, family, tunnelIfaces.Contains)
+	return route, ok, nil
+}

@@ -95,6 +95,11 @@ type Proxy struct {
 
 	outer map[Family]*outerSocket // immutable after New
 
+	// escapeStops holds cleanup funcs returned by escapeOuterSocket for
+	// sockets that started a background watcher (currently darwin's
+	// route-change watcher); immutable after New, called by Close.
+	escapeStops []func()
+
 	// wgPort is fed via SetWGTarget only, never learned from packets.
 	wgPort atomic.Uint32
 
@@ -140,7 +145,9 @@ func New(logger *zerolog.Logger, families map[Family]uint16, opts ...Option) (*P
 			p.closeSockets()
 			return nil, fmt.Errorf("wgproxy: bind %s outer socket: %w", fam, err)
 		}
-		escapeOuterSocket(conn, fam, eo, p.logger)
+		if stop := escapeOuterSocket(conn, fam, eo, p.logger); stop != nil {
+			p.escapeStops = append(p.escapeStops, stop)
+		}
 		local := conn.LocalAddr().(*net.UDPAddr)
 		p.outer[fam] = &outerSocket{conn: conn, port: uint16(local.Port)}
 		p.logger.Info().Stringer("family", fam).Int("port", local.Port).Msg("outer socket bound")
@@ -263,6 +270,9 @@ func (p *Proxy) Close() error {
 	}
 	p.closed = true
 	p.mu.Unlock()
+	for _, stop := range p.escapeStops {
+		stop()
+	}
 	p.closeSockets()
 	p.loops.Wait()
 	return nil

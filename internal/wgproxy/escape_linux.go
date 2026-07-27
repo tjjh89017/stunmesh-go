@@ -15,10 +15,11 @@ import (
 // so wg-quick's policy-routing rules steer the proxy's outer-socket traffic
 // past the tunnel exactly like WireGuard's own packets. Applied once at
 // socket creation; SO_MARK persists on the fd for its lifetime, so there is
-// no need to re-apply on route changes.
-func escapeOuterSocket(conn *net.UDPConn, fam Family, opts escapeOptions, logger zerolog.Logger) {
+// no need to re-apply on route changes, and no watcher/cleanup is needed —
+// this always returns nil.
+func escapeOuterSocket(conn *net.UDPConn, fam Family, opts escapeOptions, logger zerolog.Logger) func() {
 	if len(opts.tunnelIfaces) == 0 {
-		return
+		return nil
 	}
 
 	covering, err := routeprobe.Probe(routeprobeFamily(fam), opts.tunnelIfaces)
@@ -30,14 +31,15 @@ func escapeOuterSocket(conn *net.UDPConn, fam Family, opts escapeOptions, logger
 		if err == nil && covering && opts.firewallMark == 0 {
 			logger.Warn().Stringer("family", fam).Msg("covering WireGuard default route detected but device fwmark is 0; outer socket cannot escape the tunnel")
 		}
-		return
+		return nil
 	}
 
 	if err := markSocket(conn, opts.firewallMark); err != nil {
 		logger.Warn().Err(err).Stringer("family", fam).Msg("failed to mark outer socket for tunnel escape")
-		return
+		return nil
 	}
 	logger.Info().Stringer("family", fam).Int("fwmark", opts.firewallMark).Msg("outer socket marked to escape tunnel default route")
+	return nil
 }
 
 func markSocket(conn *net.UDPConn, firewallMark int) error {
