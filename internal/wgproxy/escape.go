@@ -5,11 +5,18 @@
 // lifetime. escape_darwin.go implements IP_BOUND_IF/IPV6_BOUND_IF, which
 // names a specific interface index rather than a routing-policy mark, so it
 // has its own decision path (no fwmark involved) plus a route-change watcher
-// that re-applies the binding — see escape_darwin.go. escape_default.go is a
-// no-op placeholder for freebsd/windows, filled in by later work.
+// that re-applies the binding — see escape_darwin.go. escape_windows.go
+// mirrors darwin's approach with IP_UNICAST_IF/IPV6_UNICAST_IF and a
+// NotifyIpInterfaceChange watcher instead of a PF_ROUTE socket.
+// escape_default.go is a no-op placeholder for freebsd, filled in by later
+// work.
 package wgproxy
 
-import "github.com/tjjh89017/stunmesh-go/internal/routeprobe"
+import (
+	"math/bits"
+
+	"github.com/tjjh89017/stunmesh-go/internal/routeprobe"
+)
 
 // escapeOptions carries what the per-OS hook needs to decide and apply an
 // escape. Zero value (no tunnelIfaces) means "escape not configured" — New
@@ -50,4 +57,14 @@ func shouldEscape(covering bool, probeErr error, firewallMark int) bool {
 		return false
 	}
 	return firewallMark != 0
+}
+
+// windowsUnicastIfNetworkOrder converts an interface index to the byte order
+// Windows' IP_UNICAST_IF socket option expects for IPv4: network (big-endian)
+// order, unlike IPV6_UNICAST_IF which takes the index in host order — a
+// well-documented gotcha (also handled this way by wireguard-windows). Pure
+// bit manipulation kept portable (no windows build tag) so it can be unit
+// tested on any platform.
+func windowsUnicastIfNetworkOrder(index uint32) uint32 {
+	return bits.ReverseBytes32(index)
 }
