@@ -138,4 +138,8 @@ Build options (built-in plugin selection, binary minimization, WireGuard backend
 
 ## License
 
-This program is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation; either version 2 of the License, or (at your option) any later version.
+This library is free software; you can redistribute it and/or modify it under the terms of the GNU Lesser General Public License as published by the Free Software Foundation; either version 3 of the License, or (at your option) any later version. See [LICENSE](LICENSE) (LGPL-3.0) and [LICENSE.GPL](LICENSE.GPL) (GPL-3.0, which the LGPL supplements).
+
+Contributions are covered by the [CLA](CLA.md).
+
+WireGuard is a registered trademark of Jason A. Donenfeld.
