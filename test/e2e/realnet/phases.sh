@@ -14,12 +14,22 @@
 wait_handshake() {
 	_hs_t0=$(date +%s)
 	_hs_deadline=$((_hs_t0 + HANDSHAKE_TIMEOUT))
+	_hs_tick=0
 	while [ "$(date +%s)" -lt "$_hs_deadline" ]; do
 		_hs=$(ns_exec wg show "$WG_IF" latest-handshakes | awk 'NR==1{print $2}')
 		if [ "${_hs:-0}" -gt 0 ] 2>/dev/null; then
 			rec "$1" pass
 			rec "$1_secs" $(($(date +%s) - _hs_t0))
 			return 0
+		fi
+		# The anchor must not sit out its whole window against a subject
+		# that already gave up and left; same probe as the hold loop, at
+		# the same 30s budget (every 6th 5s tick).
+		_hs_tick=$((_hs_tick + 1))
+		if [ $((_hs_tick % 6)) -eq 0 ] && [ -n "${SUBJECT_DONE_CMD:-}" ] &&
+			sh -c "$SUBJECT_DONE_CMD" >/dev/null 2>&1; then
+			log "peer's run already completed; abandoning the handshake wait"
+			break
 		fi
 		sleep 5
 	done
