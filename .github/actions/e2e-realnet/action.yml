@@ -1,5 +1,5 @@
 name: 'E2E realnet peer'
-description: 'Run one side of the two-VM real-network stunmesh e2e and upload its conclusions'
+description: 'Run one side of the two-VM real-network stunmesh e2e against a build-stage artifact and upload its conclusions'
 
 inputs:
   role:
@@ -8,11 +8,17 @@ inputs:
   os:
     description: 'Target OS (linux, darwin, freebsd, windows); the anchor is always linux'
     required: true
+  arch:
+    description: 'Target architecture of this runner (amd64, arm64)'
+    required: true
+  app-name:
+    description: 'Application name; the artifact is <app-name>-<os>-<arch>'
+    required: true
   pair:
     description: 'Pair name, used to keep each anchor/subject couple''s artifacts apart'
     required: true
   go-version:
-    description: 'Go toolchain version'
+    description: 'Go toolchain version (anchor only, for the canary helper)'
     required: true
   wg-private-key:
     description: 'This side''s WireGuard private key (ephemeral, per run)'
@@ -52,28 +58,23 @@ runs:
         if (-not (Test-Path $wg)) { throw 'WireGuard install did not complete' }
         Add-Content $env:GITHUB_PATH 'C:\Program Files\WireGuard'
 
+    # The binary under test is the build stage's artifact -- the exact bytes
+    # a release would ship -- mirroring the same-host e2e. Only the canary
+    # helper is built here: it is test tooling, not the thing under test,
+    # and only the anchor (always Linux) runs it.
+    - uses: actions/download-artifact@v8
+      with:
+        name: ${{ inputs.app-name }}-${{ inputs.os }}-${{ inputs.arch }}${{ inputs.os == 'windows' && '.exe' || '' }}
+
     - uses: actions/setup-go@v7
+      if: inputs.role == 'anchor'
       with:
         go-version: ${{ inputs.go-version }}
 
-    # Built from source rather than taken from the build stage: this harness
-    # needs no cross-compiled release artifact, and building here keeps it
-    # independent of the build matrix's naming. The canary server is only
-    # ever run by the anchor, which is always Linux.
-    - name: Build
+    - name: Build canary helper
+      if: inputs.role == 'anchor'
       shell: bash
-      env:
-        GOOS: ${{ inputs.os == 'freebsd' && 'freebsd' || '' }}
-      run: |
-        set -eu
-        out=$RUNNER_TEMP ext=
-        [ "${{ inputs.os }}" = windows ] && { out=$(cygpath -u "$RUNNER_TEMP"); ext=.exe; }
-        [ "${{ inputs.os }}" = freebsd ] && out=$GITHUB_WORKSPACE/realnet-out
-        mkdir -p "$out"
-        go build -tags builtin_all -o "$out/stunmesh$ext" .
-        if [ "${{ inputs.role }}" = anchor ]; then
-          go build -o "$out/canary" ./test/e2e/realnet/canary
-        fi
+      run: go build -o "$RUNNER_TEMP/canary" ./test/e2e/realnet/canary
 
     # The subject's fixed handshake window must not start ticking against an
     # anchor that is still queued; runs on the host for every subject OS
@@ -100,8 +101,10 @@ runs:
         GH_TOKEN: ${{ github.token }}
         SUBJECT_DONE_CMD: ${{ inputs.role == 'anchor' && format('sh test/e2e/realnet/subject-done.sh {0}', inputs.pair) || '' }}
       run: |
+        bin=$GITHUB_WORKSPACE/${{ inputs.app-name }}-${{ inputs.os }}-${{ inputs.arch }}
+        chmod +x "$bin"
         mkdir -p "$RESULT_DIR"
-        sh test/e2e/realnet/run-peer.sh "$RUNNER_TEMP/stunmesh"
+        sh test/e2e/realnet/run-peer.sh "$bin"
 
     # Git Bash: run-peer.sh folds MINGW* to Windows and drives
     # wireguard.exe /installtunnelservice. RUNNER_TEMP is a Windows path, so
@@ -117,7 +120,8 @@ runs:
         tmp=$(cygpath -u "$RUNNER_TEMP")
         RESULT_DIR="$tmp/realnet" && export RESULT_DIR
         mkdir -p "$RESULT_DIR"
-        sh test/e2e/realnet/run-peer.sh "$tmp/stunmesh.exe"
+        sh test/e2e/realnet/run-peer.sh \
+          "$(cygpath -u "$GITHUB_WORKSPACE")/${{ inputs.app-name }}-windows-${{ inputs.arch }}.exe"
 
     # FreeBSD runs everything inside the guest, which has no access to the
     # host's step files, so the scripts fall back to stdout there and the
@@ -134,9 +138,11 @@ runs:
           kldload if_wg
         run: |
           cd $GITHUB_WORKSPACE
+          bin=$GITHUB_WORKSPACE/${{ inputs.app-name }}-freebsd-${{ inputs.arch }}
+          chmod +x "$bin"
           export RESULT_DIR=$GITHUB_WORKSPACE/realnet-out/realnet
           mkdir -p "$RESULT_DIR"
-          sh test/e2e/realnet/run-peer.sh "$GITHUB_WORKSPACE/realnet-out/stunmesh"
+          sh test/e2e/realnet/run-peer.sh "$bin"
       env:
         ROLE: ${{ inputs.role }}
         WG_PRIVATE_KEY: ${{ inputs.wg-private-key }}

@@ -335,7 +335,7 @@ jobs:
   # are wider for the pairs whose subject boots slowly (brew, the FreeBSD
   # VM, the WireGuard installer).
   e2e-realnet-anchor:
-    name: E2E realnet (linux anchor for ${{ matrix.pair }})
+    name: E2E realnet (anchor for ${{ matrix.pair }})
     runs-on: ubuntu-latest
     continue-on-error: true
     needs: e2e-realnet-keys
@@ -359,6 +359,8 @@ jobs:
         with:
           role: anchor
           os: linux
+          arch: amd64
+          app-name: ${{ env.APP }}
           pair: ${{ matrix.pair }}
           go-version: ${{ env.GO_VERSION }}
           wg-private-key: ${{ needs.e2e-realnet-keys.outputs[format('{0}_anchor_key', matrix.pair)] }}
@@ -381,16 +383,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { pair: linux, os: linux, runner: ubuntu-latest, timeout: 12 }
-          - { pair: darwin, os: darwin, runner: macos-26, timeout: 20 }
-          - { pair: freebsd, os: freebsd, runner: ubuntu-latest, timeout: 20 }
-          - { pair: windows, os: windows, runner: windows-latest, timeout: 20 }
+          - { pair: linux, os: linux, arch: amd64, runner: ubuntu-latest, timeout: 12 }
+          - { pair: darwin, os: darwin, arch: arm64, runner: macos-26, timeout: 20 }
+          - { pair: freebsd, os: freebsd, arch: amd64, runner: ubuntu-latest, timeout: 20 }
+          - { pair: windows, os: windows, arch: amd64, runner: windows-latest, timeout: 20 }
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/e2e-realnet
         with:
           role: subject
           os: ${{ matrix.os }}
+          arch: ${{ matrix.arch }}
+          app-name: ${{ env.APP }}
           pair: ${{ matrix.pair }}
           go-version: ${{ env.GO_VERSION }}
           wg-private-key: ${{ needs.e2e-realnet-keys.outputs[format('{0}_subject_key', matrix.pair)] }}

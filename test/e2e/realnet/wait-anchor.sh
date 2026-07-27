@@ -17,7 +17,7 @@ command -v gh >/dev/null 2>&1 || exit 0
 deadline=$(($(date +%s) + ${ANCHOR_WAIT_SECS:-600}))
 while [ "$(date +%s)" -lt "$deadline" ]; do
 	status=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs?per_page=100" \
-		--jq ".jobs[] | select(.name==\"E2E realnet (linux anchor for $pair)\") | .status" 2>/dev/null | head -1)
+		--jq ".jobs[] | select(.name==\"E2E realnet (anchor for $pair)\") | .status" 2>/dev/null | head -1)
 	case "$status" in
 	in_progress | completed)
 		echo "anchor for '$pair' is $status; proceeding"
