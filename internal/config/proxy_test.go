@@ -133,6 +133,102 @@ interfaces:
 	}
 }
 
+func TestLoad_ProxyFib_Present(t *testing.T) {
+	cfg := loadConfigFromYAML(t, `
+interfaces:
+  wg0:
+    protocol: ipv4
+    proxy:
+      fib: 3
+    peers: {}
+`)
+
+	if got := cfg.Interfaces["wg0"].Proxy.Fib; got != 3 {
+		t.Errorf("Proxy.Fib = %d, want 3", got)
+	}
+
+	dc := NewDeviceConfig(cfg)
+	if got := dc.GetProxyFib("wg0"); got != 3 {
+		t.Errorf("GetProxyFib(wg0) = %d, want 3", got)
+	}
+}
+
+// No proxy key (or no fib key) means the escape is off -- the zero-breaking
+// default, and also correct since FIB 0 is where the covering WireGuard
+// default route already lives.
+func TestGetProxyFib_Absent(t *testing.T) {
+	cfg := loadConfigFromYAML(t, `
+interfaces:
+  wg0:
+    protocol: ipv4
+    peers: {}
+`)
+
+	dc := NewDeviceConfig(cfg)
+	if got := dc.GetProxyFib("wg0"); got != 0 {
+		t.Errorf("GetProxyFib(wg0) = %d, want 0 (escape off)", got)
+	}
+}
+
+func TestGetProxyFib_UnknownDevice(t *testing.T) {
+	cfg := loadConfigFromYAML(t, `
+interfaces:
+  wg0:
+    protocol: ipv4
+    peers: {}
+`)
+
+	dc := NewDeviceConfig(cfg)
+	if got := dc.GetProxyFib("does-not-exist"); got != 0 {
+		t.Errorf("GetProxyFib(unknown) = %d, want 0", got)
+	}
+}
+
+func TestValidateConfig_ProxyFib(t *testing.T) {
+	tests := []struct {
+		name    string
+		fib     int
+		wantErr bool
+	}{
+		{"unset (zero, escape off)", 0, false},
+		{"minimum non-zero fib", 1, false},
+		{"maximum range", 65535, false},
+		{"negative", -1, true},
+		{"above range", 65536, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{
+				Interfaces: Interfaces{
+					"wg0": Interface{
+						Proxy: Proxy{Fib: tt.fib},
+					},
+				},
+			}
+
+			err := validateConfig(cfg)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateConfig() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestLoad_ProxyFib_OutOfRange(t *testing.T) {
+	writeWeakTypingConfig(t, `
+interfaces:
+  wg0:
+    proxy:
+      fib: 70000
+    peers: {}
+`)
+
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() with proxy.fib 70000 should return an error")
+	}
+}
+
 func TestProxy_IsEnabled_Absent(t *testing.T) {
 	tests := []struct {
 		goos string

@@ -299,6 +299,14 @@ func validateConfigForGOOS(cfg *Config, goos string) error {
 			return errors.New("invalid proxy listen port " + strconv.Itoa(iface.Proxy.Listen) + " for interface '" + ifaceName + "', must be between 1 and 65535")
 		}
 
+		// 0 means unset (escape off); the true kernel limit is net.fibs-1,
+		// which is unknowable at config-parse time, so this is only a range
+		// check -- a fib the running kernel rejects surfaces as a setsockopt
+		// error at runtime instead.
+		if iface.Proxy.Fib < 0 || iface.Proxy.Fib > 65535 {
+			return errors.New("invalid proxy fib " + strconv.Itoa(iface.Proxy.Fib) + " for interface '" + ifaceName + "', must be between 0 and 65535")
+		}
+
 		// Windows has no non-proxy mode; an explicit opt-out can't be honored.
 		if goos == "windows" && iface.Proxy.Enabled != nil && !*iface.Proxy.Enabled {
 			return errors.New("invalid proxy.enabled 'false' for interface '" + ifaceName + "': Windows has no non-proxy mode")

@@ -15,6 +15,9 @@ import (
 type ProxyConfig interface {
 	GetInterfaceProtocol(deviceName string) string
 	GetProxyListenPort(deviceName string) uint16
+	// GetProxyFib returns the freebsd-only escape FIB number for deviceName
+	// (0 means not configured); ignored on every other platform.
+	GetProxyFib(deviceName string) int
 	// TunnelInterfaceNames returns every configured WireGuard interface name,
 	// used to scope the tunnel-escape route probe to devices stunmesh manages.
 	TunnelInterfaceNames() []string
@@ -47,7 +50,7 @@ func (c *proxyClient) Device(name string) (*DeviceInfo, error) {
 		return nil, err
 	}
 	tunnelIfaces := routeprobe.NewTunnelInterfaces(c.config.TunnelInterfaceNames()...)
-	proxy, err := c.ensureProxy(name, wgproxy.WithEscape(info.FirewallMark, tunnelIfaces))
+	proxy, err := c.ensureProxy(name, wgproxy.WithEscape(info.FirewallMark, c.config.GetProxyFib(name), tunnelIfaces))
 	if err != nil {
 		return nil, err
 	}

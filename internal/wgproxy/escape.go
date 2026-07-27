@@ -8,8 +8,12 @@
 // that re-applies the binding — see escape_darwin.go. escape_windows.go
 // mirrors darwin's approach with IP_UNICAST_IF/IPV6_UNICAST_IF and a
 // NotifyIpInterfaceChange watcher instead of a PF_ROUTE socket.
-// escape_default.go is a no-op placeholder for freebsd, filled in by later
-// work.
+// escape_freebsd.go implements SO_SETFIB: freebsd has no per-socket
+// bind-to-interface primitive, so escape instead relies on an operator-
+// provisioned second FIB (routing table) that holds the physical default
+// route; SO_SETFIB persists on the fd like Linux's SO_MARK, so it too is a
+// one-shot decision with no watcher. escape_default.go is a no-op
+// placeholder for any other platform (e.g. android).
 package wgproxy
 
 import (
@@ -23,6 +27,7 @@ import (
 // skips the probe entirely rather than reporting spurious warnings.
 type escapeOptions struct {
 	firewallMark int
+	fib          int
 	tunnelIfaces routeprobe.TunnelInterfaces
 }
 
@@ -31,11 +36,14 @@ type Option func(*escapeOptions)
 
 // WithEscape enables the tunnel-escape hook for every outer socket New
 // creates. firewallMark is the WireGuard device's own fwmark (0 means none
-// configured); tunnelIfaces limits routeprobe detection to interfaces
-// stunmesh manages.
-func WithEscape(firewallMark int, tunnelIfaces routeprobe.TunnelInterfaces) Option {
+// configured), used by the linux hook. fib is the freebsd analog: the
+// operator-provisioned FIB number carrying the physical default route (0
+// means none configured, matching firewallMark's convention). tunnelIfaces
+// limits routeprobe detection to interfaces stunmesh manages.
+func WithEscape(firewallMark int, fib int, tunnelIfaces routeprobe.TunnelInterfaces) Option {
 	return func(o *escapeOptions) {
 		o.firewallMark = firewallMark
+		o.fib = fib
 		o.tunnelIfaces = tunnelIfaces
 	}
 }
@@ -57,6 +65,17 @@ func shouldEscape(covering bool, probeErr error, firewallMark int) bool {
 		return false
 	}
 	return firewallMark != 0
+}
+
+// shouldSetFib is escape_freebsd.go's analog of shouldEscape: given
+// routeprobe's result for a family and the configured FIB, decides whether
+// SO_SETFIB should be applied. A probe error is treated the same as "no
+// covering default" — never as a reason to set the FIB anyway.
+func shouldSetFib(covering bool, probeErr error, fib int) bool {
+	if probeErr != nil || !covering {
+		return false
+	}
+	return fib != 0
 }
 
 // windowsUnicastIfNetworkOrder converts an interface index to the byte order

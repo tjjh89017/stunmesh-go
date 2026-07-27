@@ -45,6 +45,7 @@ type fakeProxyConfig struct {
 
 func (f *fakeProxyConfig) GetInterfaceProtocol(deviceName string) string { return f.protocol }
 func (f *fakeProxyConfig) GetProxyListenPort(deviceName string) uint16   { return f.listen }
+func (f *fakeProxyConfig) GetProxyFib(deviceName string) int             { return 0 }
 func (f *fakeProxyConfig) TunnelInterfaceNames() []string                { return nil }
 
 func newTestProxyClient(t *testing.T, inner Client, cfg ProxyConfig) (Client, *wgproxy.Manager) {
