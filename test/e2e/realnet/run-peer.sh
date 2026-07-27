@@ -222,10 +222,10 @@ anchor)
 			released=early
 			break
 		fi
-		# 15s halves the average release lag vs 30s while staying far from
-		# the shared 1000/h GITHUB_TOKEN budget; anything shorter drowns in
-		# the job's own teardown time.
-		sleep 15
+		# 30s keeps the whole realnet layer far inside the shared 1000/h
+		# GITHUB_TOKEN budget even with concurrent runs; a faster poll would
+		# only save seconds that the job's own teardown time dwarfs anyway.
+		sleep 30
 		left=$((ANCHOR_HOLD_SECS - ($(date +%s) - START_TS)))
 	done
 	rec hold_released "$released"
