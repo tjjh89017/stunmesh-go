@@ -1,0 +1,74 @@
+name: 'E2E realnet peer'
+description: 'Run one side of the two-VM real-network stunmesh e2e and return its conclusions as JSON'
+
+inputs:
+  role:
+    description: 'anchor (fixed far end) or subject (the side under test)'
+    required: true
+  go-version:
+    description: 'Go toolchain version'
+    required: true
+  wg-private-key:
+    description: 'This side''s WireGuard private key (ephemeral, per run)'
+    required: true
+  peer-public-key:
+    description: 'The other side''s WireGuard public key'
+    required: true
+
+outputs:
+  results:
+    description: 'Recorded conclusions as a compact JSON object'
+    value: ${{ steps.run.outputs.results }}
+
+runs:
+  using: 'composite'
+  steps:
+    # Built from source rather than downloaded from the build stage: this
+    # harness needs no cross-compiled artifact, and building here keeps it
+    # independent of the build matrix's naming.
+    - name: Install tools
+      shell: bash
+      run: sudo apt-get update && sudo apt-get install -y wireguard-tools jq iperf3 tcpdump
+
+    - uses: actions/setup-go@v7
+      with:
+        go-version: ${{ inputs.go-version }}
+
+    - name: Build
+      shell: bash
+      run: |
+        go build -tags builtin_all -o "$RUNNER_TEMP/stunmesh" .
+        go build -o "$RUNNER_TEMP/canary" ./test/e2e/realnet/canary
+
+    - name: Run peer
+      id: run
+      shell: bash
+      env:
+        ROLE: ${{ inputs.role }}
+        WG_PRIVATE_KEY: ${{ inputs.wg-private-key }}
+        PEER_PUBLIC_KEY: ${{ inputs.peer-public-key }}
+        RESULT_DIR: ${{ runner.temp }}/realnet
+        CANARY_BIN: ${{ runner.temp }}/canary
+      run: |
+        mkdir -p "$RESULT_DIR"
+        sh test/e2e/realnet/run-peer.sh "$RUNNER_TEMP/stunmesh"
+
+    # Collapsible inline logs, so a first look needs no artifact download.
+    - name: Logs
+      if: always()
+      shell: bash
+      run: |
+        for f in "$RUNNER_TEMP"/realnet/*.log "$RUNNER_TEMP"/realnet/results.env; do
+          [ -f "$f" ] || continue
+          echo "::group::${f##*/}"; cat "$f"; echo "::endgroup::"
+        done
+
+    # Evidence for post-mortem only. The captures are header-only (the
+    # payload is encrypted and useless) and ring-buffered, so the upload
+    # stays a few MB outside the throughput window and 100MB at worst.
+    - uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: realnet-${{ inputs.role }}
+        path: ${{ runner.temp }}/realnet
+        retention-days: 7
