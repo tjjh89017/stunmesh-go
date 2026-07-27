@@ -340,6 +340,12 @@ jobs:
     continue-on-error: true
     needs: e2e-realnet-keys
     timeout-minutes: 20
+    # actions:read lets the anchor poll its subject job's status and release
+    # the hold early; the hold window then only runs out in full when the
+    # subject never reports.
+    permissions:
+      contents: read
+      actions: read
     strategy:
       fail-fast: false
       matrix:
