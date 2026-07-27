@@ -12,19 +12,25 @@ import (
 	"github.com/tjjh89017/stunmesh-go/internal/wgproxy"
 )
 
-// proxyModeEnabled reports whether the proxy fronts the wg client: always on
-// Windows; elsewhere only when proxy.listen is set (test-only, unsupported).
-func proxyModeEnabled(cfg *config.Config, logger *zerolog.Logger) bool {
-	if runtime.GOOS == "windows" {
-		return true
-	}
-	for name, iface := range cfg.Interfaces {
-		if iface.Proxy.Listen != 0 {
-			logger.Warn().Str("interface", name).Msg("proxy.listen is set on a non-Windows platform: proxy mode here is test-only and unsupported")
-			return true
+// proxyModeEnabled reports whether the proxy fronts the wg client: on iff any
+// interface's proxy.enabled resolves true for runtime.GOOS (see
+// config.Proxy.IsEnabled; always true on Windows).
+func proxyModeEnabled(cfg *config.Config, deviceConfig *config.DeviceConfig, logger *zerolog.Logger) bool {
+	return proxyModeEnabledForGOOS(cfg, deviceConfig, runtime.GOOS, logger)
+}
+
+// proxyModeEnabledForGOOS is the pure, goos-parameterized core of
+// proxyModeEnabled, kept testable from any host platform. A lone
+// proxy.listen with no proxy.enabled does not turn proxy mode on.
+func proxyModeEnabledForGOOS(cfg *config.Config, deviceConfig *config.DeviceConfig, goos string, logger *zerolog.Logger) bool {
+	enabled := false
+	for name := range cfg.Interfaces {
+		if deviceConfig.GetProxyEnabled(name, goos) {
+			logger.Info().Str("interface", name).Msg("proxy mode enabled")
+			enabled = true
 		}
 	}
-	return false
+	return enabled
 }
 
 // newProxyStack wires the proxy decorator and proxy-backed STUN path when
@@ -32,7 +38,7 @@ func proxyModeEnabled(cfg *config.Config, logger *zerolog.Logger) bool {
 // creates each proxy before any Resolve runs; the trailing manager.Close is
 // idempotent and covers the idle manager in plain mode.
 func newProxyStack(cfg *config.Config, deviceConfig *config.DeviceConfig, logger *zerolog.Logger) (*proxyStack, func(), error) {
-	mode := proxyModeEnabled(cfg, logger)
+	mode := proxyModeEnabled(cfg, deviceConfig, logger)
 	manager := wgproxy.NewManager(logger)
 
 	client, err := wg.New()
