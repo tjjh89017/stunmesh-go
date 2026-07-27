@@ -28,9 +28,18 @@ func currentRoutes(family Family) ([]Route, error) {
 	if err := windows.GetIpForwardTable2(af, &table); err != nil {
 		return nil, fmt.Errorf("routeprobe: GetIpForwardTable2: %w", err)
 	}
-	defer windows.FreeMibTable(unsafe.Pointer(table))
-
 	rows := table.Rows()
+	routes := routesFromRows(rows, family)
+	windows.FreeMibTable(unsafe.Pointer(table))
+
+	return routes, nil
+}
+
+// routesFromRows resolves each row's InterfaceIndex via net.InterfaceByIndex
+// and filters by family, mirroring the darwin/freebsd probe's
+// routesFromMessages. Must run before the caller frees the MibTable that
+// rows was sliced from.
+func routesFromRows(rows []windows.MibIpForwardRow2, family Family) []Route {
 	routes := make([]Route, 0, len(rows))
 	for _, row := range rows {
 		prefix, ok := forwardPrefix(row.DestinationPrefix, family)
@@ -46,7 +55,7 @@ func currentRoutes(family Family) ([]Route, error) {
 		routes = append(routes, Route{Prefix: prefix, Interface: ifi.Name, Index: ifi.Index})
 	}
 
-	return routes, nil
+	return routes
 }
 
 // forwardPrefix converts a MIB_IPFORWARD_ROW2's DestinationPrefix — a
