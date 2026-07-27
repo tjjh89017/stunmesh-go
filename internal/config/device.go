@@ -33,10 +33,28 @@ func (p *Peer) GetProtocol() string {
 	return p.Protocol
 }
 
-// Proxy configures the UDP proxy fronting a WireGuard interface (Windows only).
+// Proxy configures the UDP proxy fronting a WireGuard interface.
 type Proxy struct {
 	// Listen pins the outer-socket port; 0 (the default) means ephemeral.
 	Listen int `mapstructure:"listen"`
+	// Enabled switches proxy mode on or off explicitly; nil means "absent"
+	// and resolves to the platform default via IsEnabled. Must stay *bool,
+	// not bool, so "absent" (use platform default) is distinguishable from
+	// an explicit "false" (e.g. temporarily disabling while keeping Listen).
+	Enabled *bool `mapstructure:"enabled"`
+}
+
+// IsEnabled resolves proxy mode for goos (pass runtime.GOOS at call sites,
+// not a literal, so this stays unit-testable for every platform from any
+// platform): an explicit Enabled wins outright; absent falls back to the
+// platform default, true on windows (its only mode) and false elsewhere.
+// Listen is deliberately not considered here -- a lone proxy.listen must not
+// flip proxy mode on.
+func (p *Proxy) IsEnabled(goos string) bool {
+	if p.Enabled != nil {
+		return *p.Enabled
+	}
+	return goos == "windows"
 }
 
 type Interface struct {
@@ -102,6 +120,17 @@ func (c *DeviceConfig) GetProxyListenPort(deviceName string) uint16 {
 		return 0
 	}
 	return uint16(device.Proxy.Listen)
+}
+
+// GetProxyEnabled resolves whether proxy mode is on for deviceName on goos
+// (pass runtime.GOOS at call sites); an unknown device resolves using the
+// platform default, same as a known device with proxy.enabled absent.
+func (c *DeviceConfig) GetProxyEnabled(deviceName string, goos string) bool {
+	device, ok := c.interfaces[deviceName]
+	if !ok {
+		return goos == "windows"
+	}
+	return device.Proxy.IsEnabled(goos)
 }
 
 func (c *DeviceConfig) GetConfigPeers(ctx context.Context, deviceName string, localPublicKey []byte) ([]*entity.Peer, error) {
