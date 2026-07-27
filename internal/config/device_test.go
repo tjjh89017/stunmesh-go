@@ -402,3 +402,38 @@ func TestInterface_GetProtocol_AllValidValues(t *testing.T) {
 		})
 	}
 }
+
+func TestDeviceConfig_TunnelInterfaceNames(t *testing.T) {
+	tests := []struct {
+		name       string
+		interfaces Interfaces
+		want       []string
+	}{
+		{"nil interfaces", nil, []string{}},
+		{"empty interfaces", Interfaces{}, []string{}},
+		{"single interface", Interfaces{"wg0": Interface{}}, []string{"wg0"}},
+		{"multiple interfaces", Interfaces{"wg0": Interface{}, "wg1": Interface{}}, []string{"wg0", "wg1"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{Interfaces: tt.interfaces}
+			dc := NewDeviceConfig(cfg)
+
+			got := dc.TunnelInterfaceNames()
+			if len(got) != len(tt.want) {
+				t.Fatalf("TunnelInterfaceNames() = %v, want %v", got, tt.want)
+			}
+
+			gotSet := make(map[string]bool, len(got))
+			for _, name := range got {
+				gotSet[name] = true
+			}
+			for _, name := range tt.want {
+				if !gotSet[name] {
+					t.Errorf("TunnelInterfaceNames() = %v, missing %q", got, name)
+				}
+			}
+		})
+	}
+}

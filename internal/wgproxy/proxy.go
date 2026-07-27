@@ -137,12 +137,12 @@ func New(logger *zerolog.Logger, families map[Family]uint16, opts ...Option) (*P
 	for fam, port := range families {
 		network := fam.network()
 		if network == "" {
-			p.closeSockets()
+			p.closeOnError()
 			return nil, fmt.Errorf("wgproxy: unknown protocol family %d", uint8(fam))
 		}
 		conn, err := net.ListenUDP(network, &net.UDPAddr{Port: int(port)})
 		if err != nil {
-			p.closeSockets()
+			p.closeOnError()
 			return nil, fmt.Errorf("wgproxy: bind %s outer socket: %w", fam, err)
 		}
 		if stop := escapeOuterSocket(conn, fam, eo, p.logger); stop != nil {
@@ -270,12 +270,19 @@ func (p *Proxy) Close() error {
 	}
 	p.closed = true
 	p.mu.Unlock()
+	p.closeOnError()
+	p.loops.Wait()
+	return nil
+}
+
+// closeOnError runs the escape stops collected so far, then closes every
+// socket opened so far; shared by Close and New's failure paths so a
+// half-built Proxy never leaks an earlier family's watcher goroutine or fd.
+func (p *Proxy) closeOnError() {
 	for _, stop := range p.escapeStops {
 		stop()
 	}
 	p.closeSockets()
-	p.loops.Wait()
-	return nil
 }
 
 func (p *Proxy) closeSockets() {

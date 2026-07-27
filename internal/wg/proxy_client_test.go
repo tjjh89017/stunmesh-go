@@ -39,14 +39,15 @@ func (f *fakeClient) Close() error {
 }
 
 type fakeProxyConfig struct {
-	protocol string
-	listen   uint16
+	protocol     string
+	listen       uint16
+	tunnelIfaces []string
 }
 
 func (f *fakeProxyConfig) GetInterfaceProtocol(deviceName string) string { return f.protocol }
 func (f *fakeProxyConfig) GetProxyListenPort(deviceName string) uint16   { return f.listen }
 func (f *fakeProxyConfig) GetProxyFib(deviceName string) int             { return 0 }
-func (f *fakeProxyConfig) TunnelInterfaceNames() []string                { return nil }
+func (f *fakeProxyConfig) TunnelInterfaceNames() []string                { return f.tunnelIfaces }
 
 func newTestProxyClient(t *testing.T, inner Client, cfg ProxyConfig) (Client, *wgproxy.Manager) {
 	t.Helper()
@@ -236,6 +237,31 @@ func TestProxyClient_Device_Idempotent(t *testing.T) {
 	}
 	if inner.deviceCalls != 2 {
 		t.Errorf("inner Device calls = %d, want 2", inner.deviceCalls)
+	}
+}
+
+// TunnelInterfaceNames feeds routeprobe.NewTunnelInterfaces via WithEscape;
+// the escape itself is platform/privilege-gated and probed against the real
+// route table, so this only exercises the plumbing stays non-nil end to end.
+func TestProxyClient_Device_WithTunnelInterfaceNames(t *testing.T) {
+	peer := testKey(0x06)
+	inner := &fakeClient{device: &DeviceInfo{Name: "wg0", ListenPort: 51820, PeerKeys: []Key{peer}}}
+	pc, manager := newTestProxyClient(t, inner, &fakeProxyConfig{protocol: "ipv4", tunnelIfaces: []string{"wg0", "wg1"}})
+
+	got, err := pc.Device("wg0")
+	if err != nil {
+		t.Fatalf("Device: unexpected error: %v", err)
+	}
+	if got != inner.device {
+		t.Errorf("Device returned a different DeviceInfo, want the inner client's unchanged")
+	}
+
+	proxy, err := manager.For("wg0", nil)
+	if err != nil {
+		t.Fatalf("manager.For: %v", err)
+	}
+	if _, err := proxy.AddPeer(peer); err != nil {
+		t.Fatalf("AddPeer: %v", err)
 	}
 }
 
