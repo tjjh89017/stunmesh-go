@@ -49,7 +49,7 @@ func routesFromMessages(msgs []route.Message, family Family) []Route {
 			continue
 		}
 
-		routes = append(routes, Route{Prefix: prefix, Interface: ifi.Name})
+		routes = append(routes, Route{Prefix: prefix, Interface: ifi.Name, Index: ifi.Index})
 	}
 	return routes
 }

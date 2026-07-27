@@ -24,6 +24,10 @@ const (
 type Route struct {
 	Prefix    netip.Prefix
 	Interface string
+	// Index is the interface index, populated on platforms that resolve a
+	// specific interface for binding (darwin/freebsd via DefaultRouteInterface).
+	// Left zero where unused (Linux escape uses SO_MARK, not an interface index).
+	Index int
 }
 
 var (
@@ -84,6 +88,33 @@ func HasCoveringDefault(routes []Route, family Family, isTunnel func(name string
 	}
 
 	return false
+}
+
+// chooseDefaultInterface is the pure selection logic behind
+// DefaultRouteInterface, split out for portable table-testing. It returns
+// the first /0 route for family whose interface isTunnel does not accept.
+// Full-tunnel setups using the /1+/1 half-default convention normally leave
+// the original /0 route to the physical gateway in the table (just
+// outranked by the halves via longest-prefix-match); this is what finds it.
+// route table order approximates kernel priority order on the platforms
+// routeprobe supports, so the first match is used rather than ranking by
+// metric. ok is false when every /0 route present goes out a tunnel
+// interface (or none exists) — callers must not fall back to a tunnel
+// interface in that case.
+func chooseDefaultInterface(routes []Route, family Family, isTunnel func(name string) bool) (Route, bool) {
+	for _, r := range routes {
+		if !familyMatches(r.Prefix, family) {
+			continue
+		}
+		if r.Prefix.Bits() != 0 {
+			continue
+		}
+		if isTunnel != nil && isTunnel(r.Interface) {
+			continue
+		}
+		return r, true
+	}
+	return Route{}, false
 }
 
 func familyMatches(p netip.Prefix, family Family) bool {

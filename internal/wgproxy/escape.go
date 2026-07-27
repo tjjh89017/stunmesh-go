@@ -1,8 +1,12 @@
 // Tunnel-escape hook: applied to each outer socket once at creation so its
 // packets bypass a covering WireGuard default route (full-tunnel mode). The
-// mechanism is per-OS (escape_linux.go implements SO_MARK; escape_default.go
-// is a no-op placeholder for darwin/freebsd/windows, filled in by later
-// work); the decision of *whether* to apply it is shared here.
+// mechanism is per-OS: escape_linux.go implements SO_MARK, a one-shot
+// decision (shouldEscape below) since fwmark persists on the fd for its
+// lifetime. escape_darwin.go implements IP_BOUND_IF/IPV6_BOUND_IF, which
+// names a specific interface index rather than a routing-policy mark, so it
+// has its own decision path (no fwmark involved) plus a route-change watcher
+// that re-applies the binding — see escape_darwin.go. escape_default.go is a
+// no-op placeholder for freebsd/windows, filled in by later work.
 package wgproxy
 
 import "github.com/tjjh89017/stunmesh-go/internal/routeprobe"
