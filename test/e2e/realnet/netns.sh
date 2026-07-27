@@ -7,8 +7,8 @@
 # while the runner agent in the root namespace can never be blackholed by the
 # covering route. This is a crash bunker, not a synthetic network.
 #
-# Requires: $SUDO resolved by the caller. Provides: NS, VETH_NS, HOST_IP,
-# ns_exec, netns_up, netns_down.
+# Requires: $SUDO and ns_exec from device.sh. Provides: NS, VETH_NS,
+# HOST_IP, netns_up, netns_down.
 
 NS=${NS:-stunmesh}
 VETH_HOST=${VETH_HOST:-veth-sm0}
@@ -16,8 +16,6 @@ VETH_NS=${VETH_NS:-veth-sm1}
 HOST_NET=${HOST_NET:-10.200.0.0/24}
 HOST_IP=${HOST_IP:-10.200.0.1}
 NS_IP=${NS_IP:-10.200.0.2}
-
-ns_exec() { $SUDO ip netns exec "$NS" "$@"; }
 
 netns_up() {
 	$SUDO ip netns add "$NS"
@@ -44,6 +42,12 @@ netns_up() {
 }
 
 netns_down() {
+	# Reap whatever is still parked in the namespace (canary, iperf3): the
+	# namespace object would survive them, but a manual run should not leave
+	# strays behind.
+	for _pid in $($SUDO ip netns pids "$NS" 2>/dev/null); do
+		$SUDO kill "$_pid" 2>/dev/null || true
+	done
 	$SUDO iptables -t nat -D POSTROUTING -s "$HOST_NET" ! -o "$VETH_HOST" -j MASQUERADE 2>/dev/null || true
 	$SUDO iptables -D FORWARD -i "$VETH_HOST" -j ACCEPT 2>/dev/null || true
 	$SUDO iptables -D FORWARD -o "$VETH_HOST" -j ACCEPT 2>/dev/null || true

@@ -1,9 +1,15 @@
 name: 'E2E realnet peer'
-description: 'Run one side of the two-VM real-network stunmesh e2e and return its conclusions as JSON'
+description: 'Run one side of the two-VM real-network stunmesh e2e and upload its conclusions'
 
 inputs:
   role:
-    description: 'anchor (fixed far end) or subject (the side under test)'
+    description: 'anchor (fixed Linux far end) or subject (the side under test)'
+    required: true
+  os:
+    description: 'Target OS (linux, darwin, freebsd, windows); the anchor is always linux'
+    required: true
+  pair:
+    description: 'Pair name, used to keep each anchor/subject couple''s artifacts apart'
     required: true
   go-version:
     description: 'Go toolchain version'
@@ -15,33 +21,62 @@ inputs:
     description: 'The other side''s WireGuard public key'
     required: true
 
-outputs:
-  results:
-    description: 'Recorded conclusions as a compact JSON object'
-    value: ${{ steps.run.outputs.results }}
-
 runs:
   using: 'composite'
   steps:
-    # Built from source rather than downloaded from the build stage: this
-    # harness needs no cross-compiled artifact, and building here keeps it
-    # independent of the build matrix's naming.
-    - name: Install tools
+    # os is an input, not runner.os: freebsd runs in a VM on a Linux host, so
+    # runner.os is Linux for both the linux and freebsd targets.
+    - name: Install tools (Linux)
+      if: inputs.os == 'linux' || inputs.os == 'freebsd'
       shell: bash
       run: sudo apt-get update && sudo apt-get install -y wireguard-tools jq iperf3 tcpdump
+
+    - name: Install tools (macOS)
+      if: inputs.os == 'darwin'
+      shell: bash
+      run: brew install wireguard-tools wireguard-go jq iperf3
+
+    # Mirrors the same-host e2e: the official installer always takes the
+    # latest client and picks the arch itself, so a scheduled run doubles as
+    # an early warning when a new WireGuard release breaks us. It hands off
+    # to a child MSI process, so poll for the binary rather than trust -Wait.
+    - name: Install tools (Windows)
+      if: inputs.os == 'windows'
+      shell: pwsh
+      run: |
+        $installer = Join-Path $env:RUNNER_TEMP 'wireguard-installer.exe'
+        Invoke-WebRequest -Uri 'https://download.wireguard.com/windows-client/wireguard-installer.exe' -OutFile $installer
+        Start-Process $installer -ArgumentList '/install','/quiet' -Wait
+        $wg = 'C:\Program Files\WireGuard\wireguard.exe'
+        for ($i = 0; $i -lt 60 -and -not (Test-Path $wg); $i++) { Start-Sleep 2 }
+        if (-not (Test-Path $wg)) { throw 'WireGuard install did not complete' }
+        Add-Content $env:GITHUB_PATH 'C:\Program Files\WireGuard'
 
     - uses: actions/setup-go@v7
       with:
         go-version: ${{ inputs.go-version }}
 
+    # Built from source rather than taken from the build stage: this harness
+    # needs no cross-compiled release artifact, and building here keeps it
+    # independent of the build matrix's naming. The canary server is only
+    # ever run by the anchor, which is always Linux.
     - name: Build
       shell: bash
+      env:
+        GOOS: ${{ inputs.os == 'freebsd' && 'freebsd' || '' }}
       run: |
-        go build -tags builtin_all -o "$RUNNER_TEMP/stunmesh" .
-        go build -o "$RUNNER_TEMP/canary" ./test/e2e/realnet/canary
+        set -eu
+        out=$RUNNER_TEMP ext=
+        [ "${{ inputs.os }}" = windows ] && { out=$(cygpath -u "$RUNNER_TEMP"); ext=.exe; }
+        [ "${{ inputs.os }}" = freebsd ] && out=$GITHUB_WORKSPACE/realnet-out
+        mkdir -p "$out"
+        go build -tags builtin_all -o "$out/stunmesh$ext" .
+        if [ "${{ inputs.role }}" = anchor ]; then
+          go build -o "$out/canary" ./test/e2e/realnet/canary
+        fi
 
     - name: Run peer
-      id: run
+      if: inputs.os == 'linux' || inputs.os == 'darwin'
       shell: bash
       env:
         ROLE: ${{ inputs.role }}
@@ -53,15 +88,75 @@ runs:
         mkdir -p "$RESULT_DIR"
         sh test/e2e/realnet/run-peer.sh "$RUNNER_TEMP/stunmesh"
 
+    # Git Bash: run-peer.sh folds MINGW* to Windows and drives
+    # wireguard.exe /installtunnelservice. RUNNER_TEMP is a Windows path, so
+    # convert it before any shell use.
+    - name: Run peer (Windows)
+      if: inputs.os == 'windows'
+      shell: bash
+      env:
+        ROLE: ${{ inputs.role }}
+        WG_PRIVATE_KEY: ${{ inputs.wg-private-key }}
+        PEER_PUBLIC_KEY: ${{ inputs.peer-public-key }}
+      run: |
+        tmp=$(cygpath -u "$RUNNER_TEMP")
+        RESULT_DIR="$tmp/realnet" && export RESULT_DIR
+        mkdir -p "$RESULT_DIR"
+        sh test/e2e/realnet/run-peer.sh "$tmp/stunmesh.exe"
+
+    # FreeBSD runs everything inside the guest, which has no access to the
+    # host's step files, so the scripts fall back to stdout there and the
+    # results ride back to the host through the synced workspace.
+    - name: Run peer (FreeBSD VM)
+      if: inputs.os == 'freebsd'
+      uses: vmactions/freebsd-vm@v1
+      with:
+        arch: x86-64
+        sync: sshfs
+        envs: 'ROLE WG_PRIVATE_KEY PEER_PUBLIC_KEY'
+        prepare: |
+          pkg install -y wireguard-tools jq curl iperf3
+          kldload if_wg
+        run: |
+          cd $GITHUB_WORKSPACE
+          export RESULT_DIR=$GITHUB_WORKSPACE/realnet-out/realnet
+          mkdir -p "$RESULT_DIR"
+          sh test/e2e/realnet/run-peer.sh "$GITHUB_WORKSPACE/realnet-out/stunmesh"
+      env:
+        ROLE: ${{ inputs.role }}
+        WG_PRIVATE_KEY: ${{ inputs.wg-private-key }}
+        PEER_PUBLIC_KEY: ${{ inputs.peer-public-key }}
+
+    - name: Resolve result dir
+      id: dir
+      if: always()
+      shell: bash
+      run: |
+        if [ "${{ inputs.os }}" = freebsd ]; then
+          echo "path=realnet-out/realnet" >> "$GITHUB_OUTPUT"
+        else
+          echo "path=${RUNNER_TEMP//\\//}/realnet" >> "$GITHUB_OUTPUT"
+        fi
+
     # Collapsible inline logs, so a first look needs no artifact download.
     - name: Logs
       if: always()
       shell: bash
       run: |
-        for f in "$RUNNER_TEMP"/realnet/*.log "$RUNNER_TEMP"/realnet/results.env; do
+        d='${{ steps.dir.outputs.path }}'
+        for f in "$d"/*.log "$d"/results.env; do
           [ -f "$f" ] || continue
           echo "::group::${f##*/}"; cat "$f"; echo "::endgroup::"
         done
+
+    # Two artifacts on purpose: the report job downloads only the small
+    # results set, so it never pulls the packet captures with it.
+    - uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: realnet-results-${{ inputs.pair }}-${{ inputs.role }}
+        path: ${{ steps.dir.outputs.path }}/results.json
+        if-no-files-found: warn
 
     # Evidence for post-mortem only. The captures are header-only (the
     # payload is encrypted and useless) and ring-buffered, so the upload
@@ -69,6 +164,7 @@ runs:
     - uses: actions/upload-artifact@v7
       if: always()
       with:
-        name: realnet-${{ inputs.role }}
-        path: ${{ runner.temp }}/realnet
+        name: realnet-${{ inputs.pair }}-${{ inputs.role }}
+        path: ${{ steps.dir.outputs.path }}
         retention-days: 7
+        if-no-files-found: warn

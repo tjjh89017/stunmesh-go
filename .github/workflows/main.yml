@@ -190,8 +190,13 @@ jobs:
     if: github.event_name == 'push'
     name: Build Docker container
     runs-on: ubuntu-latest
-    # e2e-required transitively covers lint/test/build/build-plugins.
-    needs: e2e-required
+    # e2e-required transitively covers lint/test/build/build-plugins. The
+    # realnet report additionally gates the publish: it is advisory on PRs
+    # (not merge-blocking), but an image should not ship from a commit whose
+    # real-NAT verdict failed outright.
+    needs:
+      - e2e-required
+      - e2e-realnet-report
     steps:
       - uses: actions/checkout@v7
       - name: Build and Push Docker
@@ -267,16 +272,20 @@ jobs:
             fi
           done
 
-  # Two-VM real-network e2e: two runners behind real cloud NAT punch a hole
-  # and hold a tunnel, then the subject proves STUN still escapes a covering
+  # Two-VM real-network e2e: for every subject OS, two runners behind real
+  # cloud NAT punch a hole and hold a tunnel; where the crash-bunker netns
+  # exists (Linux) the subject then proves STUN still escapes a covering
   # WireGuard default route. Runs beside e2e/e2e-proxy on the same gates.
+  # One pair per subject OS, each against its own fixed Linux anchor, so a
+  # failure is attributable to the subject side by construction.
   #
-  # Deliberately advisory: it is excluded from e2e-required and every job
-  # carries continue-on-error, because cloud runners give no NAT-behavior
-  # guarantee -- both sides may land in one region and connect trivially, or
-  # SNAT may behave symmetrically and traversal fails through no fault of
-  # ours. Read the verdict in the step summary; it must never block a merge.
-  # See test/e2e/realnet/.
+  # The peer cells carry continue-on-error because cloud runners give no
+  # NAT-behavior guarantee -- both sides may land in one region and connect
+  # trivially, or SNAT may behave symmetrically and traversal fails through
+  # no fault of ours. The report job is the single genuine verdict: it hard-
+  # fails only on what is ours to break (results missing, endpoint round-trip
+  # broken, canary corrupted). It stays out of e2e-required so weather never
+  # blocks a merge, but it does gate the docker publish. See test/e2e/realnet/.
   e2e-realnet-keys:
     name: E2E realnet (keys)
     runs-on: ubuntu-latest
@@ -286,76 +295,102 @@ jobs:
       - build-required
       - build-plugins-required
     outputs:
-      anchor_key: ${{ steps.gen.outputs.anchor_key }}
-      anchor_pub: ${{ steps.gen.outputs.anchor_pub }}
-      subject_key: ${{ steps.gen.outputs.subject_key }}
-      subject_pub: ${{ steps.gen.outputs.subject_pub }}
+      linux_anchor_key: ${{ steps.gen.outputs.linux_anchor_key }}
+      linux_anchor_pub: ${{ steps.gen.outputs.linux_anchor_pub }}
+      linux_subject_key: ${{ steps.gen.outputs.linux_subject_key }}
+      linux_subject_pub: ${{ steps.gen.outputs.linux_subject_pub }}
+      darwin_anchor_key: ${{ steps.gen.outputs.darwin_anchor_key }}
+      darwin_anchor_pub: ${{ steps.gen.outputs.darwin_anchor_pub }}
+      darwin_subject_key: ${{ steps.gen.outputs.darwin_subject_key }}
+      darwin_subject_pub: ${{ steps.gen.outputs.darwin_subject_pub }}
+      freebsd_anchor_key: ${{ steps.gen.outputs.freebsd_anchor_key }}
+      freebsd_anchor_pub: ${{ steps.gen.outputs.freebsd_anchor_pub }}
+      freebsd_subject_key: ${{ steps.gen.outputs.freebsd_subject_key }}
+      freebsd_subject_pub: ${{ steps.gen.outputs.freebsd_subject_pub }}
+      windows_anchor_key: ${{ steps.gen.outputs.windows_anchor_key }}
+      windows_anchor_pub: ${{ steps.gen.outputs.windows_anchor_pub }}
+      windows_subject_key: ${{ steps.gen.outputs.windows_subject_key }}
+      windows_subject_pub: ${{ steps.gen.outputs.windows_subject_pub }}
     steps:
       - name: Install wireguard-tools
         run: sudo apt-get update && sudo apt-get install -y wireguard-tools
       # The keys are ephemeral and worthless once the run ends, so passing
       # them through job outputs is intentional: it removes the cross-job
       # secret exchange entirely. Per-run public keys also namespace the
-      # storage keys, so concurrent runs cannot collide.
+      # storage keys, so neither concurrent runs nor the pairs of one run
+      # can collide.
       - name: Generate keypairs
         id: gen
         run: |
-          for role in anchor subject; do
-            key=$(wg genkey)
-            echo "${role}_key=$key" >> "$GITHUB_OUTPUT"
-            echo "${role}_pub=$(echo "$key" | wg pubkey)" >> "$GITHUB_OUTPUT"
+          for pair in linux darwin freebsd windows; do
+            for role in anchor subject; do
+              key=$(wg genkey)
+              echo "${pair}_${role}_key=$key" >> "$GITHUB_OUTPUT"
+              echo "${pair}_${role}_pub=$(echo "$key" | wg pubkey)" >> "$GITHUB_OUTPUT"
+            done
           done
 
-  # The fixed far end: always Linux, always the same split-tunnel raw-socket
-  # configuration, so a failure is attributable to the subject side (or to
-  # network weather) by construction.
+  # The fixed far end of each pair: always Linux, always the same
+  # split-tunnel raw-socket configuration. The hold and handshake windows
+  # are wider for the pairs whose subject boots slowly (brew, the FreeBSD
+  # VM, the WireGuard installer).
   e2e-realnet-anchor:
-    name: E2E realnet (anchor)
+    name: E2E realnet (anchor/${{ matrix.pair }})
     runs-on: ubuntu-latest
     continue-on-error: true
     needs: e2e-realnet-keys
-    timeout-minutes: 12
-    outputs:
-      results: ${{ steps.peer.outputs.results }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/e2e-realnet
-        id: peer
-        with:
-          role: anchor
-          go-version: ${{ env.GO_VERSION }}
-          wg-private-key: ${{ needs.e2e-realnet-keys.outputs.anchor_key }}
-          peer-public-key: ${{ needs.e2e-realnet-keys.outputs.subject_pub }}
-
-  # The side under test. Adding another subject OS means one entry here plus
-  # its per-OS branches in the scripts -- but note that matrix rows share one
-  # output namespace, so the result plumbing must move to artifacts first.
-  e2e-realnet-subject:
-    name: E2E realnet (${{ matrix.subject }})
-    runs-on: ${{ matrix.subject }}
-    continue-on-error: true
-    needs: e2e-realnet-keys
-    timeout-minutes: 12
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        subject: [ubuntu-latest]
-    outputs:
-      results: ${{ steps.peer.outputs.results }}
+        pair: [linux, darwin, freebsd, windows]
+    env:
+      ANCHOR_HOLD_SECS: ${{ matrix.pair == 'linux' && '600' || '900' }}
+      HANDSHAKE_TIMEOUT: ${{ matrix.pair == 'linux' && '300' || '780' }}
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/e2e-realnet
-        id: peer
+        with:
+          role: anchor
+          os: linux
+          pair: ${{ matrix.pair }}
+          go-version: ${{ env.GO_VERSION }}
+          wg-private-key: ${{ needs.e2e-realnet-keys.outputs[format('{0}_anchor_key', matrix.pair)] }}
+          peer-public-key: ${{ needs.e2e-realnet-keys.outputs[format('{0}_subject_pub', matrix.pair)] }}
+
+  # The side under test, one row per supported OS. freebsd runs in a VM on a
+  # Linux host, mirroring the same-host e2e.
+  e2e-realnet-subject:
+    name: E2E realnet (${{ matrix.pair }})
+    runs-on: ${{ matrix.runner }}
+    continue-on-error: true
+    needs: e2e-realnet-keys
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { pair: linux, os: linux, runner: ubuntu-latest, timeout: 12 }
+          - { pair: darwin, os: darwin, runner: macos-26, timeout: 20 }
+          - { pair: freebsd, os: freebsd, runner: ubuntu-latest, timeout: 20 }
+          - { pair: windows, os: windows, runner: windows-latest, timeout: 20 }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/e2e-realnet
         with:
           role: subject
+          os: ${{ matrix.os }}
+          pair: ${{ matrix.pair }}
           go-version: ${{ env.GO_VERSION }}
-          wg-private-key: ${{ needs.e2e-realnet-keys.outputs.subject_key }}
-          peer-public-key: ${{ needs.e2e-realnet-keys.outputs.anchor_pub }}
+          wg-private-key: ${{ needs.e2e-realnet-keys.outputs[format('{0}_subject_key', matrix.pair)] }}
+          peer-public-key: ${{ needs.e2e-realnet-keys.outputs[format('{0}_anchor_pub', matrix.pair)] }}
 
+  # The single genuine realnet verdict, over every pair's uploaded results.
+  # Matrix rows share one job-output namespace, which is why the conclusions
+  # travel as artifacts rather than outputs.
   e2e-realnet-report:
     name: E2E realnet
     runs-on: ubuntu-latest
-    continue-on-error: true
     needs:
       - e2e-realnet-anchor
       - e2e-realnet-subject
@@ -365,13 +400,14 @@ jobs:
       - uses: actions/checkout@v7
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: realnet-results-*
+          path: realnet-results
       - name: Combined verdict
         env:
-          ANCHOR_RESULTS: ${{ needs.e2e-realnet-anchor.outputs.results }}
-          SUBJECT_RESULTS: ${{ needs.e2e-realnet-subject.outputs.results }}
-          ANCHOR_JOB: ${{ needs.e2e-realnet-anchor.result }}
-          SUBJECT_JOB: ${{ needs.e2e-realnet-subject.result }}
-        run: sh test/e2e/realnet/report.sh
+          REALNET_PAIRS: linux darwin freebsd windows
+        run: sh test/e2e/realnet/report.sh realnet-results
 
   # One stable check aggregating the e2e matrix and the proxy cell, mirroring
   # the other summary gates. The ruleset requires it, so every cell must pass

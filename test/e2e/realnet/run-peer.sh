@@ -1,19 +1,19 @@
 #!/bin/sh
-# One side of the two-VM real-network e2e (Linux only). Runs stunmesh as a
-# daemon inside a crash-bunker netns (netns.sh) NAT'd to the host's real NIC,
-# and drives this role's scenario phases (phases.sh):
+# One side of the two-VM real-network e2e.
 #
-#   anchor   the boring far end: split tunnel, raw mode, unchanged for the
-#            whole run, plus the canary HTTP server and an iperf3 server;
-#            holds until ANCHOR_HOLD_SECS so the subject can finish.
-#   subject  split tunnel first, then the full-tunnel escape scenario.
+#   anchor   the fixed far end, always Linux and always the same split-tunnel
+#            raw-socket shape, plus the canary and iperf3 servers; holds until
+#            ANCHOR_HOLD_SECS so a slow subject still finds it there.
+#   subject  the side under test: the split-tunnel baseline on every platform,
+#            then the full-tunnel escape scenario where a crash bunker makes
+#            that safe (Linux only -- see device.sh).
 #
 # There is no cross-job rendezvous: endpoint exchange is stunmesh's own data
-# plane (the opendht proxies), and the daemon's refresh loop is the barrier.
+# plane (the storage plugin), and the daemon's refresh loop is the barrier.
 # Every check records a conclusion into $WORK/results.env; assert.sh turns
-# those plus the daemon log into a JSON job output. This script fails only on
+# those plus the daemon log into results.json. This script fails only on
 # infra/script errors -- the verdict belongs to report.sh, which sees both
-# sides' conclusions.
+# sides.
 #
 # Usage: run-peer.sh /path/to/stunmesh
 # Env:
@@ -23,7 +23,7 @@
 #   RESULT_DIR         logs/results directory (default: mktemp -d, kept)
 #   ENDPOINTS          opendht proxy URLs (default: dhtproxy2/3.jami.net)
 #   CANARY_BIN         prebuilt canary server (anchor; default: go build)
-#   ANCHOR_HOLD_SECS   anchor lifetime from script start (default 480)
+#   ANCHOR_HOLD_SECS   anchor lifetime from script start (default 600)
 #   HANDSHAKE_TIMEOUT  seconds to wait for the first handshake (default 300)
 set -eu
 umask 077
@@ -32,10 +32,6 @@ BIN=${1:?usage: run-peer.sh /path/to/stunmesh}
 ROLE=${ROLE:?ROLE=anchor|subject is required}
 WG_PRIVATE_KEY=${WG_PRIVATE_KEY:?}
 PEER_PUBLIC_KEY=${PEER_PUBLIC_KEY:?}
-
-[ "$(uname -s)" = Linux ] || { echo "realnet e2e supports Linux subjects only for now" >&2; exit 1; }
-if [ "$(id -u)" = 0 ]; then SUDO=''; else SUDO='sudo'; fi
-export SUDO
 
 HERE=$(CDPATH='' cd "$(dirname "$0")" && pwd)
 WORK=${RESULT_DIR:-$(mktemp -d)}
@@ -46,15 +42,18 @@ DAEMON_LOG=$WORK/daemon.log
 START_TS=$(date +%s)
 
 ENDPOINTS=${ENDPOINTS:-'https://dhtproxy2.jami.net https://dhtproxy3.jami.net'}
-# Several of these are consumed only by the sourced phases.sh.
+# Consumed by the sourced phases.sh.
 # shellcheck disable=SC2034
 DHT_HOSTS=$(for u in $ENDPOINTS; do h=${u#*://}; echo "${h%%/*}"; done)
 STUN_HOST=stun.l.google.com
 STUN_PORT=19302
 
-WG_IF=wg0
+# Consumed by the sourced device.sh and phases.sh.
+# shellcheck disable=SC2034
 WG_PORT=51820
+# shellcheck disable=SC2034
 MTU=1280
+# shellcheck disable=SC2034
 KEEPALIVE=25
 # shellcheck disable=SC2034
 FWMARK=51820
@@ -62,7 +61,7 @@ FWMARK=51820
 ESCAPE_TABLE=100
 CANARY_IP=192.0.2.1
 CANARY_PORT=8080
-ANCHOR_HOLD_SECS=${ANCHOR_HOLD_SECS:-480}
+ANCHOR_HOLD_SECS=${ANCHOR_HOLD_SECS:-600}
 HANDSHAKE_TIMEOUT=${HANDSHAKE_TIMEOUT:-300}
 
 case "$ROLE" in
@@ -74,8 +73,17 @@ esac
 log() { echo "[realnet:$ROLE] $*"; }
 rec() { echo "$1=$2" >> "$RESULTS"; log "result: $1=$2"; }
 
+. "$HERE/device.sh"
 . "$HERE/netns.sh"
 . "$HERE/phases.sh"
+
+detect_os
+# The anchor is deliberately the same boring Linux far end for every subject,
+# so a failure is attributable to the subject side by construction.
+if [ "$ROLE" = anchor ] && [ "$OS" != Linux ]; then
+	echo "the anchor role is Linux-only by design, got $OS" >&2
+	exit 1
+fi
 
 DPID=''
 TCPDUMP_PID=''
@@ -83,10 +91,11 @@ cleanup() {
 	stop_daemon 2>/dev/null || true
 	[ -n "$TCPDUMP_PID" ] && $SUDO kill "$TCPDUMP_PID" 2>/dev/null || true
 	sleep 1
-	netns_down
+	device_down
+	[ "$HAS_BUNKER" = 1 ] && netns_down
 	# tcpdump and the daemon wrote as root; hand the evidence back to the
 	# invoking user so artifact upload can read it.
-	$SUDO chown -R "$(id -u):$(id -g)" "$WORK" 2>/dev/null || true
+	[ -n "$SUDO" ] && $SUDO chown -R "$(id -u):$(id -g)" "$WORK" 2>/dev/null || true
 	log "logs kept in $WORK"
 }
 trap cleanup EXIT INT TERM
@@ -95,39 +104,38 @@ start_daemon() {
 	# $WORK belongs to the invoking user; redirecting the root process's
 	# output into it is intended.
 	# shellcheck disable=SC2024
-	$SUDO ip netns exec "$NS" "$BIN" -c "$WORK/config.yaml" >> "$DAEMON_LOG" 2>&1 &
+	ns_exec "$BIN" -c "$WORK/config.yaml" >> "$DAEMON_LOG" 2>&1 &
 	DPID=$!
 }
 stop_daemon() {
 	[ -n "$DPID" ] || return 0
-	$SUDO kill "$DPID" 2>/dev/null || true
+	# ns_exec may wrap the daemon in sudo/ip-netns; both relay the signal to
+	# the child, so killing the shell's own child suffices everywhere.
+	kill "$DPID" 2>/dev/null || $SUDO kill "$DPID" 2>/dev/null || true
 	wait "$DPID" 2>/dev/null || true
 	DPID=''
 }
 
-log "work=$WORK"
+log "OS=$OS work=$WORK"
 rec role "$ROLE"
+rec os "$OS"
 
-netns_up
-log "netns '$NS' up, MASQUERADE via $VETH_HOST"
+if [ "$HAS_BUNKER" = 1 ]; then
+	netns_up
+	log "netns '$NS' up, MASQUERADE via $VETH_HOST"
+else
+	log "no crash bunker on $OS; running on the host, full-tunnel scenario will be skipped"
+fi
 
-# WireGuard device inside the bunker, in the split-tunnel baseline shape that
-# both roles start from (the anchor never leaves it). Explicit MTU so
-# the full-MTU ping asserts a known number, explicit keepalive so the NAT
-# mapping lifetime is a pinned variable rather than an accident.
+# Explicit MTU so the full-MTU ping asserts a known number, explicit keepalive
+# so the NAT mapping lifetime is a pinned variable rather than an accident.
 KEYFILE=$WORK/wg.key
 printf '%s\n' "$WG_PRIVATE_KEY" > "$KEYFILE"
-ns_exec ip link add "$WG_IF" type wireguard
-# shellcheck disable=SC2024
-$SUDO ip netns exec "$NS" wg set "$WG_IF" private-key /dev/stdin \
-	listen-port "$WG_PORT" \
-	peer "$PEER_PUBLIC_KEY" allowed-ips "$PEER_OVERLAY/32" \
-	persistent-keepalive "$KEEPALIVE" < "$KEYFILE"
-ns_exec ip addr add "$MY_OVERLAY/24" dev "$WG_IF"
-ns_exec ip link set "$WG_IF" mtu "$MTU" up
+device_up "$KEYFILE" "$PEER_PUBLIC_KEY" "$MY_OVERLAY"
 log "$WG_IF up: $MY_OVERLAY, peer allowed-ips $PEER_OVERLAY/32"
 
-# Debug level so the escape evidence ("marking STUN socket ...") is in the log.
+# Debug level so the escape evidence ("marking STUN socket ...") and, in
+# proxy mode, the endpoint substitution line are both in the log.
 {
 	echo "log: {level: debug, format: json}"
 	echo "refresh_interval: 10s"
@@ -148,8 +156,8 @@ log "$WG_IF up: $MY_OVERLAY, peer allowed-ips $PEER_OVERLAY/32"
 	echo "        protocol: ipv4"
 } > "$WORK/config.yaml"
 
-# DHT preflight, so the report can classify failures as DHT weather vs NAT
-# weather vs our bug. Any HTTP response counts as reachable.
+# Storage preflight, so the report can tell a backend outage from network
+# weather from our bug. Any HTTP response counts as reachable.
 preflight=''
 for url in $ENDPOINTS; do
 	h=${url#*://}; h=${h%%/*}
@@ -161,17 +169,21 @@ for url in $ENDPOINTS; do
 done
 rec dht_preflight "${preflight%,}"
 
-# Size-bounded evidence: headers only (payload is encrypted anyway), 2x50MB
-# ring as the hard cap for the iperf window.
-# shellcheck disable=SC2024
-$SUDO ip netns exec "$NS" tcpdump -i any -s 160 -U -C 50 -W 2 -Z root \
-	-w "$WORK/pcap/realnet.pcap" >"$WORK/tcpdump.log" 2>&1 &
-TCPDUMP_PID=$!
+# Size-bounded evidence: headers only (the payload is encrypted and useless
+# anyway), 2x50MB ring as a hard cap for the throughput window. Linux only:
+# the '-i any' pseudo-interface exists nowhere else, and the capture is
+# post-mortem evidence, never part of any assert.
+if [ "$OS" = Linux ]; then
+	# shellcheck disable=SC2024
+	ns_exec tcpdump -i any -s 160 -U -C 50 -W 2 -Z root \
+		-w "$WORK/pcap/realnet.pcap" >"$WORK/tcpdump.log" 2>&1 &
+	TCPDUMP_PID=$!
+fi
 
 if [ "$ROLE" = anchor ]; then
-	# Off-overlay canary: static from job start, reachable only once the
-	# subject's covering route exists. Replies source from $CANARY_IP, which
-	# only the subject's covering AllowedIPs admit.
+	# Off-overlay canary: static from job start, reachable only once a
+	# subject installs a covering route. Replies source from $CANARY_IP,
+	# which only that subject's covering AllowedIPs admit.
 	if [ -z "${CANARY_BIN:-}" ]; then
 		CANARY_BIN=$WORK/canary
 		go build -o "$CANARY_BIN" "$HERE/canary"
@@ -180,8 +192,7 @@ if [ "$ROLE" = anchor ]; then
 	ns_exec ip addr add "$CANARY_IP/32" dev canary0
 	ns_exec ip link set canary0 up
 	# shellcheck disable=SC2024
-	$SUDO ip netns exec "$NS" "$CANARY_BIN" -listen "$CANARY_IP:$CANARY_PORT" \
-		>"$WORK/canary.log" 2>&1 &
+	ns_exec "$CANARY_BIN" -listen "$CANARY_IP:$CANARY_PORT" >"$WORK/canary.log" 2>&1 &
 	for _ in $(seq 1 20); do
 		grep -q CANARY_READY "$WORK/canary.log" 2>/dev/null && break
 		sleep 1
@@ -206,23 +217,30 @@ anchor)
 	;;
 subject)
 	# The full-tunnel checks are relative to the split-tunnel baseline: they
-	# run only if it handshook, so NAT weather can never masquerade as a
+	# run only if it handshook, so network weather can never masquerade as a
 	# routing or escape regression.
-	if split_tunnel_subject; then
-		full_tunnel_subject || true
-	else
+	if ! split_tunnel_subject; then
 		log "no baseline handshake; skipping the full-tunnel scenario"
 		rec fulltunnel_ran no
+		rec fulltunnel_skipped "no baseline handshake"
+	elif [ "$HAS_BUNKER" != 1 ]; then
+		# Installing a covering default route with no bunker to contain it
+		# would blackhole the runner agent itself.
+		log "no crash bunker on $OS; skipping the full-tunnel scenario"
+		rec fulltunnel_ran no
+		rec fulltunnel_skipped "no crash bunker on $OS"
+	else
+		full_tunnel_subject || true
 	fi
 	;;
 esac
 
-# Final state snapshots while the namespace still exists; peer_endpoint is the
-# report job's half of the publish->store->establish cross-equality.
+# Final snapshot while the device still exists. assert.sh turns this into the
+# peer_endpoint the report checks, accounting for proxy mode.
 ns_exec wg show "$WG_IF" > "$WORK/wg-final.log" 2>&1 || true
 ns_exec wg show "$WG_IF" dump >> "$WORK/wg-final.log" 2>&1 || true
-pe=$(ns_exec wg show "$WG_IF" endpoints | awk 'NR==1{print $2}')
-rec peer_endpoint "${pe:-"(none)"}"
+wgep=$(ns_exec wg show "$WG_IF" endpoints | awk 'NR==1{print $2}')
+rec wg_endpoint "${wgep:-(none)}"
 
 stop_daemon
 sh "$HERE/assert.sh" "$WORK"
