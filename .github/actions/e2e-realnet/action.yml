@@ -46,6 +46,15 @@ runs:
     # latest client and picks the arch itself, so a scheduled run doubles as
     # an early warning when a new WireGuard release breaks us. It hands off
     # to a child MSI process, so poll for the binary rather than trust -Wait.
+    # iperf3 via the preinstalled Chocolatey (winget is absent on the Server
+    # images): the windows subject is the only proxy-mode pair, and the
+    # sustained-stream check is the one signal that loads the relay over a
+    # real NAT -- without iperf3 phases.sh records it as skipped.
+    - name: Install iperf3 (Windows)
+      if: inputs.os == 'windows'
+      shell: pwsh
+      run: choco install iperf3 -y --no-progress
+
     - name: Install tools (Windows)
       if: inputs.os == 'windows'
       shell: pwsh
