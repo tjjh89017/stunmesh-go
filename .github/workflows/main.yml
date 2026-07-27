@@ -372,6 +372,11 @@ jobs:
     continue-on-error: true
     needs: e2e-realnet-keys
     timeout-minutes: ${{ matrix.timeout }}
+    # actions:read is the mirror of the anchor's: the subject waits for its
+    # anchor job to be running before the handshake window starts ticking.
+    permissions:
+      contents: read
+      actions: read
     strategy:
       fail-fast: false
       matrix:

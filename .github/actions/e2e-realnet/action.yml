@@ -75,6 +75,16 @@ runs:
           go build -o "$out/canary" ./test/e2e/realnet/canary
         fi
 
+    # The subject's fixed handshake window must not start ticking against an
+    # anchor that is still queued; runs on the host for every subject OS
+    # (including before the FreeBSD VM boots, which has no gh inside).
+    - name: Wait for anchor
+      if: inputs.role == 'subject'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: sh test/e2e/realnet/wait-anchor.sh "${{ inputs.pair }}"
+
     # The anchor gets a done-probe for its pair's subject job, so its hold
     # window becomes a cap rather than a fixed sleep; gh needs only
     # actions:read on the job token for that.
