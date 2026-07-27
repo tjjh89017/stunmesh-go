@@ -1,5 +1,3 @@
-//go:build windows || wgproxy
-
 // Proxy-backed STUN client (Windows data path). It never holds a socket —
 // exchanges ride StunTransport — and timeouts come from ctx plus the
 // transport's timer, never socket read deadlines.

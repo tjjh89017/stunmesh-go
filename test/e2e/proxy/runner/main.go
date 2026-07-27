@@ -1,5 +1,3 @@
-//go:build wgproxy
-
 // Command runner drives internal/wgproxy for the netns e2e harness
 // (test-only). It binds one IPv4 outer socket and one inner socket, prints
 // OUTER_PORT=/INNER_PORT= on stdout, and blocks until SIGINT/SIGTERM; SIGHUP

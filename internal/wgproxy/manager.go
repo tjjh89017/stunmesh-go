@@ -1,5 +1,3 @@
-//go:build windows || wgproxy
-
 // Process-level Manager: one memoized Proxy per WireGuard interface.
 package wgproxy
 
