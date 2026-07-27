@@ -1,0 +1,37 @@
+package routeprobe
+
+// TunnelInterfaces is a set of interface names the caller treats as
+// WireGuard tunnels. Detection is limited to these names: stunmesh only
+// knows about the devices it manages (the config's `interfaces` keys), so a
+// WireGuard interface stunmesh does not manage is never reported as
+// covering, even if it happens to install a covering default route.
+type TunnelInterfaces map[string]struct{}
+
+// Contains reports whether name is a known tunnel interface.
+func (t TunnelInterfaces) Contains(name string) bool {
+	_, ok := t[name]
+	return ok
+}
+
+// NewTunnelInterfaces builds a TunnelInterfaces set from interface names.
+func NewTunnelInterfaces(names ...string) TunnelInterfaces {
+	t := make(TunnelInterfaces, len(names))
+	for _, n := range names {
+		t[n] = struct{}{}
+	}
+	return t
+}
+
+// Probe reports whether any interface in tunnelIfaces currently installs a
+// covering default route (see package doc) for family. Detection failure
+// (e.g. the route table could not be read) is returned as an error and is
+// distinct from "no covering default found"; callers should treat an error
+// the same as false (i.e. do not assume escape is needed) while logging it.
+func Probe(family Family, tunnelIfaces TunnelInterfaces) (bool, error) {
+	routes, err := currentRoutes(family)
+	if err != nil {
+		return false, err
+	}
+
+	return HasCoveringDefault(routes, family, tunnelIfaces.Contains), nil
+}
