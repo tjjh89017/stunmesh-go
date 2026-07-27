@@ -185,13 +185,16 @@ done
 rec dht_preflight "${preflight%,}"
 
 # Size-bounded evidence: headers only (the payload is encrypted and useless
-# anyway), 2x50MB ring as a hard cap for the throughput window. Linux only:
-# the '-i any' pseudo-interface exists nowhere else, and the capture is
-# post-mortem evidence, never part of any assert.
+# anyway), and the decrypted inner iperf stream is excluded -- its verdict
+# lives in the iperf log and transfer counters, and letting it flood the
+# ring would rotate away the split-phase handshake/STUN packets, the only
+# part of the capture with diagnostic value. 2x10MB ring as the hard cap.
+# Linux only: the '-i any' pseudo-interface exists nowhere else, and the
+# capture is post-mortem evidence, never part of any assert.
 if [ "$OS" = Linux ]; then
 	# shellcheck disable=SC2024
-	ns_exec tcpdump -i any -s 160 -U -C 50 -W 2 -Z root \
-		-w "$WORK/pcap/realnet.pcap" >"$WORK/tcpdump.log" 2>&1 &
+	ns_exec tcpdump -i any -s 160 -U -C 10 -W 2 -Z root \
+		-w "$WORK/pcap/realnet.pcap" 'not tcp port 5201' >"$WORK/tcpdump.log" 2>&1 &
 	TCPDUMP_PID=$!
 fi
 
