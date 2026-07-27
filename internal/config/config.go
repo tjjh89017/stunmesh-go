@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -271,6 +272,13 @@ func Load() (*Config, error) {
 
 // validateConfig validates protocol configurations and returns error if invalid
 func validateConfig(cfg *Config) error {
+	return validateConfigForGOOS(cfg, runtime.GOOS)
+}
+
+// validateConfigForGOOS is validateConfig with goos taken as a parameter so
+// the windows-only proxy.enabled rule is unit-testable from any platform.
+// validateConfig (the real entry point) always calls it with runtime.GOOS.
+func validateConfigForGOOS(cfg *Config, goos string) error {
 	// Empty means unset, as it does for the protocol fields below; Load has
 	// already replaced it with the default on the path that reads a file.
 	if cfg.Log.Format != "" && !slices.Contains(LogFormats, cfg.Log.Format) {
@@ -289,6 +297,11 @@ func validateConfig(cfg *Config) error {
 		// 0 means unset (ephemeral); reject anything outside the port range.
 		if iface.Proxy.Listen < 0 || iface.Proxy.Listen > 65535 {
 			return errors.New("invalid proxy listen port " + strconv.Itoa(iface.Proxy.Listen) + " for interface '" + ifaceName + "', must be between 1 and 65535")
+		}
+
+		// Windows has no non-proxy mode; an explicit opt-out can't be honored.
+		if goos == "windows" && iface.Proxy.Enabled != nil && !*iface.Proxy.Enabled {
+			return errors.New("invalid proxy.enabled 'false' for interface '" + ifaceName + "': Windows has no non-proxy mode")
 		}
 
 		// Validate interface protocol

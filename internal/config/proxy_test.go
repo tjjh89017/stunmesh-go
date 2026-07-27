@@ -133,6 +133,164 @@ interfaces:
 	}
 }
 
+func TestProxy_IsEnabled_Absent(t *testing.T) {
+	tests := []struct {
+		goos string
+		want bool
+	}{
+		{"windows", true},
+		{"linux", false},
+		{"darwin", false},
+		{"freebsd", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.goos, func(t *testing.T) {
+			p := Proxy{}
+			if got := p.IsEnabled(tt.goos); got != tt.want {
+				t.Errorf("IsEnabled(%q) = %v, want %v", tt.goos, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestProxy_IsEnabled_Explicit(t *testing.T) {
+	trueVal := true
+	falseVal := false
+
+	tests := []struct {
+		name    string
+		enabled *bool
+		goos    string
+		want    bool
+	}{
+		{"explicit true on windows", &trueVal, "windows", true},
+		{"explicit true on linux", &trueVal, "linux", true},
+		{"explicit false on linux", &falseVal, "linux", false},
+		{"explicit false on darwin", &falseVal, "darwin", false},
+		{"explicit false on windows still reports false (validation catches this)", &falseVal, "windows", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := Proxy{Enabled: tt.enabled}
+			if got := p.IsEnabled(tt.goos); got != tt.want {
+				t.Errorf("IsEnabled(%q) = %v, want %v", tt.goos, got, tt.want)
+			}
+		})
+	}
+}
+
+// A lone proxy.listen must not flip proxy mode on.
+func TestProxy_IsEnabled_ListenAloneDoesNotEnable(t *testing.T) {
+	p := Proxy{Listen: 51999}
+	if got := p.IsEnabled("linux"); got != false {
+		t.Errorf("IsEnabled(linux) = %v, want false (listen alone must not enable proxy)", got)
+	}
+}
+
+func TestLoad_ProxyEnabled_Present(t *testing.T) {
+	tests := []struct {
+		name string
+		yaml string
+		want bool
+	}{
+		{"true", "true", true},
+		{"false", "false", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := loadConfigFromYAML(t, `
+interfaces:
+  wg0:
+    protocol: ipv4
+    proxy:
+      enabled: `+tt.yaml+`
+    peers: {}
+`)
+
+			enabled := cfg.Interfaces["wg0"].Proxy.Enabled
+			if enabled == nil {
+				t.Fatal("Proxy.Enabled = nil, want non-nil after explicit config")
+			}
+			if *enabled != tt.want {
+				t.Errorf("Proxy.Enabled = %v, want %v", *enabled, tt.want)
+			}
+		})
+	}
+}
+
+// Absent proxy.enabled must decode to nil, not false, so IsEnabled can tell
+// "unset" from "explicitly disabled".
+func TestLoad_ProxyEnabled_Absent(t *testing.T) {
+	cfg := loadConfigFromYAML(t, `
+interfaces:
+  wg0:
+    protocol: ipv4
+    proxy:
+      listen: 51999
+    peers: {}
+`)
+
+	if got := cfg.Interfaces["wg0"].Proxy.Enabled; got != nil {
+		t.Errorf("Proxy.Enabled = %v, want nil (key absent)", *got)
+	}
+}
+
+func TestGetProxyEnabled_UnknownDevice(t *testing.T) {
+	cfg := loadConfigFromYAML(t, `
+interfaces:
+  wg0:
+    protocol: ipv4
+    peers: {}
+`)
+
+	dc := NewDeviceConfig(cfg)
+	if got := dc.GetProxyEnabled("does-not-exist", "windows"); got != true {
+		t.Errorf("GetProxyEnabled(unknown, windows) = %v, want true (platform default)", got)
+	}
+	if got := dc.GetProxyEnabled("does-not-exist", "linux"); got != false {
+		t.Errorf("GetProxyEnabled(unknown, linux) = %v, want false (platform default)", got)
+	}
+}
+
+func TestValidateConfig_ProxyEnabled_WindowsFalseIsError(t *testing.T) {
+	falseVal := false
+	trueVal := true
+
+	tests := []struct {
+		name    string
+		goos    string
+		enabled *bool
+		wantErr bool
+	}{
+		{"windows explicit false errors", "windows", &falseVal, true},
+		{"windows explicit true ok", "windows", &trueVal, false},
+		{"windows absent ok", "windows", nil, false},
+		{"linux explicit false ok", "linux", &falseVal, false},
+		{"linux explicit true ok", "linux", &trueVal, false},
+		{"linux absent ok", "linux", nil, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{
+				Interfaces: Interfaces{
+					"wg0": Interface{
+						Proxy: Proxy{Enabled: tt.enabled},
+					},
+				},
+			}
+
+			err := validateConfigForGOOS(cfg, tt.goos)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateConfigForGOOS(goos=%s) error = %v, wantErr %v", tt.goos, err, tt.wantErr)
+			}
+		})
+	}
+}
+
 // --- testdata fixtures ---
 
 func TestLoad_Testdata_ProxyListen(t *testing.T) {
