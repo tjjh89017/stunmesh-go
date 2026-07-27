@@ -101,18 +101,33 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 start_daemon() {
+	# Backgrounded as a simple command on purpose: backgrounding the ns_exec
+	# *function* would fork a subshell that does not forward SIGTERM, so
+	# stop_daemon would kill the subshell and orphan the daemon -- exactly
+	# the double-daemon bug this replaces. As a simple command the shell's
+	# child is sudo (or the binary itself), and sudo does relay signals.
 	# $WORK belongs to the invoking user; redirecting the root process's
 	# output into it is intended.
 	# shellcheck disable=SC2024
-	ns_exec "$BIN" -c "$WORK/config.yaml" >> "$DAEMON_LOG" 2>&1 &
+	if [ "$HAS_BUNKER" = 1 ]; then
+		$SUDO ip netns exec "$NS" "$BIN" -c "$WORK/config.yaml" >> "$DAEMON_LOG" 2>&1 &
+	elif [ "$OS" = Windows ]; then
+		"$BIN" -c "$WORK/config.yaml" >> "$DAEMON_LOG" 2>&1 &
+	else
+		# shellcheck disable=SC2024
+		$SUDO "$BIN" -c "$WORK/config.yaml" >> "$DAEMON_LOG" 2>&1 &
+	fi
 	DPID=$!
 }
 stop_daemon() {
 	[ -n "$DPID" ] || return 0
-	# ns_exec may wrap the daemon in sudo/ip-netns; both relay the signal to
-	# the child, so killing the shell's own child suffices everywhere.
 	kill "$DPID" 2>/dev/null || $SUDO kill "$DPID" 2>/dev/null || true
 	wait "$DPID" 2>/dev/null || true
+	# Belt and suspenders against any orphaned daemon: the config path is
+	# unique to this run, so the pattern cannot match anything else.
+	if command -v pkill >/dev/null 2>&1; then
+		$SUDO pkill -f "$WORK/config.yaml" 2>/dev/null || true
+	fi
 	DPID=''
 }
 
