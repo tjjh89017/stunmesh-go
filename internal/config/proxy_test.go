@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"runtime"
 	"testing"
 )
 
@@ -285,6 +286,10 @@ func TestProxy_IsEnabled_ListenAloneDoesNotEnable(t *testing.T) {
 	}
 }
 
+// On windows, explicit proxy.enabled: false is a validateConfig error (see
+// TestValidateConfig_ProxyEnabled_WindowsFalseIsError), so Load() itself is
+// platform-dependent for that case; assert accordingly instead of assuming
+// success everywhere.
 func TestLoad_ProxyEnabled_Present(t *testing.T) {
 	tests := []struct {
 		name string
@@ -297,14 +302,25 @@ func TestLoad_ProxyEnabled_Present(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := loadConfigFromYAML(t, `
+			yaml := `
 interfaces:
   wg0:
     protocol: ipv4
     proxy:
-      enabled: `+tt.yaml+`
+      enabled: ` + tt.yaml + `
     peers: {}
-`)
+`
+
+			if !tt.want && runtime.GOOS == "windows" {
+				writeWeakTypingConfig(t, yaml)
+
+				if _, err := Load(); err == nil {
+					t.Fatal("Load() with proxy.enabled false on windows should return an error")
+				}
+				return
+			}
+
+			cfg := loadConfigFromYAML(t, yaml)
 
 			enabled := cfg.Interfaces["wg0"].Proxy.Enabled
 			if enabled == nil {
