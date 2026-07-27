@@ -42,6 +42,13 @@ type Proxy struct {
 	// not bool, so "absent" (use platform default) is distinguishable from
 	// an explicit "false" (e.g. temporarily disabling while keeping Listen).
 	Enabled *bool `mapstructure:"enabled"`
+	// Fib is the freebsd-only escape mechanism's FIB (routing table) number:
+	// the operator provisions a second FIB (net.fibs>1) holding the physical
+	// default route, and 0 (the default) means "not configured" -- the
+	// escape is a no-op, which is also correct since FIB 0 is where the
+	// covering WireGuard default route already lives. Only fib > 0 activates
+	// the escape. Ignored on every other platform.
+	Fib int `mapstructure:"fib"`
 }
 
 // IsEnabled resolves proxy mode for goos (pass runtime.GOOS at call sites,
@@ -120,6 +127,16 @@ func (c *DeviceConfig) GetProxyListenPort(deviceName string) uint16 {
 		return 0
 	}
 	return uint16(device.Proxy.Listen)
+}
+
+// GetProxyFib returns the proxy.fib override for deviceName; 0 means "not
+// configured" (escape disabled, or platform where fib is not applicable).
+func (c *DeviceConfig) GetProxyFib(deviceName string) int {
+	device, ok := c.interfaces[deviceName]
+	if !ok {
+		return 0
+	}
+	return device.Proxy.Fib
 }
 
 // GetProxyEnabled resolves whether proxy mode is on for deviceName on goos
