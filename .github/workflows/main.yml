@@ -190,13 +190,9 @@ jobs:
     if: github.event_name == 'push'
     name: Build Docker container
     runs-on: ubuntu-latest
-    # e2e-required transitively covers lint/test/build/build-plugins. The
-    # realnet report additionally gates the publish: it is advisory on PRs
-    # (not merge-blocking), but an image should not ship from a commit whose
-    # real-NAT verdict failed outright.
-    needs:
-      - e2e-required
-      - e2e-realnet-report
+    # e2e-required transitively covers lint/test/build/build-plugins and the
+    # realnet report.
+    needs: e2e-required
     steps:
       - uses: actions/checkout@v7
       - name: Build and Push Docker
@@ -284,8 +280,8 @@ jobs:
   # trivially, or SNAT may behave symmetrically and traversal fails through
   # no fault of ours. The report job is the single genuine verdict: it hard-
   # fails only on what is ours to break (results missing, endpoint round-trip
-  # broken, canary corrupted). It stays out of e2e-required so weather never
-  # blocks a merge, but it does gate the docker publish. See test/e2e/realnet/.
+  # broken, canary corrupted), and it feeds e2e-required like every other
+  # e2e cell. See test/e2e/realnet/.
   e2e-realnet-keys:
     name: E2E realnet (keys)
     runs-on: ubuntu-latest
@@ -424,18 +420,21 @@ jobs:
           REALNET_PAIRS: linux darwin freebsd windows
         run: sh test/e2e/realnet/report.sh realnet-results
 
-  # One stable check aggregating the e2e matrix and the proxy cell, mirroring
-  # the other summary gates. The ruleset requires it, so every cell must pass
-  # to merge. The realnet jobs are deliberately absent: they are advisory.
+  # One stable check aggregating the e2e matrix, the proxy cell and the
+  # realnet verdict, mirroring the other summary gates. The ruleset requires
+  # it, so every cell must pass to merge. The realnet peer cells stay
+  # advisory individually; their report job is what carries the verdict here.
   e2e-required:
     name: E2E
     runs-on: ubuntu-latest
     needs:
       - e2e
       - e2e-proxy
+      - e2e-realnet-report
     if: always()
     steps:
       - name: All e2e platforms passed
         run: |
           [ "${{ needs.e2e.result }}" = "success" ] && \
-            [ "${{ needs.e2e-proxy.result }}" = "success" ]
+            [ "${{ needs.e2e-proxy.result }}" = "success" ] && \
+            [ "${{ needs.e2e-realnet-report.result }}" = "success" ]
