@@ -109,6 +109,14 @@ port-based firewall.
 > [!NOTE]
 > ICMP ping monitoring is not implemented on Windows yet; stunmesh-go logs this and continues without it.
 
+### Full tunnel / restricted environments
+
+Linux, macOS, and FreeBSD can opt into the same UDP proxy Windows always uses by setting
+`interfaces.<name>.proxy.enabled: true` (default `false` on these platforms). This is required for
+full-tunnel setups on macOS and FreeBSD, and optional on Linux for restricted environments that lack
+`CAP_NET_RAW`. See [docs.stunmesh.dev](https://docs.stunmesh.dev/configuration/proxy) for the full-tunnel
+guide per platform.
+
 ## Documentation
 
 | Topic | Link |
