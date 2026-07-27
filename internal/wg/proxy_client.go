@@ -6,6 +6,7 @@ import (
 	"net/netip"
 
 	"github.com/rs/zerolog"
+	"github.com/tjjh89017/stunmesh-go/internal/routeprobe"
 	"github.com/tjjh89017/stunmesh-go/internal/wgproxy"
 )
 
@@ -14,6 +15,9 @@ import (
 type ProxyConfig interface {
 	GetInterfaceProtocol(deviceName string) string
 	GetProxyListenPort(deviceName string) uint16
+	// TunnelInterfaceNames returns every configured WireGuard interface name,
+	// used to scope the tunnel-escape route probe to devices stunmesh manages.
+	TunnelInterfaceNames() []string
 }
 
 // proxyClient decorates a Client so every device is fronted by a wgproxy
@@ -42,7 +46,8 @@ func (c *proxyClient) Device(name string) (*DeviceInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	proxy, err := c.ensureProxy(name)
+	tunnelIfaces := routeprobe.NewTunnelInterfaces(c.config.TunnelInterfaceNames()...)
+	proxy, err := c.ensureProxy(name, wgproxy.WithEscape(info.FirewallMark, tunnelIfaces))
 	if err != nil {
 		return nil, err
 	}
@@ -89,8 +94,8 @@ func (c *proxyClient) Close() error {
 	return errors.Join(c.inner.Close(), c.manager.Close())
 }
 
-func (c *proxyClient) ensureProxy(deviceName string) (*wgproxy.Proxy, error) {
-	return c.manager.For(deviceName, c.families(deviceName))
+func (c *proxyClient) ensureProxy(deviceName string, opts ...wgproxy.Option) (*wgproxy.Proxy, error) {
+	return c.manager.For(deviceName, c.families(deviceName), opts...)
 }
 
 func (c *proxyClient) families(deviceName string) map[wgproxy.Family]uint16 {

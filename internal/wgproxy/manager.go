@@ -33,9 +33,10 @@ func NewManager(logger *zerolog.Logger) *Manager {
 }
 
 // For returns the device's proxy, creating it on the first call; later calls
-// ignore families — sockets are bound exactly once, ports never change. After
-// Close it errors: a freshly-bound proxy would silently rotate published ports.
-func (m *Manager) For(deviceName string, families map[Family]uint16) (*Proxy, error) {
+// ignore families and opts — sockets are bound exactly once, ports never
+// change, and escape configuration is fixed at creation. After Close it
+// errors: a freshly-bound proxy would silently rotate published ports.
+func (m *Manager) For(deviceName string, families map[Family]uint16, opts ...Option) (*Proxy, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.closed {
@@ -44,7 +45,7 @@ func (m *Manager) For(deviceName string, families map[Family]uint16) (*Proxy, er
 	if p, ok := m.proxies[deviceName]; ok {
 		return p, nil
 	}
-	p, err := New(&m.logger, families)
+	p, err := New(&m.logger, families, opts...)
 	if err != nil {
 		return nil, err
 	}

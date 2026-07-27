@@ -112,10 +112,15 @@ type Proxy struct {
 }
 
 // New binds one outer socket per requested family (port 0 = ephemeral) and
-// starts its receive loop.
-func New(logger *zerolog.Logger, families map[Family]uint16) (*Proxy, error) {
+// starts its receive loop. opts (see WithEscape) configure the per-OS
+// tunnel-escape hook applied to each outer socket at creation.
+func New(logger *zerolog.Logger, families map[Family]uint16, opts ...Option) (*Proxy, error) {
 	if len(families) == 0 {
 		return nil, ErrNoFamilies
+	}
+	var eo escapeOptions
+	for _, opt := range opts {
+		opt(&eo)
 	}
 	p := &Proxy{
 		logger:          logger.With().Str("component", "wgproxy.proxy").Logger(),
@@ -135,6 +140,7 @@ func New(logger *zerolog.Logger, families map[Family]uint16) (*Proxy, error) {
 			p.closeSockets()
 			return nil, fmt.Errorf("wgproxy: bind %s outer socket: %w", fam, err)
 		}
+		escapeOuterSocket(conn, fam, eo, p.logger)
 		local := conn.LocalAddr().(*net.UDPAddr)
 		p.outer[fam] = &outerSocket{conn: conn, port: uint16(local.Port)}
 		p.logger.Info().Stringer("family", fam).Int("port", local.Port).Msg("outer socket bound")

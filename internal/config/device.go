@@ -133,6 +133,17 @@ func (c *DeviceConfig) GetProxyEnabled(deviceName string, goos string) bool {
 	return device.Proxy.IsEnabled(goos)
 }
 
+// TunnelInterfaceNames returns the names of every configured WireGuard
+// interface — the set wgproxy's tunnel-escape probe treats as "a stunmesh-
+// managed tunnel" (see routeprobe.TunnelInterfaces).
+func (c *DeviceConfig) TunnelInterfaceNames() []string {
+	names := make([]string, 0, len(c.interfaces))
+	for name := range c.interfaces {
+		names = append(names, name)
+	}
+	return names
+}
+
 func (c *DeviceConfig) GetConfigPeers(ctx context.Context, deviceName string, localPublicKey []byte) ([]*entity.Peer, error) {
 	device, ok := c.interfaces[deviceName]
 	if !ok {
