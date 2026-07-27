@@ -1,10 +1,8 @@
-//go:build wgproxy
-
 // Package proxy is the netns e2e harness for internal/wgproxy: two namespaces
 // on a veth pair, kernel WireGuard both sides, the relay fronting side A.
 // Run with:
 //
-//	sudo env STUNMESH_E2E_PROXY=1 go test -tags wgproxy ./test/e2e/proxy -v
+//	sudo env STUNMESH_E2E_PROXY=1 go test ./test/e2e/proxy -v
 package proxy
 
 import (

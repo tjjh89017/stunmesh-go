@@ -1,5 +1,3 @@
-//go:build windows || wgproxy
-
 // Socket relay: one Proxy per WireGuard interface, owning the per-family
 // outer sockets and per-peer inner loopback sockets (classification lives in
 // demux.go). Port lifetime invariant: every socket is bound exactly once and

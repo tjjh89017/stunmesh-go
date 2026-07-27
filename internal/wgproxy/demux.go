@@ -1,5 +1,3 @@
-//go:build windows || wgproxy
-
 // Package wgproxy is the UDP proxy fronting a WireGuard interface on
 // platforms without raw-socket port sharing (Windows). This file holds the
 // packet classifier and STUN transaction registry; the relay is in proxy.go.

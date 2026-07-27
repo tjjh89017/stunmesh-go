@@ -1,5 +1,3 @@
-//go:build windows || wgproxy
-
 package wgproxy_test
 
 import (
