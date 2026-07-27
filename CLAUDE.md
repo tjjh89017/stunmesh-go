@@ -464,6 +464,20 @@ done
   - `build` job: Builds main binary for all OS/arch combinations
   - `build-plugins` job: Builds all contrib plugins (runs in parallel with `build`)
   - Both depend on `lint` and `test` jobs
+  - Three e2e layers behind the build gates, aggregated by `e2e-required`
+    (the only e2e check branch protection needs):
+    - `e2e`: same-host two-interface test per OS/arch (`test/e2e/`), runs the
+      build-stage artifact
+    - `e2e-proxy`: deterministic netns test of the wgproxy relay
+      (`test/e2e/proxy/`), merge-gating, no internet dependency
+    - `e2e-realnet-*`: two-VM real-NAT smoke layer (`test/e2e/realnet/`) —
+      one anchor/subject pair per subject OS (anchors are always Linux), keys
+      job → peer jobs → report job. Peer cells are `continue-on-error`
+      (advisory); only the report job's verdict counts, and it hard-fails
+      solely on what is ours to break (results missing, endpoint round-trip,
+      canary integrity) — handshake/traffic checks are recorded burn-in data.
+      The full-tunnel escape scenario runs only on the Linux subject (the
+      netns crash bunker exists nowhere else)
 
 - **release.yml**: Release binaries on tag push
   - `release` job: Releases main binary
