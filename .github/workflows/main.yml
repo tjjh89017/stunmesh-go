@@ -267,9 +267,115 @@ jobs:
             fi
           done
 
+  # Two-VM real-network e2e: two runners behind real cloud NAT punch a hole
+  # and hold a tunnel, then the subject proves STUN still escapes a covering
+  # WireGuard default route. Runs beside e2e/e2e-proxy on the same gates.
+  #
+  # Deliberately advisory: it is excluded from e2e-required and every job
+  # carries continue-on-error, because cloud runners give no NAT-behavior
+  # guarantee -- both sides may land in one region and connect trivially, or
+  # SNAT may behave symmetrically and traversal fails through no fault of
+  # ours. Read the verdict in the step summary; it must never block a merge.
+  # See test/e2e/realnet/.
+  e2e-realnet-keys:
+    name: E2E realnet (keys)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 5
+    needs:
+      - build-required
+      - build-plugins-required
+    outputs:
+      anchor_key: ${{ steps.gen.outputs.anchor_key }}
+      anchor_pub: ${{ steps.gen.outputs.anchor_pub }}
+      subject_key: ${{ steps.gen.outputs.subject_key }}
+      subject_pub: ${{ steps.gen.outputs.subject_pub }}
+    steps:
+      - name: Install wireguard-tools
+        run: sudo apt-get update && sudo apt-get install -y wireguard-tools
+      # The keys are ephemeral and worthless once the run ends, so passing
+      # them through job outputs is intentional: it removes the cross-job
+      # secret exchange entirely. Per-run public keys also namespace the
+      # storage keys, so concurrent runs cannot collide.
+      - name: Generate keypairs
+        id: gen
+        run: |
+          for role in anchor subject; do
+            key=$(wg genkey)
+            echo "${role}_key=$key" >> "$GITHUB_OUTPUT"
+            echo "${role}_pub=$(echo "$key" | wg pubkey)" >> "$GITHUB_OUTPUT"
+          done
+
+  # The fixed far end: always Linux, always the same split-tunnel raw-socket
+  # configuration, so a failure is attributable to the subject side (or to
+  # network weather) by construction.
+  e2e-realnet-anchor:
+    name: E2E realnet (anchor)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    needs: e2e-realnet-keys
+    timeout-minutes: 12
+    outputs:
+      results: ${{ steps.peer.outputs.results }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/e2e-realnet
+        id: peer
+        with:
+          role: anchor
+          go-version: ${{ env.GO_VERSION }}
+          wg-private-key: ${{ needs.e2e-realnet-keys.outputs.anchor_key }}
+          peer-public-key: ${{ needs.e2e-realnet-keys.outputs.subject_pub }}
+
+  # The side under test. Adding another subject OS means one entry here plus
+  # its per-OS branches in the scripts -- but note that matrix rows share one
+  # output namespace, so the result plumbing must move to artifacts first.
+  e2e-realnet-subject:
+    name: E2E realnet (${{ matrix.subject }})
+    runs-on: ${{ matrix.subject }}
+    continue-on-error: true
+    needs: e2e-realnet-keys
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        subject: [ubuntu-latest]
+    outputs:
+      results: ${{ steps.peer.outputs.results }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/e2e-realnet
+        id: peer
+        with:
+          role: subject
+          go-version: ${{ env.GO_VERSION }}
+          wg-private-key: ${{ needs.e2e-realnet-keys.outputs.subject_key }}
+          peer-public-key: ${{ needs.e2e-realnet-keys.outputs.anchor_pub }}
+
+  e2e-realnet-report:
+    name: E2E realnet
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    needs:
+      - e2e-realnet-anchor
+      - e2e-realnet-subject
+    if: always()
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Combined verdict
+        env:
+          ANCHOR_RESULTS: ${{ needs.e2e-realnet-anchor.outputs.results }}
+          SUBJECT_RESULTS: ${{ needs.e2e-realnet-subject.outputs.results }}
+          ANCHOR_JOB: ${{ needs.e2e-realnet-anchor.result }}
+          SUBJECT_JOB: ${{ needs.e2e-realnet-subject.result }}
+        run: sh test/e2e/realnet/report.sh
+
   # One stable check aggregating the e2e matrix and the proxy cell, mirroring
   # the other summary gates. The ruleset requires it, so every cell must pass
-  # to merge.
+  # to merge. The realnet jobs are deliberately absent: they are advisory.
   e2e-required:
     name: E2E
     runs-on: ubuntu-latest
