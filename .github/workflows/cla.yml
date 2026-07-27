@@ -1,0 +1,31 @@
+name: CLA
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_target:
+    types: [opened, closed, synchronize]
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+  statuses: write
+
+jobs:
+  cla-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: CLA assistant
+        if: (github.event.comment.body == 'recheck' || github.event.comment.body == 'I have read the stunmesh Individual Contributor License Agreement v1.0 and I agree to it for all my past and future contributions to the Project.') || github.event_name == 'pull_request_target'
+        uses: contributor-assistant/github-action@v2.6.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          path-to-signatures: signatures/v1.0/cla.json
+          path-to-document: https://github.com/tjjh89017/stunmesh-go/blob/main/CLA.md
+          branch: cla-signatures
+          allowlist: tjjh89017,dependabot[bot],*[bot]
+          custom-pr-sign-comment: I have read the stunmesh Individual Contributor License Agreement v1.0 and I agree to it for all my past and future contributions to the Project.
+          custom-notsigned-prcomment: Thank you for your contribution! Before it can be merged, please sign the [stunmesh Individual Contributor License Agreement v1.0](https://github.com/tjjh89017/stunmesh-go/blob/main/CLA.md) by posting the comment below. The DCO `Signed-off-by` line on commits is still required and is separate from this agreement.
+          lock-pullrequest-aftermerge: false
