@@ -3,6 +3,7 @@
 package routeprobe
 
 import (
+	"net"
 	"net/netip"
 	"testing"
 	"unsafe"
@@ -115,5 +116,50 @@ func TestForwardPrefix(t *testing.T) {
 				t.Errorf("forwardPrefix() = %v, want %v", prefix, tt.wantPrefix)
 			}
 		})
+	}
+}
+
+func TestRoutesFromRows(t *testing.T) {
+	ifaces, err := net.Interfaces()
+	if err != nil || len(ifaces) == 0 {
+		t.Skip("no interfaces available to resolve against")
+	}
+	iface := ifaces[0]
+
+	const missingIndex = 1 << 30 // well past any real interface count
+
+	v4 := netip.MustParseAddr("10.0.0.0")
+
+	rows := []windows.MibIpForwardRow2{
+		// Wrong family for the requested probe is skipped.
+		{
+			InterfaceIndex:    uint32(iface.Index),
+			DestinationPrefix: prefix6([16]byte{}, 0),
+		},
+		// Interface index that no longer resolves is skipped.
+		{
+			InterfaceIndex:    missingIndex,
+			DestinationPrefix: prefix4([4]byte{0, 0, 0, 0}, 0),
+		},
+		// A valid v4 route resolving to a real interface.
+		{
+			InterfaceIndex:    uint32(iface.Index),
+			DestinationPrefix: prefix4(v4.As4(), 8),
+		},
+	}
+
+	got := routesFromRows(rows, IPv4)
+
+	want := []Route{
+		{Prefix: netip.PrefixFrom(v4, 8), Interface: iface.Name, Index: iface.Index},
+	}
+
+	if len(got) != len(want) {
+		t.Fatalf("routesFromRows() = %+v, want %+v", got, want)
+	}
+	for i, r := range got {
+		if r != want[i] {
+			t.Errorf("routesFromRows()[%d] = %+v, want %+v", i, r, want[i])
+		}
 	}
 }
