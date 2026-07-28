@@ -44,10 +44,13 @@ type peerConfig struct {
 }
 
 type pluginDef struct {
-	Instance string            `json:"instance"`
-	Type     string            `json:"type"`
-	Name     string            `json:"name"`
-	Config   map[string]string `json:"config"`
+	Instance string `json:"instance"`
+	Type     string `json:"type"`
+	Name     string `json:"name"`
+	// Values are free-form like the desktop YAML config: a plugin key may
+	// hold a string, a list (opendht's "endpoints"), or a number. The
+	// plugins' own config helpers deal with the types.
+	Config map[string]any `json:"config"`
 }
 
 type stunConfig struct {
