@@ -1,0 +1,20 @@
+name: 'Build Android AAR'
+description: 'Build stunmesh.aar from the mobile/ package with gomobile'
+runs:
+  using: composite
+  steps:
+    - name: Install gomobile
+      shell: bash
+      run: |
+        go install golang.org/x/mobile/cmd/gomobile@latest
+        gomobile init
+
+    - name: Build AAR
+      shell: bash
+      # max-page-size keeps the .so loadable on Android 15 16KB-page devices.
+      run: |
+        export ANDROID_NDK_HOME="${ANDROID_NDK_LATEST_HOME}"
+        gomobile bind -target=android -androidapi 26 -tags builtin_all \
+          -ldflags "-s -w -extldflags=-Wl,-z,max-page-size=16384" \
+          -o stunmesh.aar ./mobile
+        ls -lh stunmesh.aar
