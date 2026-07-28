@@ -25,6 +25,7 @@ type Node struct {
 	dev     *device.Device
 	bind    *mobilebind.Bind
 	tunDev  *swappableTun
+	ctrl    *controller
 	running bool
 }
 
@@ -90,31 +91,51 @@ func (n *Node) Start() error {
 		return fail(fmt.Errorf("device up: %w", err))
 	}
 
+	ctrl, err := newController(n, bind)
+	if err != nil {
+		dev.Close()
+		return fail(fmt.Errorf("controller: %w", err))
+	}
+
 	n.dev = dev
 	n.bind = bind
 	n.tunDev = tunDev
+	n.ctrl = ctrl
 	n.running = true
 	n.listener.OnLog("info", "wireguard device up")
 	n.listener.OnStateChanged(StateUp)
 
-	// TODO: start the STUNMESH controllers (bootstrap, publish, establish,
-	// refresh) on top of bind.Registry() and SetPeerEndpoint.
+	ctrl.start()
 	return nil
 }
 
-// Stop tears down the device and sockets. Idempotent.
+// Stop tears down the controller, device and sockets. Idempotent.
 func (n *Node) Stop() {
+	// The controller must stop outside the node mutex: a running cycle may
+	// be blocked in SetPeerEndpoint waiting for it.
 	n.mu.Lock()
-	defer n.mu.Unlock()
 	if !n.running {
+		n.mu.Unlock()
 		return
 	}
+	ctrl := n.ctrl
+	n.ctrl = nil
+	n.mu.Unlock()
+
 	n.listener.OnStateChanged(StateStopping)
-	n.dev.Close() // closes the bind and the tun fd
+	if ctrl != nil {
+		ctrl.stop()
+	}
+
+	n.mu.Lock()
+	if n.dev != nil {
+		n.dev.Close() // closes the bind and the tun fd
+	}
 	n.dev = nil
 	n.bind = nil
 	n.tunDev = nil
 	n.running = false
+	n.mu.Unlock()
 	n.listener.OnStateChanged(StateDown)
 }
 

@@ -95,6 +95,20 @@ func parseConfig(configJSON string) (*Config, error) {
 	return &cfg, nil
 }
 
+// keyToBytes decodes a base64 WG key into its 32-byte form.
+func keyToBytes(b64 string) ([32]byte, error) {
+	var out [32]byte
+	raw, err := base64.StdEncoding.DecodeString(b64)
+	if err != nil {
+		return out, fmt.Errorf("invalid base64: %w", err)
+	}
+	if len(raw) != 32 {
+		return out, fmt.Errorf("key must be 32 bytes, got %d", len(raw))
+	}
+	copy(out[:], raw)
+	return out, nil
+}
+
 // keyToHex converts a base64 WG key to the hex form UAPI wants.
 func keyToHex(b64 string) (string, error) {
 	raw, err := base64.StdEncoding.DecodeString(b64)
