@@ -200,7 +200,7 @@ jobs:
       # mobile/ and internal/mobilebind are excluded from every default build
       # by the mobile tag, so the Test job above never compiles them.
       - name: Test
-        run: go test -tags mobile ./internal/mobilebind/... ./mobile/...
+        run: make mobile-test
 
       - name: Build AAR
         uses: ./.github/actions/build-aar

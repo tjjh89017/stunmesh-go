@@ -9,12 +9,11 @@ runs:
         go install golang.org/x/mobile/cmd/gomobile@latest
         gomobile init
 
+    # Through make so the Makefile target is what CI exercises, rather than a
+    # second copy of the gomobile flags that can drift from it.
     - name: Build AAR
       shell: bash
-      # max-page-size keeps the .so loadable on Android 15 16KB-page devices.
       run: |
         export ANDROID_NDK_HOME="${ANDROID_NDK_LATEST_HOME}"
-        gomobile bind -target=android -androidapi 26 -tags "builtin_all mobile" \
-          -ldflags "-s -w -extldflags=-Wl,-z,max-page-size=16384" \
-          -o stunmesh.aar ./mobile
+        make mobile
         ls -lh stunmesh.aar
