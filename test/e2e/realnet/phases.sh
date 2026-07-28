@@ -133,11 +133,15 @@ full_tunnel_subject() {
 	# Resolve everything that must keep working before DNS goes dark under
 	# the covering route.
 	_stun_ip=$(resolve_v4 "$STUN_HOST" | head -1)
-	_excl_ips=""
-	for _h in $DHT_HOSTS; do
-		_excl_ips="$_excl_ips $(resolve_v4 "$_h")"
-	done
-	_excl_ips="$_excl_ips 8.8.8.8 1.1.1.1"
+	# The storage backend is deliberately NOT excluded: its socket carries
+	# the device fwmark and leaves through the escape rule installed below,
+	# which is what makes the refresh loop survive a covering route. An
+	# exclusion route here would hide a regression in that escape.
+	#
+	# DNS still needs one. The escape is applied to the socket that carries
+	# the connection, and the name lookup happens on a separate socket that
+	# never sees it -- see issue #248.
+	_excl_ips="8.8.8.8 1.1.1.1"
 
 	stop_daemon
 	ns_exec wg set "$WG_IF" fwmark "$FWMARK"
@@ -151,10 +155,7 @@ full_tunnel_subject() {
 	# would in production.
 	ns_exec ip route add default via "$HOST_IP" dev "$VETH_NS" table "$ESCAPE_TABLE"
 	ns_exec ip rule add fwmark "$FWMARK" lookup "$ESCAPE_TABLE" pref 100
-	# NOT the escape under test: in a production full tunnel the rendezvous
-	# traffic rides the tunnel through an exit node, but the far end here
-	# never forwards, so the storage backend and DNS get explicit exclusion
-	# routes to keep the refresh loop's storage side alive.
+	# The remaining exclusion is DNS only; see the note above.
 	for _ip in $_excl_ips; do
 		ns_exec ip route add "$_ip/32" via "$HOST_IP" dev "$VETH_NS" 2>/dev/null || true
 	done
