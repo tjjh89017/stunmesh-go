@@ -30,12 +30,14 @@ runs:
         gomobile init
 
     # Through make so the Makefile target is what CI exercises, rather than a
-    # second copy of the gomobile flags that can drift from it.
+    # second copy of the gomobile flags that can drift from it. The name
+    # carries the version, so ask make for it rather than guessing.
     - name: Build
       id: build
       shell: bash
       run: |
         export ANDROID_NDK_HOME="${ANDROID_NDK_LATEST_HOME}"
         make android ANDROID_API=${{ inputs.android-api }}
-        echo "aar-name=stunmesh.aar" >> "$GITHUB_OUTPUT"
-        ls -lh stunmesh.aar
+        AAR_NAME="$(make -s print-aar)"
+        echo "aar-name=${AAR_NAME}" >> "$GITHUB_OUTPUT"
+        ls -lh "${AAR_NAME}"

@@ -18,10 +18,11 @@ BACKEND ?=
 PREFIX ?= /usr/local
 BINDIR ?= $(PREFIX)/bin
 # Android AAR. ANDROID_API is gomobile's minimum API level; MOBILE_VERSION is
-# stamped in so the app can report which core it is linked against.
+# stamped into the library so the app can report which core it is linked
+# against, and names the file the way the other release assets are named.
 ANDROID_API ?= 26
-AAR ?= stunmesh.aar
 MOBILE_VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+AAR ?= stunmesh-android-$(MOBILE_VERSION).aar
 
 # Validate BACKEND value. filter-out rejects unknown words, and the word count
 # rejects a contradictory 'wgctrl wgcli', which filter alone would accept.
@@ -145,6 +146,12 @@ mobile-test:
 .PHONY: android-clean
 android-clean:
 	rm -f ${AAR} $(patsubst %.aar,%-sources.jar,${AAR})
+
+# The AAR name carries the version, so anything downstream that needs it (CI
+# upload, release assets) asks rather than reconstructing it.
+.PHONY: print-aar
+print-aar:
+	@echo ${AAR}
 
 .PHONY: fmt
 fmt:
