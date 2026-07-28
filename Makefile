@@ -17,6 +17,11 @@ EMBED_CA ?= 0
 BACKEND ?=
 PREFIX ?= /usr/local
 BINDIR ?= $(PREFIX)/bin
+# Android AAR. ANDROID_API is gomobile's minimum API level; MOBILE_VERSION is
+# stamped in so the app can report which core it is linked against.
+ANDROID_API ?= 26
+AAR ?= stunmesh.aar
+MOBILE_VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 
 # Validate BACKEND value. filter-out rejects unknown words, and the word count
 # rejects a contradictory 'wgctrl wgcli', which filter alone would accept.
@@ -61,6 +66,12 @@ endif
 # leaving the backend choice to the build constraints in internal/wg.
 ALL_TAGS := $(strip $(BUILTIN) $(BACKEND) $(CA_TAG))
 TAGS_FLAGS = $(if $(ALL_TAGS),-tags '$(ALL_TAGS)',)
+
+# mobile/ and internal/mobilebind sit behind the mobile build tag, so every
+# mobile target adds it; without the tag those packages are invisible and the
+# desktop build never compiles wireguard-go's device stack.
+MOBILE_TAGS := $(strip $(BUILTIN) mobile)
+MOBILE_PKG := github.com/tjjh89017/stunmesh-go/mobile
 
 UPX_TARGET =
 ifneq ($(UPX),0)
@@ -114,16 +125,6 @@ bench:
 .PHONY: bench-floor
 bench-floor:
 	STUNMESH_BENCH_FLOOR=1 go test ./internal/wgproxy -run TestRelayThroughputFloor -count=1
-
-# Android AAR. mobile/ and internal/mobilebind sit behind the mobile build
-# tag, so every target here adds it; without the tag those packages are
-# invisible and the desktop build never compiles wireguard-go's device stack.
-ANDROID_API ?= 26
-AAR ?= stunmesh.aar
-MOBILE_TAGS := $(strip $(BUILTIN) mobile)
-# Stamped into the AAR so the app can report which core it is linked against.
-MOBILE_VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
-MOBILE_PKG := github.com/tjjh89017/stunmesh-go/mobile
 
 .PHONY: mobile
 mobile:

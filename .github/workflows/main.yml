@@ -193,17 +193,15 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v7
+      - name: Build AAR
+        uses: ./.github/actions/build-aar
         with:
           go-version: ${{ env.GO_VERSION }}
 
       # mobile/ and internal/mobilebind are excluded from every default build
-      # by the mobile tag, so the Test job above never compiles them.
+      # by the mobile tag, so the Test job never compiles them.
       - name: Test
         run: make mobile-test
-
-      - name: Build AAR
-        uses: ./.github/actions/build-aar
 
       - uses: actions/upload-artifact@v7
         with:
