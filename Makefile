@@ -115,6 +115,31 @@ bench:
 bench-floor:
 	STUNMESH_BENCH_FLOOR=1 go test ./internal/wgproxy -run TestRelayThroughputFloor -count=1
 
+# Android AAR. mobile/ and internal/mobilebind sit behind the mobile build
+# tag, so every target here adds it; without the tag those packages are
+# invisible and the desktop build never compiles wireguard-go's device stack.
+ANDROID_API ?= 26
+AAR ?= stunmesh.aar
+MOBILE_TAGS := $(strip $(BUILTIN) mobile)
+
+.PHONY: mobile
+mobile:
+	@command -v gomobile >/dev/null || { \
+		echo "gomobile not found: go install golang.org/x/mobile/cmd/gomobile@latest && gomobile init"; \
+		exit 1; \
+	}
+	gomobile bind -target=android -androidapi ${ANDROID_API} -tags '${MOBILE_TAGS}' \
+		-ldflags "-s -w -extldflags=-Wl,-z,max-page-size=16384" \
+		-o ${AAR} ./mobile
+
+.PHONY: mobile-test
+mobile-test:
+	go test -cover -v -tags '${MOBILE_TAGS}' ./internal/mobilebind/... ./mobile/...
+
+.PHONY: mobile-clean
+mobile-clean:
+	rm -f ${AAR} $(patsubst %.aar,%-sources.jar,${AAR})
+
 .PHONY: fmt
 fmt:
 	go fmt ./...
