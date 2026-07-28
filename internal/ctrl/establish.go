@@ -22,18 +22,20 @@ type EstablishController struct {
 	peers         PeerRepository
 	pluginManager *plugin.Manager
 	decryptor     EndpointDecryptor
+	deviceConfig  DeviceConfigProvider
 	logger        zerolog.Logger
 	mu            sync.Mutex
 	queue         *queue.Queue[entity.PeerId]
 }
 
-func NewEstablishController(ctrl WireGuardClient, devices DeviceRepository, peers PeerRepository, pluginManager *plugin.Manager, decryptor EndpointDecryptor, logger *zerolog.Logger) *EstablishController {
+func NewEstablishController(ctrl WireGuardClient, devices DeviceRepository, peers PeerRepository, pluginManager *plugin.Manager, decryptor EndpointDecryptor, deviceConfig DeviceConfigProvider, logger *zerolog.Logger) *EstablishController {
 	return &EstablishController{
 		wgCtrl:        ctrl,
 		devices:       devices,
 		peers:         peers,
 		pluginManager: pluginManager,
 		decryptor:     decryptor,
+		deviceConfig:  deviceConfig,
 		logger:        logger.With().Str("controller", "establish").Logger(),
 		queue:         queue.NewBuffered[entity.PeerId](queue.PeerQueueSize),
 	}
@@ -63,7 +65,7 @@ func (c *EstablishController) Execute(ctx context.Context, peerId entity.PeerId)
 		return
 	}
 
-	storeCtx := dialer.WithFirewallMark(logger.WithContext(ctx), device.FirewallMark())
+	storeCtx := dialer.WithEscape(logger.WithContext(ctx), escapeFor(c.deviceConfig, device))
 	encryptedData, err := store.Get(storeCtx, peer.RemoteId())
 	if err != nil {
 		logger.Warn().Err(err).Msg("endpoint is unavailable or not ready")

@@ -14,10 +14,15 @@ import (
 	"github.com/tjjh89017/stunmesh-go/internal/plugin"
 	"github.com/tjjh89017/stunmesh-go/internal/plugin/dialer"
 	"github.com/tjjh89017/stunmesh-go/internal/queue"
+	"github.com/tjjh89017/stunmesh-go/internal/routeprobe"
 )
 
 type DeviceConfigProvider interface {
+	// GetProxyFib and TunnelInterfaceNames supply what a plugin socket needs
+	// to escape a covering tunnel route; see internal/plugin/dialer.
 	GetInterfaceProtocol(deviceName string) string
+	GetProxyFib(deviceName string) int
+	TunnelInterfaceNames() []string
 }
 
 type PublishController struct {
@@ -198,7 +203,7 @@ func (c *PublishController) Execute(ctx context.Context) {
 			}
 
 			logger.Info().Str("plugin", peer.Plugin()).Msg("store endpoint")
-			storeCtx := dialer.WithFirewallMark(logger.WithContext(ctx), device.FirewallMark())
+			storeCtx := dialer.WithEscape(logger.WithContext(ctx), escapeFor(c.deviceConfig, device))
 			err = store.Set(storeCtx, peer.LocalId(), res.Data)
 			if err != nil {
 				logger.Error().Err(err).Msg("failed to store endpoint")
@@ -282,7 +287,7 @@ func (c *PublishController) ExecuteForPeer(ctx context.Context, peerId entity.Pe
 	}
 
 	// Store endpoint data
-	storeCtx := dialer.WithFirewallMark(context.WithoutCancel(ctx), device.FirewallMark())
+	storeCtx := dialer.WithEscape(context.WithoutCancel(ctx), escapeFor(c.deviceConfig, device))
 	err = store.Set(storeCtx, peer.LocalId(), res.Data)
 	if err != nil {
 		logger.Error().Err(err).Msg("failed to store endpoint for specific peer")
@@ -327,3 +332,16 @@ func (c *PublishController) TriggerForPeer(peerId entity.PeerId) {
 		c.logger.Warn().Str("peer", peerId.String()).Msg("peer publish queue full, dropping trigger")
 	}
 }
+
+// escapeFor describes how this device's plugin traffic should leave the host.
+func escapeFor(deviceConfig DeviceConfigProvider, device *entity.Device) dialer.Escape {
+	escape := dialer.Escape{FirewallMark: device.FirewallMark()}
+	if deviceConfig == nil {
+		return escape
+	}
+	name := string(device.Name())
+	escape.Fib = deviceConfig.GetProxyFib(name)
+	escape.TunnelIfaces = routeprobe.NewTunnelInterfaces(deviceConfig.TunnelInterfaceNames()...)
+	return escape
+}
+
