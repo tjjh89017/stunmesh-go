@@ -8,7 +8,7 @@ import (
 // buildUAPI renders the config as a wireguard-go IpcSet string. Peer
 // endpoints set here are only the optional static initial endpoints; the
 // STUNMESH controllers overwrite them at run time with discovered ones.
-func buildUAPI(cfg *Config) (string, error) {
+func buildUAPI(cfg *tunnelConfig) (string, error) {
 	var b strings.Builder
 
 	privHex, err := keyToHex(cfg.Interface.PrivateKey)

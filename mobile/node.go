@@ -17,7 +17,7 @@ import (
 // publish and establish.
 type Node struct {
 	mu        sync.Mutex
-	cfg       *Config
+	cfg       *tunnelConfig
 	tunP      TunProvider
 	protector SocketProtector
 	listener  EventListener
