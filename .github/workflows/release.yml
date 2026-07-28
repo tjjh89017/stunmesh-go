@@ -172,6 +172,7 @@ jobs:
         uses: ./.github/actions/build-aar
         with:
           go-version: ${{ env.GO_VERSION }}
+          version: ${{ steps.tag.outputs.TAG }}
       # The sources jar sits beside the AAR and shares its base name, so an
       # Android project can attach sources to the bound API.
       - name: Release
