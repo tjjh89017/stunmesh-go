@@ -184,7 +184,7 @@ jobs:
       - name: All plugin build cells passed
         run: '[ "${{ needs.build-plugins.result }}" = "success" ]'
 
-  mobile:
+  android-aar:
     name: Build Android AAR
     runs-on: ubuntu-latest
     needs:
@@ -209,6 +209,17 @@ jobs:
           path: |
             stunmesh.aar
             stunmesh-sources.jar
+
+  # One stable check the ruleset can require for the mobile core, in place of
+  # each platform's job. An ios cell would join android-aar here.
+  mobile:
+    name: Mobile
+    runs-on: ubuntu-latest
+    needs: android-aar
+    if: always()
+    steps:
+      - name: All mobile platforms passed
+        run: '[ "${{ needs.android-aar.result }}" = "success" ]'
 
   docker:
     # Publish only on a real merge to main -- not on PRs, and not on the weekly
