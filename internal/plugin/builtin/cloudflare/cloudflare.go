@@ -9,7 +9,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
+
 	"time"
+
+	"github.com/tjjh89017/stunmesh-go/internal/plugin/dialer"
 
 	"github.com/rs/zerolog"
 	"github.com/tjjh89017/stunmesh-go/internal/plugin/registry"
@@ -33,6 +37,7 @@ const (
 type CloudflarePlugin struct {
 	token     string
 	zoneID    string
+	zoneOnce  sync.Mutex
 	zoneName  string
 	subdomain string
 	client    *http.Client
@@ -90,11 +95,10 @@ func NewCloudflarePlugin(config pluginapi.PluginConfig) (pluginapi.Store, error)
 
 	client := &http.Client{
 		Timeout: 10 * time.Second,
-		Transport: &http.Transport{
-			MaxIdleConns:        2,
-			MaxIdleConnsPerHost: 2,
-			IdleConnTimeout:     30 * time.Second,
-		},
+		// Through the shared dialer so the request escapes a covering tunnel
+		// route instead of being carried into the tunnel it is meant to bring
+		// up. See internal/plugin/dialer.
+		Transport: dialer.Transport(),
 	}
 
 	p := &CloudflarePlugin{
@@ -104,15 +108,28 @@ func NewCloudflarePlugin(config pluginapi.PluginConfig) (pluginapi.Store, error)
 		client:    client,
 	}
 
-	// Get zone ID during initialization
-	ctx := context.Background()
+	// The zone lookup is deferred to the first Get or Set rather than done
+	// here. Plugins are constructed before the device is read, so a lookup
+	// here has no fwmark to escape a covering tunnel with, and it would also
+	// make stunmesh refuse to start whenever Cloudflare is briefly
+	// unreachable.
+	return p, nil
+}
+
+// ensureZoneID resolves the zone once, with the caller's context so the
+// request carries whatever escape that context asks for.
+func (p *CloudflarePlugin) ensureZoneID(ctx context.Context) error {
+	p.zoneOnce.Lock()
+	defer p.zoneOnce.Unlock()
+	if p.zoneID != "" {
+		return nil
+	}
 	zoneID, err := p.getZoneID(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get zone ID: %w", err)
+		return fmt.Errorf("failed to get zone ID: %w", err)
 	}
 	p.zoneID = zoneID
-
-	return p, nil
+	return nil
 }
 
 func (p *CloudflarePlugin) doRequest(ctx context.Context, method, path string, body []byte) ([]byte, error) {
@@ -215,6 +232,10 @@ func (p *CloudflarePlugin) Get(ctx context.Context, key string) (string, error) 
 	logger := zerolog.Ctx(ctx)
 	logger.Info().Str("key", key).Msg("get data from builtin cloudflare plugin")
 
+	if err := p.ensureZoneID(ctx); err != nil {
+		return "", err
+	}
+
 	name := p.getRecordName(key)
 	_, content, err := p.findRecord(ctx, name)
 	if err != nil {
@@ -230,6 +251,10 @@ func (p *CloudflarePlugin) Get(ctx context.Context, key string) (string, error) 
 func (p *CloudflarePlugin) Set(ctx context.Context, key string, value string) error {
 	logger := zerolog.Ctx(ctx)
 	logger.Info().Str("key", key).Msg("set data to builtin cloudflare plugin")
+
+	if err := p.ensureZoneID(ctx); err != nil {
+		return err
+	}
 
 	name := p.getRecordName(key)
 	recordID, existingContent, err := p.findRecord(ctx, name)
