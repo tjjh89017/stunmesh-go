@@ -1,0 +1,53 @@
+name: Mobile
+
+on:
+  push:
+    branches: [main, feature/mobile]
+    paths:
+      - 'mobile/**'
+      - 'internal/**'
+      - 'pluginapi/**'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/mobile.yml'
+  pull_request:
+    paths:
+      - 'mobile/**'
+      - 'internal/**'
+      - 'pluginapi/**'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/mobile.yml'
+
+jobs:
+  aar:
+    name: Build Android AAR
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Install gomobile
+        run: |
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          gomobile init
+
+      - name: Build AAR
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_LATEST_HOME }}
+        # max-page-size keeps the .so loadable on Android 15 16KB-page devices.
+        run: |
+          gomobile bind -target=android -androidapi 26 -tags builtin_all \
+            -ldflags "-s -w -extldflags=-Wl,-z,max-page-size=16384" \
+            -o stunmesh.aar ./mobile
+          ls -lh stunmesh.aar
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: stunmesh-aar
+          path: |
+            stunmesh.aar
+            stunmesh-sources.jar

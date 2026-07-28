@@ -9,17 +9,17 @@ import (
 
 // Config mirrors the JSON produced by the Android app (TunnelConfig.toJson).
 // Field names follow the stunmesh-go YAML config where a counterpart exists.
-type Config struct {
+type tunnelConfig struct {
 	Name      string       `json:"name"`
-	Interface Interface    `json:"interface"`
-	Peers     []Peer       `json:"peers"`
-	Plugins   []PluginDef  `json:"plugins"`
-	Stun      Stun         `json:"stun"`
+	Interface ifaceConfig    `json:"interface"`
+	Peers     []peerConfig       `json:"peers"`
+	Plugins   []pluginDef  `json:"plugins"`
+	Stun      stunConfig         `json:"stun"`
 	RefreshIntervalSeconds int `json:"refresh_interval_seconds"`
-	Log       LogConfig    `json:"log"`
+	Log       logConfig    `json:"log"`
 }
 
-type Interface struct {
+type ifaceConfig struct {
 	PrivateKey string   `json:"private_key"`
 	Addresses  []string `json:"addresses"`
 	DNSServers []string `json:"dns_servers"`
@@ -29,7 +29,7 @@ type Interface struct {
 	Protocol string `json:"protocol"`
 }
 
-type Peer struct {
+type peerConfig struct {
 	Name               string   `json:"name"`
 	Description        string   `json:"description"`
 	PublicKey          string   `json:"public_key"`
@@ -41,26 +41,26 @@ type Peer struct {
 	PersistentKeepalive int     `json:"persistent_keepalive"`
 }
 
-type PluginDef struct {
+type pluginDef struct {
 	Instance string            `json:"instance"`
 	Type     string            `json:"type"`
 	Name     string            `json:"name"`
 	Config   map[string]string `json:"config"`
 }
 
-type Stun struct {
+type stunConfig struct {
 	Addresses []string `json:"addresses"`
 }
 
-type LogConfig struct {
+type logConfig struct {
 	Level string `json:"level"`
 }
 
-// DefaultStunServer matches the stunmesh-go default.
-const DefaultStunServer = "stun.l.google.com:19302"
+// defaultStunServer matches the stunmesh-go default.
+const defaultStunServer = "stun.l.google.com:19302"
 
-func parseConfig(configJSON string) (*Config, error) {
-	var cfg Config
+func parseConfig(configJSON string) (*tunnelConfig, error) {
+	var cfg tunnelConfig
 	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
 		return nil, fmt.Errorf("parse config: %w", err)
 	}
@@ -87,7 +87,7 @@ func parseConfig(configJSON string) (*Config, error) {
 		cfg.Interface.Protocol = "ipv4"
 	}
 	if len(cfg.Stun.Addresses) == 0 {
-		cfg.Stun.Addresses = []string{DefaultStunServer}
+		cfg.Stun.Addresses = []string{defaultStunServer}
 	}
 	if cfg.RefreshIntervalSeconds <= 0 {
 		cfg.RefreshIntervalSeconds = 600

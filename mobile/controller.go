@@ -27,7 +27,7 @@ import (
 // manager and endpoint JSON, so mobile and desktop nodes interoperate.
 type controller struct {
 	node    *Node
-	cfg     *Config
+	cfg     *tunnelConfig
 	bind    *mobilebind.Bind
 	manager *plugin.Manager
 	crypt   *crypto.Endpoint
