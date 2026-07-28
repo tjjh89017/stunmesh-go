@@ -171,7 +171,7 @@ func applyEscape(conn *net.UDPConn, fam Family, tunnelIfaces routeprobe.TunnelIn
 
 // bindToInterfaceIndex applies IP_UNICAST_IF (IPv4) or IPV6_UNICAST_IF
 // (IPv6) to conn's fd. index 0 clears any existing binding. IP_UNICAST_IF
-// takes the index in network byte order (see windowsUnicastIfNetworkOrder in
+// takes the index in network byte order (see routeprobe.UnicastIfNetworkOrder in
 // escape.go); IPV6_UNICAST_IF takes it in host order, unconverted. Applied
 // via SyscallConn so the socket is never closed or recreated — only the
 // option changes.
@@ -186,7 +186,7 @@ func bindToInterfaceIndex(conn *net.UDPConn, fam Family, index int) error {
 		if fam == FamilyIPv6 {
 			setErr = windows.SetsockoptInt(h, windows.IPPROTO_IPV6, ipv6UnicastIf, index)
 		} else {
-			setErr = windows.SetsockoptInt(h, windows.IPPROTO_IP, ipUnicastIf, int(windowsUnicastIfNetworkOrder(uint32(index))))
+			setErr = windows.SetsockoptInt(h, windows.IPPROTO_IP, ipUnicastIf, int(routeprobe.UnicastIfNetworkOrder(uint32(index))))
 		}
 	}); ctrlErr != nil {
 		return ctrlErr

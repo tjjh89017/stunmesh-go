@@ -17,8 +17,6 @@
 package wgproxy
 
 import (
-	"math/bits"
-
 	"github.com/tjjh89017/stunmesh-go/internal/routeprobe"
 )
 
@@ -76,14 +74,4 @@ func shouldSetFib(covering bool, probeErr error, fib int) bool {
 		return false
 	}
 	return fib != 0
-}
-
-// windowsUnicastIfNetworkOrder converts an interface index to the byte order
-// Windows' IP_UNICAST_IF socket option expects for IPv4: network (big-endian)
-// order, unlike IPV6_UNICAST_IF which takes the index in host order — a
-// well-documented gotcha (also handled this way by wireguard-windows). Pure
-// bit manipulation kept portable (no windows build tag) so it can be unit
-// tested on any platform.
-func windowsUnicastIfNetworkOrder(index uint32) uint32 {
-	return bits.ReverseBytes32(index)
 }

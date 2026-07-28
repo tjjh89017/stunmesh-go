@@ -44,7 +44,7 @@ func setup() (*daemon.Daemon, func(), error) {
 	resolver := mainProxyStack.Resolver
 	endpoint := crypto.NewEndpoint()
 	publishController := ctrl.NewPublishController(devices, peers, manager, resolver, endpoint, deviceConfig, zerologLogger)
-	establishController := ctrl.NewEstablishController(client, devices, peers, manager, endpoint, zerologLogger)
+	establishController := ctrl.NewEstablishController(client, devices, peers, manager, endpoint, deviceConfig, zerologLogger)
 	pingMonitorController := ctrl.NewPingMonitorController(configConfig, devices, peers, publishController, establishController, zerologLogger)
 	daemonDaemon := daemon.New(configConfig, bootstrapController, publishController, establishController, pingMonitorController, zerologLogger)
 	return daemonDaemon, func() {

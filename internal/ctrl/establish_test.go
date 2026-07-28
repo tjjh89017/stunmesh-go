@@ -86,6 +86,7 @@ func TestEstablishController_Execute_PeerNotFound(t *testing.T) {
 		mockPeers,
 		pluginManager,
 		nil, // decryptor
+		nil, // deviceConfig
 		&logger,
 	)
 
@@ -121,6 +122,7 @@ func TestEstablishController_Execute_DeviceNotFound(t *testing.T) {
 		mockPeers,
 		pluginManager,
 		nil,
+		nil, // deviceConfig
 		&logger,
 	)
 
@@ -157,6 +159,7 @@ func TestEstablishController_Execute_PluginGetError(t *testing.T) {
 		mockPeers,
 		pluginManager,
 		nil,
+		nil, // deviceConfig
 		&logger,
 	)
 
@@ -203,6 +206,7 @@ func TestEstablishController_Execute_StorageGetError(t *testing.T) {
 		mockPeers,
 		pluginManager,
 		nil,
+		nil, // deviceConfig
 		&logger,
 	)
 
@@ -256,6 +260,7 @@ func TestEstablishController_Execute_DecryptionError(t *testing.T) {
 		mockPeers,
 		pluginManager,
 		mockDecryptor,
+		nil, // deviceConfig
 		&logger,
 	)
 
@@ -309,6 +314,7 @@ func TestEstablishController_Execute_InvalidJSON(t *testing.T) {
 		mockPeers,
 		pluginManager,
 		mockDecryptor,
+		nil, // deviceConfig
 		&logger,
 	)
 
@@ -372,6 +378,7 @@ func TestEstablishController_Execute_IPv4Selection(t *testing.T) {
 		mockPeers,
 		pluginManager,
 		mockDecryptor,
+		nil, // deviceConfig
 		&logger,
 	)
 
@@ -435,6 +442,7 @@ func TestEstablishController_Execute_IPv6Selection(t *testing.T) {
 		mockPeers,
 		pluginManager,
 		mockDecryptor,
+		nil, // deviceConfig
 		&logger,
 	)
 
@@ -498,6 +506,7 @@ func TestEstablishController_Execute_PreferIPv4_HasIPv4(t *testing.T) {
 		mockPeers,
 		pluginManager,
 		mockDecryptor,
+		nil, // deviceConfig
 		&logger,
 	)
 
@@ -561,6 +570,7 @@ func TestEstablishController_Execute_PreferIPv4_FallbackIPv6(t *testing.T) {
 		mockPeers,
 		pluginManager,
 		mockDecryptor,
+		nil, // deviceConfig
 		&logger,
 	)
 
@@ -624,6 +634,7 @@ func TestEstablishController_Execute_PreferIPv6_HasIPv6(t *testing.T) {
 		mockPeers,
 		pluginManager,
 		mockDecryptor,
+		nil, // deviceConfig
 		&logger,
 	)
 
@@ -687,6 +698,7 @@ func TestEstablishController_Execute_PreferIPv6_FallbackIPv4(t *testing.T) {
 		mockPeers,
 		pluginManager,
 		mockDecryptor,
+		nil, // deviceConfig
 		&logger,
 	)
 
@@ -747,6 +759,7 @@ func TestEstablishController_Execute_IPv4_NotAvailable(t *testing.T) {
 		mockPeers,
 		pluginManager,
 		mockDecryptor,
+		nil, // deviceConfig
 		&logger,
 	)
 
@@ -808,6 +821,7 @@ func TestEstablishController_Execute_WireGuardError(t *testing.T) {
 		mockPeers,
 		pluginManager,
 		mockDecryptor,
+		nil, // deviceConfig
 		&logger,
 	)
 
@@ -839,6 +853,7 @@ func TestEstablishController_Trigger(t *testing.T) {
 		mockPeers,
 		pluginManager,
 		nil,
+		nil, // deviceConfig
 		&logger,
 	)
 
@@ -867,6 +882,7 @@ func TestEstablishController_Trigger_ListError(t *testing.T) {
 		mockPeers,
 		pluginManager,
 		nil,
+		nil, // deviceConfig
 		&logger,
 	)
 
