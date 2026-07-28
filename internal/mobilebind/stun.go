@@ -29,11 +29,12 @@ const (
 var ErrStunTimeout = errors.New("stun: no response")
 
 // Discover sends a STUN binding request to server ("host:port") from the
-// shared WG socket and returns the reflexive address. The response arrives
+// shared WG socket and returns the reflexive address. network is "udp4" or
+// "udp6" and selects the address family to discover. The response arrives
 // through the demux path, so the mapping it reports is the one WG traffic
 // uses.
-func (b *Bind) Discover(ctx context.Context, server string) (netip.AddrPort, error) {
-	udpAddr, err := net.ResolveUDPAddr("udp", server)
+func (b *Bind) Discover(ctx context.Context, network, server string) (netip.AddrPort, error) {
+	udpAddr, err := net.ResolveUDPAddr(network, server)
 	if err != nil {
 		return netip.AddrPort{}, fmt.Errorf("stun: resolve %s: %w", server, err)
 	}
