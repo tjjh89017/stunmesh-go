@@ -1,4 +1,4 @@
-//go:build linux || android
+//go:build mobile && (linux || android)
 
 package mobile
 

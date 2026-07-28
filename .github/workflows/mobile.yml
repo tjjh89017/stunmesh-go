@@ -32,6 +32,11 @@ jobs:
         with:
           go-version-file: go.mod
 
+      # The mobile packages are excluded from the default build by their tag,
+      # so the main workflow's test job never sees them.
+      - name: Test
+        run: go test -tags mobile ./internal/mobilebind/... ./mobile/...
+
       - name: Build AAR
         uses: ./.github/actions/build-aar
 

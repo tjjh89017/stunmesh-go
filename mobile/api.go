@@ -1,3 +1,5 @@
+//go:build mobile
+
 // Package mobile is the gomobile-bindable API surface of the STUNMESH core.
 // Only gomobile-safe types cross the boundary: strings (JSON for structured
 // data), int32 (file descriptors), bool, and interfaces built from these.
