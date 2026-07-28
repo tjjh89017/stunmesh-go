@@ -121,6 +121,9 @@ bench-floor:
 ANDROID_API ?= 26
 AAR ?= stunmesh.aar
 MOBILE_TAGS := $(strip $(BUILTIN) mobile)
+# Stamped into the AAR so the app can report which core it is linked against.
+MOBILE_VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+MOBILE_PKG := github.com/tjjh89017/stunmesh-go/mobile
 
 .PHONY: mobile
 mobile:
@@ -129,7 +132,7 @@ mobile:
 		exit 1; \
 	}
 	gomobile bind -target=android -androidapi ${ANDROID_API} -tags '${MOBILE_TAGS}' \
-		-ldflags "-s -w -extldflags=-Wl,-z,max-page-size=16384" \
+		-ldflags "-s -w -X ${MOBILE_PKG}.version=${MOBILE_VERSION} -extldflags=-Wl,-z,max-page-size=16384" \
 		-o ${AAR} ./mobile
 
 .PHONY: mobile-test
