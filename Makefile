@@ -126,8 +126,10 @@ bench:
 bench-floor:
 	STUNMESH_BENCH_FLOOR=1 go test ./internal/wgproxy -run TestRelayThroughputFloor -count=1
 
-.PHONY: mobile
-mobile:
+# Android is one consumer of the shared mobile package; an ios target building
+# an xcframework from the same package would sit beside this one.
+.PHONY: android
+android:
 	@command -v gomobile >/dev/null || { \
 		echo "gomobile not found: go install golang.org/x/mobile/cmd/gomobile@latest && gomobile init"; \
 		exit 1; \
@@ -140,8 +142,8 @@ mobile:
 mobile-test:
 	go test -cover -v -tags '${MOBILE_TAGS}' ./internal/mobilebind/... ./mobile/...
 
-.PHONY: mobile-clean
-mobile-clean:
+.PHONY: android-clean
+android-clean:
 	rm -f ${AAR} $(patsubst %.aar,%-sources.jar,${AAR})
 
 .PHONY: fmt
