@@ -344,4 +344,3 @@ func escapeFor(deviceConfig DeviceConfigProvider, device *entity.Device) dialer.
 	escape.TunnelIfaces = routeprobe.NewTunnelInterfaces(deviceConfig.TunnelInterfaceNames()...)
 	return escape
 }
-
