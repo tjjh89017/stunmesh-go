@@ -11,6 +11,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
 	"github.com/tjjh89017/stunmesh-go/internal/plugin"
+	"github.com/tjjh89017/stunmesh-go/internal/plugin/dialer"
 	"github.com/tjjh89017/stunmesh-go/internal/queue"
 	"github.com/tjjh89017/stunmesh-go/internal/wg"
 )
@@ -62,7 +63,7 @@ func (c *EstablishController) Execute(ctx context.Context, peerId entity.PeerId)
 		return
 	}
 
-	storeCtx := logger.WithContext(ctx)
+	storeCtx := dialer.WithFirewallMark(logger.WithContext(ctx), device.FirewallMark())
 	encryptedData, err := store.Get(storeCtx, peer.RemoteId())
 	if err != nil {
 		logger.Warn().Err(err).Msg("endpoint is unavailable or not ready")

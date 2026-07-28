@@ -11,10 +11,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+
 	"net/url"
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/tjjh89017/stunmesh-go/internal/plugin/dialer"
 
 	"github.com/rs/zerolog"
 	"github.com/tjjh89017/stunmesh-go/internal/plugin/registry"
@@ -216,11 +219,10 @@ func NewOpenDHTPlugin(config pluginapi.PluginConfig) (pluginapi.Store, error) {
 		// converge, so a short timeout turns a slow success into a false
 		// "not found".
 		Timeout: timeout,
-		Transport: &http.Transport{
-			MaxIdleConns:        2,
-			MaxIdleConnsPerHost: 2,
-			IdleConnTimeout:     30 * time.Second,
-		},
+		// Through the shared dialer so the request escapes a covering tunnel
+		// route instead of being carried into the tunnel it is meant to bring
+		// up. See internal/plugin/dialer.
+		Transport: dialer.Transport(),
 	}
 
 	return &OpenDHTPlugin{

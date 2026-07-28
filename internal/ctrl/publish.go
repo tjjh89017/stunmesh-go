@@ -12,6 +12,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
 	"github.com/tjjh89017/stunmesh-go/internal/plugin"
+	"github.com/tjjh89017/stunmesh-go/internal/plugin/dialer"
 	"github.com/tjjh89017/stunmesh-go/internal/queue"
 )
 
@@ -197,7 +198,7 @@ func (c *PublishController) Execute(ctx context.Context) {
 			}
 
 			logger.Info().Str("plugin", peer.Plugin()).Msg("store endpoint")
-			storeCtx := logger.WithContext(ctx)
+			storeCtx := dialer.WithFirewallMark(logger.WithContext(ctx), device.FirewallMark())
 			err = store.Set(storeCtx, peer.LocalId(), res.Data)
 			if err != nil {
 				logger.Error().Err(err).Msg("failed to store endpoint")
@@ -281,7 +282,7 @@ func (c *PublishController) ExecuteForPeer(ctx context.Context, peerId entity.Pe
 	}
 
 	// Store endpoint data
-	storeCtx := context.WithoutCancel(ctx)
+	storeCtx := dialer.WithFirewallMark(context.WithoutCancel(ctx), device.FirewallMark())
 	err = store.Set(storeCtx, peer.LocalId(), res.Data)
 	if err != nil {
 		logger.Error().Err(err).Msg("failed to store endpoint for specific peer")
