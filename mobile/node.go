@@ -24,6 +24,7 @@ type Node struct {
 
 	dev     *device.Device
 	bind    *mobilebind.Bind
+	tunDev  *swappableTun
 	running bool
 }
 
@@ -65,10 +66,11 @@ func (n *Node) Start() error {
 	if fd < 0 {
 		return fail(errors.New("tun fd not available"))
 	}
-	tunDev, _, err := tun.CreateUnmonitoredTUNFromFD(int(fd))
+	rawTun, _, err := tun.CreateUnmonitoredTUNFromFD(int(fd))
 	if err != nil {
 		return fail(fmt.Errorf("create tun from fd: %w", err))
 	}
+	tunDev := newSwappableTun(rawTun)
 
 	bind := mobilebind.New(protectorAdapter{n.protector})
 	logger := device.NewLogger(logLevel(n.cfg.Log.Level), fmt.Sprintf("(%s) ", n.cfg.Name))
@@ -90,6 +92,7 @@ func (n *Node) Start() error {
 
 	n.dev = dev
 	n.bind = bind
+	n.tunDev = tunDev
 	n.running = true
 	n.listener.OnLog("info", "wireguard device up")
 	n.listener.OnStateChanged(StateUp)
@@ -110,6 +113,7 @@ func (n *Node) Stop() {
 	n.dev.Close() // closes the bind and the tun fd
 	n.dev = nil
 	n.bind = nil
+	n.tunDev = nil
 	n.running = false
 	n.listener.OnStateChanged(StateDown)
 }
@@ -122,10 +126,13 @@ func (n *Node) RenewTun(fd int32) error {
 	if !n.running {
 		return errors.New("node not running")
 	}
-	// TODO: wrap the device tun in a swappable adapter so the fd can be
-	// replaced in place. Until then the new fd is rejected and the caller
-	// should restart the tunnel.
-	return errors.New("tun renewal not implemented yet")
+	newTun, _, err := tun.CreateUnmonitoredTUNFromFD(int(fd))
+	if err != nil {
+		return fmt.Errorf("create tun from fd: %w", err)
+	}
+	n.tunDev.swap(newTun)
+	n.listener.OnLog("info", "tun fd renewed")
+	return nil
 }
 
 // SetPeerEndpoint applies a discovered endpoint to one peer at run time.
