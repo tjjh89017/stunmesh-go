@@ -36,6 +36,6 @@ runs:
       shell: bash
       run: |
         export ANDROID_NDK_HOME="${ANDROID_NDK_LATEST_HOME}"
-        make mobile ANDROID_API=${{ inputs.android-api }}
+        make android ANDROID_API=${{ inputs.android-api }}
         echo "aar-name=stunmesh.aar" >> "$GITHUB_OUTPUT"
         ls -lh stunmesh.aar
