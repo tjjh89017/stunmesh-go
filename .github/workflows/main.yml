@@ -184,6 +184,34 @@ jobs:
       - name: All plugin build cells passed
         run: '[ "${{ needs.build-plugins.result }}" = "success" ]'
 
+  mobile:
+    name: Build Android AAR
+    runs-on: ubuntu-latest
+    needs:
+      - lint-required
+      - test-required
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      # mobile/ and internal/mobilebind are excluded from every default build
+      # by the mobile tag, so the Test job above never compiles them.
+      - name: Test
+        run: go test -tags mobile ./internal/mobilebind/... ./mobile/...
+
+      - name: Build AAR
+        uses: ./.github/actions/build-aar
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: stunmesh-aar
+          path: |
+            stunmesh.aar
+            stunmesh-sources.jar
+
   docker:
     # Publish only on a real merge to main -- not on PRs, and not on the weekly
     # schedule or a manual dispatch, which should build and test but not push.
