@@ -6,6 +6,10 @@ inputs:
     description: 'Go version to use'
     required: true
     default: 'stable'
+  version:
+    description: 'Version stamped into the AAR and used in its file name (make MOBILE_VERSION). Defaults to git describe.'
+    required: false
+    default: ''
   android-api:
     description: 'Minimum Android API level (passed to make as ANDROID_API)'
     required: false
@@ -40,6 +44,11 @@ runs:
       shell: bash
       run: |
         export ANDROID_NDK_HOME="${ANDROID_NDK_LATEST_HOME}"
+        # Exported, not passed per invocation: print-aar must derive the same
+        # name the build just wrote, and a second git describe could differ.
+        if [ -n "${{ inputs.version }}" ]; then
+          export MOBILE_VERSION="${{ inputs.version }}"
+        fi
         make android ANDROID_API=${{ inputs.android-api }}
         AAR_NAME="$(make -s print-aar)"
         SOURCES_NAME="${AAR_NAME%.aar}-sources.jar"
