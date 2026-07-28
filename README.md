@@ -148,6 +148,6 @@ Build options (built-in plugin selection, binary minimization, WireGuard backend
 
 This library is free software; you can redistribute it and/or modify it under the terms of the GNU Lesser General Public License as published by the Free Software Foundation; either version 3 of the License, or (at your option) any later version. See [LICENSE](LICENSE) (LGPL-3.0) and [LICENSE.GPL](LICENSE.GPL) (GPL-3.0, which the LGPL supplements).
 
-Contributions are covered by the [CLA](CLA.md).
+Contributions are covered by the [CLA](https://github.com/tjjh89017/stunmesh-cla/blob/main/CLA.md).
 
 WireGuard is a registered trademark of Jason A. Donenfeld.
