@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -289,7 +288,7 @@ func validateConfigForGOOS(cfg *Config, goos string) error {
 	for ifaceName, iface := range cfg.Interfaces {
 		// 0 means unset (ephemeral); reject anything outside the port range.
 		if iface.Proxy.Listen < 0 || iface.Proxy.Listen > 65535 {
-			return fmt.Errorf("invalid proxy listen port %s for interface '%s', must be between 0 and 65535", strconv.Itoa(iface.Proxy.Listen), ifaceName)
+			return fmt.Errorf("invalid proxy listen port %d for interface '%s', must be between 0 and 65535", iface.Proxy.Listen, ifaceName)
 		}
 
 		// 0 means unset (escape off); the true kernel limit is net.fibs-1,
@@ -297,7 +296,7 @@ func validateConfigForGOOS(cfg *Config, goos string) error {
 		// check -- a fib the running kernel rejects surfaces as a setsockopt
 		// error at runtime instead.
 		if iface.Proxy.Fib < 0 || iface.Proxy.Fib > 65535 {
-			return fmt.Errorf("invalid proxy fib %s for interface '%s', must be between 0 and 65535", strconv.Itoa(iface.Proxy.Fib), ifaceName)
+			return fmt.Errorf("invalid proxy fib %d for interface '%s', must be between 0 and 65535", iface.Proxy.Fib, ifaceName)
 		}
 
 		// Windows has no non-proxy mode; an explicit opt-out can't be honored.

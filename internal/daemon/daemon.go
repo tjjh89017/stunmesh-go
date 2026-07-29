@@ -46,6 +46,10 @@ type Daemon struct {
 	wg            sync.WaitGroup
 	// sleep is overridden in tests to avoid RunOneshot's real multi-second pacing.
 	sleep func(time.Duration)
+	// signalReady, when non-nil, is closed by Run right after signal.Notify
+	// registers the handler. It exists solely so tests can wait for
+	// registration instead of sleeping before sending a real OS signal.
+	signalReady chan struct{}
 }
 
 func New(
@@ -71,6 +75,9 @@ func (d *Daemon) Run(ctx context.Context) {
 
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
+	if d.signalReady != nil {
+		close(d.signalReady)
+	}
 
 	defer func() {
 		d.logger.Info().Msg("shutting down")

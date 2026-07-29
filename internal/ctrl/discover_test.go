@@ -14,6 +14,20 @@ func resolverReturning(endpoint string, err error) ctrl.FamilyResolver {
 	}
 }
 
+// mustNotBeCalledResolver fails the test immediately if invoked, used for
+// the family that a given protocol mode must never resolve (e.g. ipv6 when
+// protocol is "ipv4"). A plain error-returning resolver wouldn't do here:
+// DiscoverEndpoints ignores the untargeted family's error in single-family
+// modes, so a wrongly-invoked resolver's sentinel error would be silently
+// swallowed instead of failing the test.
+func mustNotBeCalledResolver(t *testing.T) ctrl.FamilyResolver {
+	t.Helper()
+	return func(ctx context.Context) (string, error) {
+		t.Fatal("resolver must not be called")
+		return "", nil
+	}
+}
+
 // TestDiscoverEndpoints_SharedPolicy exercises the single DiscoverEndpoints
 // policy used by both PublishController.discoverEndpoints (desktop,
 // raw-socket STUN) and the mobile controller's discover
@@ -40,20 +54,20 @@ func TestDiscoverEndpoints_SharedPolicy(t *testing.T) {
 			name:     "ipv4 succeeds",
 			protocol: "ipv4",
 			ipv4:     resolverReturning("1.2.3.4:51820", nil),
-			ipv6:     resolverReturning("", errors.New("must not be called")),
+			ipv6:     nil, // must not be called
 			wantIPv4: "1.2.3.4:51820",
 		},
 		{
 			name:     "ipv4 hard-fails on its own error",
 			protocol: "ipv4",
 			ipv4:     resolverReturning("", ipv4Err),
-			ipv6:     resolverReturning("", errors.New("must not be called")),
+			ipv6:     nil, // must not be called
 			wantErr:  ipv4Err,
 		},
 		{
 			name:     "ipv6 hard-fails on its own error",
 			protocol: "ipv6",
-			ipv4:     resolverReturning("", errors.New("must not be called")),
+			ipv4:     nil, // must not be called
 			ipv6:     resolverReturning("", ipv6Err),
 			wantErr:  ipv6Err,
 		},
@@ -92,8 +106,8 @@ func TestDiscoverEndpoints_SharedPolicy(t *testing.T) {
 		{
 			name:     "unknown protocol errors before resolving",
 			protocol: "carrier-pigeon",
-			ipv4:     resolverReturning("", errors.New("must not be called")),
-			ipv6:     resolverReturning("", errors.New("must not be called")),
+			ipv4:     nil, // must not be called
+			ipv6:     nil, // must not be called
 			wantErr:  errors.New("unknown protocol: carrier-pigeon"),
 		},
 	}
@@ -105,7 +119,15 @@ func TestDiscoverEndpoints_SharedPolicy(t *testing.T) {
 				warned = append(warned, family)
 			}
 
-			ipv4, ipv6, err := ctrl.DiscoverEndpoints(context.Background(), tt.protocol, warn, tt.ipv4, tt.ipv6)
+			resolveIPv4, resolveIPv6 := tt.ipv4, tt.ipv6
+			if resolveIPv4 == nil {
+				resolveIPv4 = mustNotBeCalledResolver(t)
+			}
+			if resolveIPv6 == nil {
+				resolveIPv6 = mustNotBeCalledResolver(t)
+			}
+
+			ipv4, ipv6, err := ctrl.DiscoverEndpoints(context.Background(), tt.protocol, warn, resolveIPv4, resolveIPv6)
 
 			if tt.wantErr != nil {
 				if err == nil || err.Error() != tt.wantErr.Error() {

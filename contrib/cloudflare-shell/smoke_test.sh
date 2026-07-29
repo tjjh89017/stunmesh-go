@@ -10,8 +10,8 @@
 # a real plugin binary. The real cloudflare-shell.sh runs unmodified; only
 # the `curl` it shells out to is swapped.
 #
-# Requires: bash (script uses [[ ]] arrays are not used, but declares
-# `#!/bin/bash`), grep, sed.
+# Requires: bash (the script uses [[ ]] conditionals and declares
+# `#!/bin/bash`, even though it doesn't use arrays), grep, sed.
 set -eu
 
 HERE=$(CDPATH='' cd "$(dirname "$0")" && pwd)

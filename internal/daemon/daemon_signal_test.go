@@ -21,14 +21,22 @@ func TestRun_ShouldReturnWhenSignalReceived(t *testing.T) {
 	// one to the current process rather than cancelling the context.
 	d, _, _, _ := newTestDaemon(t, time.Hour)
 
+	// Signaled once Run has called signal.Notify, so the test can wait for
+	// registration instead of sleeping and hoping it was long enough.
+	signalReady := make(chan struct{})
+	d.signalReady = signalReady
+
 	done := make(chan struct{})
 	go func() {
 		d.Run(context.Background())
 		close(done)
 	}()
 
-	// Give Run time to register its signal.Notify before we send the signal.
-	time.Sleep(50 * time.Millisecond)
+	select {
+	case <-signalReady:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run did not register its signal handler in time")
+	}
 
 	if err := syscall.Kill(os.Getpid(), syscall.SIGINT); err != nil {
 		t.Fatalf("failed to send SIGINT: %v", err)
