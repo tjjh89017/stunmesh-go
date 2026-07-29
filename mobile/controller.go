@@ -125,9 +125,12 @@ func (c *controller) cycle(ctx context.Context) {
 	listener := c.node.listener
 
 	// Plugin init can need the network (e.g. a zone lookup), so it retries
-	// each cycle until it succeeds.
+	// each cycle until it succeeds. This only protects the LoadPlugins call
+	// boundary -- factory ctors aren't ctx-threaded, so Store.Get/Set (via
+	// publish/establish's storeCtx) remain the real protected network path.
 	if !c.pluginsReady {
-		if err := c.manager.LoadPlugins(ctx, c.pluginDefs); err != nil {
+		loadCtx := protectedContext(ctx, c.node.protector)
+		if err := c.manager.LoadPlugins(loadCtx, c.pluginDefs); err != nil {
 			listener.OnLog("warn", "plugin init: "+err.Error())
 			return
 		}
