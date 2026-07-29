@@ -14,6 +14,10 @@ build:
 clean:
 	rm -f $(PLUGIN)
 
+.PHONY: test
+test:
+	go test ./...
+
 .PHONY: install
 install: build
 	install -d $(BINDIR)

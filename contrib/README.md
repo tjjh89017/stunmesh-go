@@ -56,6 +56,16 @@ Stores peer endpoint information in the OpenDHT distributed hash table via an Op
 
 See [opendht/README.md](opendht/README.md) for setup instructions and limitations.
 
+## Testing
+
+Each plugin may include a `smoke_test.sh` script (e.g., `cloudflare-shell/`,
+`opendht/`, `opendht-shell/`) that exercises its exec/shell protocol against a
+fake/mock backend. Run smoke tests individually, e.g.
+`contrib/opendht/smoke_test.sh` (from the repo root), or run all smoke tests
+plus any `go test` targets with `make contrib-test`, also from the repo root.
+The `make contrib-test` target runs automatically in CI on every PR/push via
+the `contrib-test` job.
+
 ## Creating Your Own Plugin
 
 Stunmesh supports two plugin protocols: **exec** (JSON-based) and **shell** (shell variable-based).

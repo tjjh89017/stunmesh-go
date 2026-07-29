@@ -16,6 +16,10 @@ build:
 clean:
 	rm -f $(PLUGIN)
 
+.PHONY: test
+test:
+	./smoke_test.sh
+
 .PHONY: install
 install: build
 	install -d $(BINDIR)
