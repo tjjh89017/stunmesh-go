@@ -59,29 +59,10 @@ func TestLoadPlugins_EmptyDefinitions(t *testing.T) {
 	}
 }
 
-func TestLoadPlugins_UnsupportedType(t *testing.T) {
-	m := NewManager()
-	ctx := context.Background()
-
-	definitions := map[string]pluginapi.PluginDefinition{
-		"test_plugin": {
-			Type: "unsupported_type",
-			Config: pluginapi.PluginConfig{
-				"key": "value",
-			},
-		},
-	}
-
-	err := m.LoadPlugins(ctx, definitions)
-	if err == nil {
-		t.Error("LoadPlugins() should return error for unsupported plugin type")
-	}
-
-	if len(m.plugins) != 0 {
-		t.Errorf("LoadPlugins() failed but plugins map is not empty, got %d plugins", len(m.plugins))
-	}
-}
-
+// TestLoadPlugins_InvalidPluginConfig exercises every branch of
+// createPlugin's type switch (including the default/unsupported-type
+// branch) through the public LoadPlugins entry point, so it doubles as
+// coverage for createPlugin without calling the unexported method directly.
 func TestLoadPlugins_InvalidPluginConfig(t *testing.T) {
 	ctx := context.Background()
 
@@ -127,6 +108,17 @@ func TestLoadPlugins_InvalidPluginConfig(t *testing.T) {
 			},
 			wantErrText: "failed to create plugin test_shell",
 		},
+		{
+			name:       "unsupported type",
+			pluginName: "test_plugin",
+			definition: pluginapi.PluginDefinition{
+				Type: "unsupported_type",
+				Config: pluginapi.PluginConfig{
+					"key": "value",
+				},
+			},
+			wantErrText: "failed to create plugin test_plugin",
+		},
 	}
 
 	for _, tt := range tests {
@@ -147,6 +139,10 @@ func TestLoadPlugins_InvalidPluginConfig(t *testing.T) {
 				if len(errMsg) < len(tt.wantErrText) || errMsg[:len(tt.wantErrText)] != tt.wantErrText {
 					t.Errorf("LoadPlugins() error = %q, want error containing %q", errMsg, tt.wantErrText)
 				}
+			}
+
+			if len(m.plugins) != 0 {
+				t.Errorf("LoadPlugins() failed but plugins map is not empty, got %d plugins", len(m.plugins))
 			}
 		})
 	}
@@ -225,51 +221,5 @@ func TestIsDedup_UnknownPluginReturnsFalse(t *testing.T) {
 
 	if got := m.IsDedup("nonexistent"); got != false {
 		t.Errorf("IsDedup() = %v, want false for unknown plugin name", got)
-	}
-}
-
-func TestCreatePlugin_SwitchCoverage(t *testing.T) {
-	m := NewManager()
-	ctx := context.Background()
-
-	tests := []struct {
-		name       string
-		pluginType string
-		wantErr    bool
-	}{
-		{
-			name:       "exec type",
-			pluginType: "exec",
-			wantErr:    true, // Will fail due to missing config, but tests the switch case
-		},
-		{
-			name:       "shell type",
-			pluginType: "shell",
-			wantErr:    true, // Will fail due to missing config, but tests the switch case
-		},
-		{
-			name:       "builtin type",
-			pluginType: "builtin",
-			wantErr:    true, // Will fail due to missing config, but tests the switch case
-		},
-		{
-			name:       "unknown type",
-			pluginType: "unknown",
-			wantErr:    true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			def := pluginapi.PluginDefinition{
-				Type:   tt.pluginType,
-				Config: pluginapi.PluginConfig{},
-			}
-
-			_, err := m.createPlugin(ctx, def)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("createPlugin() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
 	}
 }

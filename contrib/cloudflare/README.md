@@ -150,10 +150,31 @@ When stunmesh needs to store peer endpoint data:
 ### DNS Record Format
 
 DNS records are created in the format:
-- With subdomain: `<sha1_hash>.subdomain.zone_name`
-- Without subdomain: `<sha1_hash>.zone_name`
+- With subdomain: `<key>.subdomain.zone_name`
+- Without subdomain: `<key>.zone_name`
 
-The key is hashed using SHA-1 to create DNS-safe record names.
+`key` is the SHA1 hex digest stunmesh already derives per peer before calling
+the plugin, so it is used directly as the DNS-safe record name — matching
+the builtin Cloudflare plugin and `cloudflare-shell.sh`.
+
+### Compatibility note: record-name fix
+
+Versions of this plugin prior to this fix hashed `key` a second time before
+building the record name, which silently diverged from the builtin
+Cloudflare plugin and from its own sibling, `cloudflare-shell.sh` — the two
+were never interoperable, and no deployment could have relied on that
+double-hashed name matching either of them. If you have already published
+records under the old double-hashed name using this specific plugin, you
+need to either:
+
+- do nothing and let it self-heal: the next publish cycle's `Set` call will
+  start writing to the corrected (single-hash) record name automatically, or
+- pin to the old binary until you are ready for that re-publish to happen.
+
+The stale double-hashed record is not deleted automatically; it is simply
+no longer read or written once you upgrade, so you may want to remove it
+manually from Cloudflare after peers have re-published under the corrected
+name.
 
 ## License
 

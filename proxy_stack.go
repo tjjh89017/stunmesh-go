@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"runtime"
 
 	"github.com/rs/zerolog"
@@ -44,6 +45,12 @@ func proxyModeEnabledForGOOS(cfg *config.Config, deviceConfig *config.DeviceConf
 // creates each proxy before any Resolve runs; the trailing manager.Close is
 // idempotent and covers the idle manager in plain mode.
 func newProxyStack(cfg *config.Config, deviceConfig *config.DeviceConfig, logger *zerolog.Logger) (*proxyStack, func(), error) {
+	// mode (the OR across every interface) only decides whether proxy
+	// infrastructure is built at all. It does not decide whether any given
+	// device's traffic rides it — wg.NewProxyClient and
+	// newPerDeviceStunFactory each re-check deviceConfig.GetProxyEnabled
+	// per deviceName, so an interface that opted out is left on the plain
+	// path even while the decorator/factory is installed for the process.
 	mode := proxyModeEnabled(cfg, deviceConfig, logger)
 	manager := wgproxy.NewManager(logger)
 
@@ -72,8 +79,21 @@ func newProxyStack(cfg *config.Config, deviceConfig *config.DeviceConfig, logger
 			}
 			return proxy, nil
 		}
-		resolver = stun.NewResolverWithFactory(cfg, deviceConfig, logger, stun.NewProxyLookupFactory(lookup, logger))
+		factory := newPerDeviceStunFactory(deviceConfig, runtime.GOOS, stun.NewProxyLookupFactory(lookup, logger), stun.NewDefaultFactory())
+		resolver = stun.NewResolverWithFactory(cfg, deviceConfig, logger, factory)
 	}
 
 	return &proxyStack{Client: client, Resolver: resolver}, cleanup, nil
+}
+
+// newPerDeviceStunFactory routes each Resolve call to proxyFactory or
+// plainFactory based on that device's own proxy.enabled, rather than the
+// process-wide OR that decided whether to build proxy infrastructure at all.
+func newPerDeviceStunFactory(deviceConfig *config.DeviceConfig, goos string, proxyFactory, plainFactory stun.ClientFactory) stun.ClientFactory {
+	return func(ctx context.Context, deviceName string, port uint16, protocol string, firewallMark int, listenInterfaces []string, listenDefaultRoute bool) (stun.StunClient, error) {
+		if deviceConfig.GetProxyEnabled(deviceName, goos) {
+			return proxyFactory(ctx, deviceName, port, protocol, firewallMark, listenInterfaces, listenDefaultRoute)
+		}
+		return plainFactory(ctx, deviceName, port, protocol, firewallMark, listenInterfaces, listenDefaultRoute)
+	}
 }

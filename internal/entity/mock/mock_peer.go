@@ -81,10 +81,10 @@ func (m *MockDevicePeerChecker) EXPECT() *MockDevicePeerCheckerMockRecorder {
 }
 
 // GetDevicePeerMap mocks base method.
-func (m *MockDevicePeerChecker) GetDevicePeerMap(ctx context.Context, deviceName string) (map[string]bool, error) {
+func (m *MockDevicePeerChecker) GetDevicePeerMap(ctx context.Context, deviceName string) (map[entity.PeerKey]bool, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetDevicePeerMap", ctx, deviceName)
-	ret0, _ := ret[0].(map[string]bool)
+	ret0, _ := ret[0].(map[entity.PeerKey]bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

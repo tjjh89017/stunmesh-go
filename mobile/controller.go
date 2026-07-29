@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/netip"
 	"time"
 
 	"github.com/tjjh89017/stunmesh-go/internal/crypto"
@@ -16,6 +17,14 @@ import (
 	pluginapi "github.com/tjjh89017/stunmesh-go/pluginapi"
 	"golang.org/x/crypto/curve25519"
 )
+
+// stunDiscoverer resolves a reflexive address for one address family via
+// STUN. *mobilebind.Bind implements it in production over the shared WG
+// socket; tests substitute a fake to exercise discover/discoverFamily
+// without a real network.
+type stunDiscoverer interface {
+	Discover(ctx context.Context, network, server string) (netip.AddrPort, error)
+}
 
 // controller runs the STUNMESH publish/establish cycle on top of the running
 // device: discover the reflexive address through the shared socket, encrypt
@@ -28,7 +37,7 @@ import (
 type controller struct {
 	node    *Node
 	cfg     *tunnelConfig
-	bind    *mobilebind.Bind
+	bind    stunDiscoverer
 	manager *plugin.Manager
 	crypt   *crypto.Endpoint
 
@@ -58,9 +67,6 @@ func newController(node *Node, bind *mobilebind.Bind) (*controller, error) {
 	var pub [32]byte
 	copy(pub[:], pubSlice)
 
-	// TODO: route the plugins' HTTPS through a protected dialer so full-tunnel
-	// configs (allowed IPs 0.0.0.0/0) do not loop plugin traffic into the
-	// tunnel. Split-tunnel configs work as-is.
 	defs := make(map[string]pluginapi.PluginDefinition, len(cfg.Plugins))
 	for _, d := range cfg.Plugins {
 		conf := pluginapi.PluginConfig{"name": d.Name}
@@ -128,9 +134,9 @@ func (c *controller) cycle(ctx context.Context) {
 		c.pluginsReady = true
 	}
 
-	data := c.discover(ctx)
-	if data.IPv4 == "" && data.IPv6 == "" {
-		listener.OnLog("warn", "no endpoint discovered, skipping publish")
+	data, err := c.discover(ctx)
+	if err != nil {
+		listener.OnLog("warn", "endpoint discovery failed, skipping publish: "+err.Error())
 	} else {
 		c.publish(ctx, data)
 	}
@@ -138,29 +144,33 @@ func (c *controller) cycle(ctx context.Context) {
 }
 
 // discover resolves the reflexive addresses the interface protocol asks for,
-// trying each configured STUN server until one answers.
-func (c *controller) discover(ctx context.Context) ctrl.EndpointData {
+// trying each configured STUN server until one answers. The resolution and
+// dualstack partial-failure policy live in the shared ctrl.DiscoverEndpoints
+// (internal/ctrl/discover.go), which also backs the desktop publish
+// controller: a single-family protocol errors out on that family's failure,
+// while dualstack tolerates one family failing as long as the other
+// succeeds, warning about the failed one instead of erroring.
+func (c *controller) discover(ctx context.Context) (ctrl.EndpointData, error) {
 	listener := c.node.listener
-	var data ctrl.EndpointData
 
-	proto := c.cfg.Interface.Protocol
-	if proto == "ipv4" || proto == "dualstack" {
-		if ep, err := c.discoverFamily(ctx, "udp4"); err == nil {
-			data.IPv4 = ep
-			listener.OnEvent("endpoint_discovered", "", "ipv4 "+ep)
-		} else {
-			listener.OnLog("warn", "ipv4 discovery: "+err.Error())
+	resolve := func(network, family string) ctrl.FamilyResolver {
+		return func(ctx context.Context) (string, error) {
+			ep, err := c.discoverFamily(ctx, network)
+			if err != nil {
+				return "", err
+			}
+			listener.OnEvent("endpoint_discovered", "", family+" "+ep)
+			return ep, nil
 		}
 	}
-	if proto == "ipv6" || proto == "dualstack" {
-		if ep, err := c.discoverFamily(ctx, "udp6"); err == nil {
-			data.IPv6 = ep
-			listener.OnEvent("endpoint_discovered", "", "ipv6 "+ep)
-		} else {
-			listener.OnLog("warn", "ipv6 discovery: "+err.Error())
-		}
+	warn := func(family string, err error) {
+		listener.OnLog("warn", family+" discovery: "+err.Error())
 	}
-	return data
+
+	var data ctrl.EndpointData
+	var err error
+	data.IPv4, data.IPv6, err = ctrl.DiscoverEndpoints(ctx, c.cfg.Interface.Protocol, warn, resolve("udp4", "ipv4"), resolve("udp6", "ipv6"))
+	return data, err
 }
 
 func (c *controller) discoverFamily(ctx context.Context, network string) (string, error) {
@@ -210,7 +220,8 @@ func (c *controller) publish(ctx context.Context, data ctrl.EndpointData) {
 			listener.OnLog("error", "encrypt for "+peer.Name+": "+err.Error())
 			continue
 		}
-		if err := store.Set(ctx, localId, res.Data); err != nil {
+		storeCtx := protectedContext(ctx, c.node.protector)
+		if err := store.Set(storeCtx, localId, res.Data); err != nil {
 			listener.OnLog("warn", "publish for "+peer.Name+": "+err.Error())
 			continue
 		}
@@ -232,7 +243,8 @@ func (c *controller) establish(ctx context.Context) {
 		if err != nil {
 			continue
 		}
-		encrypted, err := store.Get(ctx, peerId.RemoteEndpointKey())
+		storeCtx := protectedContext(ctx, c.node.protector)
+		encrypted, err := store.Get(storeCtx, peerId.RemoteEndpointKey())
 		if err != nil {
 			listener.OnLog("debug", "no record for "+peer.Name+": "+err.Error())
 			continue
@@ -251,7 +263,7 @@ func (c *controller) establish(ctx context.Context) {
 			listener.OnLog("warn", "parse record for "+peer.Name+": "+err.Error())
 			continue
 		}
-		endpoint, err := selectEndpoint(data, peer.Protocol)
+		endpoint, err := ctrl.SelectEndpoint(data, peer.Protocol)
 		if err != nil {
 			listener.OnLog("warn", "select endpoint for "+peer.Name+": "+err.Error())
 			continue
@@ -264,40 +276,5 @@ func (c *controller) establish(ctx context.Context) {
 			continue
 		}
 		c.lastApplied[peer.PublicKey] = endpoint
-	}
-}
-
-// selectEndpoint applies the peer protocol preference, matching the desktop
-// establish semantics: hard families error when absent, prefer_* fall back.
-func selectEndpoint(data ctrl.EndpointData, protocol string) (string, error) {
-	switch protocol {
-	case "", "ipv4":
-		if data.IPv4 == "" {
-			return "", fmt.Errorf("no ipv4 endpoint in record")
-		}
-		return data.IPv4, nil
-	case "ipv6":
-		if data.IPv6 == "" {
-			return "", fmt.Errorf("no ipv6 endpoint in record")
-		}
-		return data.IPv6, nil
-	case "prefer_ipv4":
-		if data.IPv4 != "" {
-			return data.IPv4, nil
-		}
-		if data.IPv6 != "" {
-			return data.IPv6, nil
-		}
-		return "", fmt.Errorf("record has no endpoints")
-	case "prefer_ipv6":
-		if data.IPv6 != "" {
-			return data.IPv6, nil
-		}
-		if data.IPv4 != "" {
-			return data.IPv4, nil
-		}
-		return "", fmt.Errorf("record has no endpoints")
-	default:
-		return "", fmt.Errorf("unknown peer protocol %q", protocol)
 	}
 }

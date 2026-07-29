@@ -42,14 +42,12 @@ func routesFromMessages(msgs []route.Message, family Family) []Route {
 			continue
 		}
 
-		// Interfaces can disappear between the RIB dump and this lookup;
-		// skip the route rather than fail the whole probe.
-		ifi, err := net.InterfaceByIndex(rm.Index)
-		if err != nil {
+		r, ok := resolveRouteInterface(prefix, rm.Index)
+		if !ok {
 			continue
 		}
 
-		routes = append(routes, Route{Prefix: prefix, Interface: ifi.Name, Index: ifi.Index})
+		routes = append(routes, r)
 	}
 	return routes
 }

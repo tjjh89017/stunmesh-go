@@ -42,10 +42,6 @@ runs:
       shell: bash
       run: brew install wireguard-tools wireguard-go jq iperf3
 
-    # Mirrors the same-host e2e: the official installer always takes the
-    # latest client and picks the arch itself, so a scheduled run doubles as
-    # an early warning when a new WireGuard release breaks us. It hands off
-    # to a child MSI process, so poll for the binary rather than trust -Wait.
     # iperf3 via the preinstalled Chocolatey (winget is absent on the Server
     # images): the windows subject is the only proxy-mode pair, and the
     # sustained-stream check is the one signal that loads the relay over a
@@ -55,17 +51,11 @@ runs:
       shell: pwsh
       run: choco install iperf3 -y --no-progress
 
+    # Mirrors the same-host e2e's WireGuard install (see that composite
+    # action's comment for the installer/poll rationale).
     - name: Install tools (Windows)
       if: inputs.os == 'windows'
-      shell: pwsh
-      run: |
-        $installer = Join-Path $env:RUNNER_TEMP 'wireguard-installer.exe'
-        Invoke-WebRequest -Uri 'https://download.wireguard.com/windows-client/wireguard-installer.exe' -OutFile $installer
-        Start-Process $installer -ArgumentList '/install','/quiet' -Wait
-        $wg = 'C:\Program Files\WireGuard\wireguard.exe'
-        for ($i = 0; $i -lt 60 -and -not (Test-Path $wg); $i++) { Start-Sleep 2 }
-        if (-not (Test-Path $wg)) { throw 'WireGuard install did not complete' }
-        Add-Content $env:GITHUB_PATH 'C:\Program Files\WireGuard'
+      uses: ./.github/actions/install-wireguard-windows
 
     # The binary under test is the build stage's artifact -- the exact bytes
     # a release would ship -- mirroring the same-host e2e. Only the canary

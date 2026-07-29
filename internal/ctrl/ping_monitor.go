@@ -1,3 +1,5 @@
+//go:generate mockgen -destination=./mock/mock_ping_monitor.go -package=mock_ctrl . ICMPConnection
+
 package ctrl
 
 import (
@@ -15,6 +17,14 @@ import (
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
 )
+
+// ICMPConnection defines the interface for ICMP connections
+type ICMPConnection interface {
+	Send(data []byte, addr net.Addr) error
+	Recv(buffer []byte, timeout time.Duration) (n int, addr net.Addr, err error)
+	Close() error
+	SetReadDeadline(t time.Time) error
+}
 
 const (
 	// PeerSpecificRetryThreshold defines how many retries to do peer-specific establish before escalating
@@ -61,8 +71,8 @@ type PingMonitorController struct {
 	config         *config.Config
 	devices        DeviceRepository
 	peers          PeerRepository
-	publishCtrl    *PublishController
-	establishCtrl  *EstablishController
+	publishCtrl    Publisher
+	establishCtrl  Establisher
 	deviceMonitors map[string]*DevicePingMonitor // deviceName -> monitor
 	logger         zerolog.Logger
 	mu             sync.RWMutex
@@ -72,8 +82,8 @@ func NewPingMonitorController(
 	config *config.Config,
 	devices DeviceRepository,
 	peers PeerRepository,
-	publishCtrl *PublishController,
-	establishCtrl *EstablishController,
+	publishCtrl Publisher,
+	establishCtrl Establisher,
 	logger *zerolog.Logger,
 ) *PingMonitorController {
 	return &PingMonitorController{
@@ -99,9 +109,14 @@ func NewDevicePingMonitor(deviceName string, controller *PingMonitorController, 
 }
 
 func (c *PingMonitorController) Execute(ctx context.Context) {
-	// Wait for system initialization before starting ping monitoring
+	// Wait for system initialization before starting ping monitoring, but
+	// return immediately on shutdown instead of blocking the full delay.
 	c.logger.Info().Dur("delay", PingMonitorStartupDelay).Msg("waiting before starting ping monitor")
-	time.Sleep(PingMonitorStartupDelay)
+	select {
+	case <-ctx.Done():
+		return
+	case <-time.After(PingMonitorStartupDelay):
+	}
 
 	// Get all configured peers from all interfaces
 	peers, err := c.peers.List(ctx)
@@ -115,7 +130,7 @@ func (c *PingMonitorController) Execute(ctx context.Context) {
 	for _, peer := range peers {
 		// Only monitor peers that have ping enabled
 		if peer.PingConfig().Enabled && peer.PingConfig().Target != "" {
-			deviceName := peer.DeviceName()
+			deviceName := string(peer.DeviceName())
 			devicePeers[deviceName] = append(devicePeers[deviceName], peer)
 			c.logger.Info().
 				Str("peer", peer.LocalId()).
@@ -246,7 +261,7 @@ func (m *DevicePingMonitor) AddPeer(peerId entity.PeerId, pingConfig entity.Peer
 	m.icmpIdToPeer[icmpId] = peerId
 
 	m.logger.Info().
-		Str("peer", peerId.String()).
+		Str("peer", peerId.PeerPublicKeyString()).
 		Str("target", pingConfig.Target).
 		Dur("interval", interval).
 		Dur("timeout", timeout).
@@ -322,10 +337,14 @@ func (m *DevicePingMonitor) deviceTimeoutChecker(ctx context.Context, timeout ti
 
 func (m *DevicePingMonitor) checkForTimeouts() {
 	m.mu.RLock()
-	defer m.mu.RUnlock()
+	states := make([]*PeerPingState, 0, len(m.peerStates))
+	for _, state := range m.peerStates {
+		states = append(states, state)
+	}
+	m.mu.RUnlock()
 
 	now := time.Now()
-	for _, state := range m.peerStates {
+	for _, state := range states {
 		state.mu.RLock()
 		lastSentTime := state.lastSentTime
 		timeout := state.timeout
@@ -334,7 +353,7 @@ func (m *DevicePingMonitor) checkForTimeouts() {
 		// Check if peer has timed out (no reply received within timeout after last sent)
 		if !lastSentTime.IsZero() && now.Sub(lastSentTime) > timeout {
 			m.logger.Debug().
-				Str("peer", state.peerId.String()).
+				Str("peer", state.peerId.PeerPublicKeyString()).
 				Str("target", state.target).
 				Dur("timeout", timeout).
 				Msg("peer ping timed out")
@@ -427,7 +446,7 @@ func (m *DevicePingMonitor) dispatchReply(reply []byte, addr net.Addr) {
 	state, exists := m.peerStates[peerId]
 	if !exists {
 		m.mu.RUnlock()
-		m.logger.Trace().Str("peer", peerId.String()).Msg("received reply for unknown peer")
+		m.logger.Trace().Str("peer", peerId.PeerPublicKeyString()).Msg("received reply for unknown peer")
 		return
 	}
 	m.mu.RUnlock()
@@ -435,7 +454,7 @@ func (m *DevicePingMonitor) dispatchReply(reply []byte, addr net.Addr) {
 	// Validate reply (IP address and ICMP ID match)
 	if m.validateReply(addr, state, icmpId) {
 		m.logger.Trace().
-			Str("peer", state.peerId.String()).
+			Str("peer", state.peerId.PeerPublicKeyString()).
 			Str("target", state.target).
 			Msg("ping success")
 		m.handlePingResult(state, true)
@@ -485,7 +504,7 @@ func (m *DevicePingMonitor) handlePingResult(state *PeerPingState, success bool)
 	defer state.mu.Unlock()
 
 	state.lastPingTime = time.Now()
-	logger := m.logger.With().Str("peer", state.peerId.String()).Str("target", state.target).Logger()
+	logger := m.logger.With().Str("peer", state.peerId.PeerPublicKeyString()).Str("target", state.target).Logger()
 
 	if success {
 		// Ping succeeded
@@ -607,11 +626,4 @@ func getErrorType(err error) string {
 		return "none"
 	}
 	return reflect.TypeOf(err).String()
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

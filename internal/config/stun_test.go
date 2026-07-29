@@ -12,6 +12,7 @@ import (
 )
 
 func TestGetServers_AddressOnly(t *testing.T) {
+	t.Parallel()
 	s := &Stun{Address: "stun.example.com:3478"}
 	got := s.GetServers()
 	want := []string{"stun.example.com:3478"}
@@ -21,6 +22,7 @@ func TestGetServers_AddressOnly(t *testing.T) {
 }
 
 func TestGetServers_AddressesOnly(t *testing.T) {
+	t.Parallel()
 	s := &Stun{Addresses: []string{"stun1.example.com:3478", "stun2.example.com:3478"}}
 	got := s.GetServers()
 	want := []string{"stun1.example.com:3478", "stun2.example.com:3478"}
@@ -31,6 +33,7 @@ func TestGetServers_AddressesOnly(t *testing.T) {
 
 // Address is prepended to Addresses.
 func TestGetServers_BothSetNoOverlap(t *testing.T) {
+	t.Parallel()
 	s := &Stun{
 		Address:   "stun0.example.com:3478",
 		Addresses: []string{"stun1.example.com:3478", "stun2.example.com:3478"},
@@ -44,6 +47,7 @@ func TestGetServers_BothSetNoOverlap(t *testing.T) {
 
 // The duplicate is removed and Address stays first.
 func TestGetServers_BothSetWithDuplicate(t *testing.T) {
+	t.Parallel()
 	s := &Stun{
 		Address:   "stun1.example.com:3478",
 		Addresses: []string{"stun1.example.com:3478", "stun2.example.com:3478"},
@@ -56,6 +60,7 @@ func TestGetServers_BothSetWithDuplicate(t *testing.T) {
 }
 
 func TestGetServers_NeitherSet(t *testing.T) {
+	t.Parallel()
 	s := &Stun{}
 	got := s.GetServers()
 	want := []string{"stun.l.google.com:19302"}
@@ -65,6 +70,7 @@ func TestGetServers_NeitherSet(t *testing.T) {
 }
 
 func TestGetServers_AddressesContainsEmptyStrings(t *testing.T) {
+	t.Parallel()
 	s := &Stun{
 		Addresses: []string{"", "stun1.example.com:3478", "", "stun2.example.com:3478", ""},
 	}
@@ -76,17 +82,14 @@ func TestGetServers_AddressesContainsEmptyStrings(t *testing.T) {
 }
 
 func TestLoad_BackwardCompat_AddressOnly(t *testing.T) {
-	resetConfigGlobals(t)
-
+	t.Parallel()
 	tmpDir := t.TempDir()
 	configContent := "stun:\n  address: \"stun.example.com:3478\"\n"
 	if err := os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte(configContent), 0644); err != nil {
 		t.Fatal(err)
 	}
 
-	Paths = []string{tmpDir}
-
-	cfg, err := Load()
+	cfg, err := load("", "", []string{tmpDir})
 	if err != nil {
 		t.Fatalf("Load() error = %v, want nil", err)
 	}
@@ -105,17 +108,14 @@ func TestLoad_BackwardCompat_AddressOnly(t *testing.T) {
 
 // stun.address has no default value, so no implicit entry is prepended.
 func TestLoad_BackwardCompat_AddressesOnly(t *testing.T) {
-	resetConfigGlobals(t)
-
+	t.Parallel()
 	tmpDir := t.TempDir()
 	configContent := "stun:\n  addresses:\n    - stun1.example.com:3478\n    - stun2.example.com:3478\n"
 	if err := os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte(configContent), 0644); err != nil {
 		t.Fatal(err)
 	}
 
-	Paths = []string{tmpDir}
-
-	cfg, err := Load()
+	cfg, err := load("", "", []string{tmpDir})
 	if err != nil {
 		t.Fatalf("Load() error = %v, want nil", err)
 	}
@@ -132,17 +132,14 @@ func TestLoad_BackwardCompat_AddressesOnly(t *testing.T) {
 }
 
 func TestLoad_NeitherAddressNorAddresses(t *testing.T) {
-	resetConfigGlobals(t)
-
+	t.Parallel()
 	tmpDir := t.TempDir()
 	configContent := "refresh_interval: 5m\n"
 	if err := os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte(configContent), 0644); err != nil {
 		t.Fatal(err)
 	}
 
-	Paths = []string{tmpDir}
-
-	cfg, err := Load()
+	cfg, err := load("", "", []string{tmpDir})
 	if err != nil {
 		t.Fatalf("Load() error = %v, want nil", err)
 	}
@@ -160,17 +157,14 @@ func TestLoad_NeitherAddressNorAddresses(t *testing.T) {
 
 // "addresses: []" must error, not be silently replaced by the default server.
 func TestLoad_ExplicitEmptyAddresses_NoAddress(t *testing.T) {
-	resetConfigGlobals(t)
-
+	t.Parallel()
 	tmpDir := t.TempDir()
 	configContent := "stun:\n  addresses: []\n"
 	if err := os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte(configContent), 0644); err != nil {
 		t.Fatal(err)
 	}
 
-	Paths = []string{tmpDir}
-
-	_, err := Load()
+	_, err := load("", "", []string{tmpDir})
 	if !errors.Is(err, ErrNoStunServers) {
 		t.Fatalf("Load() error = %v, want ErrNoStunServers", err)
 	}
@@ -179,17 +173,14 @@ func TestLoad_ExplicitEmptyAddresses_NoAddress(t *testing.T) {
 // "addresses: []" plus a non-empty stun.address is accepted: the deprecated
 // address becomes the only entry.
 func TestLoad_ExplicitEmptyAddresses_WithAddress(t *testing.T) {
-	resetConfigGlobals(t)
-
+	t.Parallel()
 	tmpDir := t.TempDir()
 	configContent := "stun:\n  address: \"stun.example.com:3478\"\n  addresses: []\n"
 	if err := os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte(configContent), 0644); err != nil {
 		t.Fatal(err)
 	}
 
-	Paths = []string{tmpDir}
-
-	cfg, err := Load()
+	cfg, err := load("", "", []string{tmpDir})
 	if err != nil {
 		t.Fatalf("Load() error = %v, want nil", err)
 	}
@@ -204,34 +195,28 @@ func TestLoad_ExplicitEmptyAddresses_WithAddress(t *testing.T) {
 // "${STUN_SERVER}" template) must error like "addresses: []", not silently
 // fall back to the default server.
 func TestLoad_AllEmptyStringAddresses_NoAddress(t *testing.T) {
-	resetConfigGlobals(t)
-
+	t.Parallel()
 	tmpDir := t.TempDir()
 	configContent := "stun:\n  addresses: [\"\"]\n"
 	if err := os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte(configContent), 0644); err != nil {
 		t.Fatal(err)
 	}
 
-	Paths = []string{tmpDir}
-
-	_, err := Load()
+	_, err := load("", "", []string{tmpDir})
 	if !errors.Is(err, ErrNoStunServers) {
 		t.Fatalf("Load() error = %v, want ErrNoStunServers", err)
 	}
 }
 
 func TestLoad_MultipleEmptyStringAddresses_NoAddress(t *testing.T) {
-	resetConfigGlobals(t)
-
+	t.Parallel()
 	tmpDir := t.TempDir()
 	configContent := "stun:\n  addresses: [\"\", \"\"]\n"
 	if err := os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte(configContent), 0644); err != nil {
 		t.Fatal(err)
 	}
 
-	Paths = []string{tmpDir}
-
-	_, err := Load()
+	_, err := load("", "", []string{tmpDir})
 	if !errors.Is(err, ErrNoStunServers) {
 		t.Fatalf("Load() error = %v, want ErrNoStunServers", err)
 	}
@@ -240,17 +225,14 @@ func TestLoad_MultipleEmptyStringAddresses_NoAddress(t *testing.T) {
 // All-empty-string addresses plus a non-empty stun.address is accepted: the
 // deprecated address becomes the only entry.
 func TestLoad_AllEmptyStringAddresses_WithAddress(t *testing.T) {
-	resetConfigGlobals(t)
-
+	t.Parallel()
 	tmpDir := t.TempDir()
 	configContent := "stun:\n  address: \"stun.example.com:3478\"\n  addresses: [\"\"]\n"
 	if err := os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte(configContent), 0644); err != nil {
 		t.Fatal(err)
 	}
 
-	Paths = []string{tmpDir}
-
-	cfg, err := Load()
+	cfg, err := load("", "", []string{tmpDir})
 	if err != nil {
 		t.Fatalf("Load() error = %v, want nil", err)
 	}
@@ -264,17 +246,14 @@ func TestLoad_AllEmptyStringAddresses_WithAddress(t *testing.T) {
 // A list mixing real entries and empty strings is accepted; the empty strings
 // are filtered out by GetServers.
 func TestLoad_MixedRealAndEmptyStringAddresses(t *testing.T) {
-	resetConfigGlobals(t)
-
+	t.Parallel()
 	tmpDir := t.TempDir()
 	configContent := "stun:\n  addresses: [\"stun.example.com:3478\", \"\"]\n"
 	if err := os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte(configContent), 0644); err != nil {
 		t.Fatal(err)
 	}
 
-	Paths = []string{tmpDir}
-
-	cfg, err := Load()
+	cfg, err := load("", "", []string{tmpDir})
 	if err != nil {
 		t.Fatalf("Load() error = %v, want nil", err)
 	}
@@ -286,11 +265,9 @@ func TestLoad_MixedRealAndEmptyStringAddresses(t *testing.T) {
 }
 
 func TestLoad_NoConfigFileAtAll(t *testing.T) {
-	resetConfigGlobals(t)
+	t.Parallel()
 
-	Paths = []string{t.TempDir()}
-
-	cfg, err := Load()
+	cfg, err := load("", "", []string{t.TempDir()})
 	if err != nil {
 		t.Fatalf("Load() error = %v, want nil", err)
 	}
@@ -304,6 +281,7 @@ func TestLoad_NoConfigFileAtAll(t *testing.T) {
 // TestStunAddressesDecode_NilVsEmpty pins the nil vs empty-slice distinction
 // Load's STUN semantics depend on: absent key -> nil, "addresses: []" -> non-nil.
 func TestStunAddressesDecode_NilVsEmpty(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name    string
 		yaml    string
@@ -346,17 +324,14 @@ func TestStunAddressesDecode_NilVsEmpty(t *testing.T) {
 
 // An explicitly empty stun.address contributes nothing to the merged list.
 func TestLoad_BackwardCompat_AddressesOnly_NoDefault(t *testing.T) {
-	resetConfigGlobals(t)
-
+	t.Parallel()
 	tmpDir := t.TempDir()
 	configContent := "stun:\n  address: \"\"\n  addresses:\n    - stun1.example.com:3478\n    - stun2.example.com:3478\n"
 	if err := os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte(configContent), 0644); err != nil {
 		t.Fatal(err)
 	}
 
-	Paths = []string{tmpDir}
-
-	cfg, err := Load()
+	cfg, err := load("", "", []string{tmpDir})
 	if err != nil {
 		t.Fatalf("Load() error = %v, want nil", err)
 	}
@@ -370,17 +345,14 @@ func TestLoad_BackwardCompat_AddressesOnly_NoDefault(t *testing.T) {
 
 // With both keys present, address comes first and duplicates are removed.
 func TestLoad_BackwardCompat_Both(t *testing.T) {
-	resetConfigGlobals(t)
-
+	t.Parallel()
 	tmpDir := t.TempDir()
 	configContent := "stun:\n  address: \"stun0.example.com:3478\"\n  addresses:\n    - stun0.example.com:3478\n    - stun1.example.com:3478\n"
 	if err := os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte(configContent), 0644); err != nil {
 		t.Fatal(err)
 	}
 
-	Paths = []string{tmpDir}
-
-	cfg, err := Load()
+	cfg, err := load("", "", []string{tmpDir})
 	if err != nil {
 		t.Fatalf("Load() error = %v, want nil", err)
 	}

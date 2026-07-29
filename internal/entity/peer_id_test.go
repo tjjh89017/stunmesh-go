@@ -6,7 +6,7 @@ import (
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
 )
 
-func Test_PeerId_EndpointKey(t *testing.T) {
+func TestPeerId_EndpointKey(t *testing.T) {
 	devicePublicKey := []byte{0}
 	peerPublicKey := []byte{1}
 
@@ -19,7 +19,7 @@ func Test_PeerId_EndpointKey(t *testing.T) {
 	}
 }
 
-func Test_PeerId_RemoteEndpointKey(t *testing.T) {
+func TestPeerId_RemoteEndpointKey(t *testing.T) {
 	devicePublicKey := []byte{0}
 	peerPublicKey := []byte{1}
 
@@ -32,7 +32,7 @@ func Test_PeerId_RemoteEndpointKey(t *testing.T) {
 	}
 }
 
-func Test_PeerId_Comparable(t *testing.T) {
+func TestPeerId_Comparable(t *testing.T) {
 	pid := entity.NewPeerId([]byte{0}, []byte{1})
 	pid2 := entity.NewPeerId([]byte{0}, []byte{1})
 

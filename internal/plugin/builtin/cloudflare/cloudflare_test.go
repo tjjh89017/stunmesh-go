@@ -42,108 +42,6 @@ func TestNewCloudflarePlugin_MissingToken(t *testing.T) {
 	}
 }
 
-func TestBuiltinConfig_GetString(t *testing.T) {
-	tests := []struct {
-		name      string
-		config    pluginapi.PluginConfig
-		key       string
-		wantValue string
-		wantOk    bool
-	}{
-		{
-			name:      "existing string key",
-			config:    pluginapi.PluginConfig{"testkey": "testvalue"},
-			key:       "testkey",
-			wantValue: "testvalue",
-			wantOk:    true,
-		},
-		{
-			name:      "nonexistent key",
-			config:    pluginapi.PluginConfig{"other": "value"},
-			key:       "testkey",
-			wantValue: "",
-			wantOk:    false,
-		},
-		{
-			name:      "non-string value",
-			config:    pluginapi.PluginConfig{"testkey": 123},
-			key:       "testkey",
-			wantValue: "",
-			wantOk:    false,
-		},
-		{
-			name:      "empty string value",
-			config:    pluginapi.PluginConfig{"testkey": ""},
-			key:       "testkey",
-			wantValue: "",
-			wantOk:    true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			bc := &BuiltinConfig{config: tt.config}
-			gotValue, gotOk := bc.GetString(tt.key)
-
-			if gotValue != tt.wantValue {
-				t.Errorf("GetString() value = %q, want %q", gotValue, tt.wantValue)
-			}
-
-			if gotOk != tt.wantOk {
-				t.Errorf("GetString() ok = %v, want %v", gotOk, tt.wantOk)
-			}
-		})
-	}
-}
-
-func TestBuiltinConfig_GetStringRequired(t *testing.T) {
-	tests := []struct {
-		name    string
-		config  pluginapi.PluginConfig
-		key     string
-		want    string
-		wantErr bool
-	}{
-		{
-			name:    "existing string key",
-			config:  pluginapi.PluginConfig{"testkey": "testvalue"},
-			key:     "testkey",
-			want:    "testvalue",
-			wantErr: false,
-		},
-		{
-			name:    "nonexistent key",
-			config:  pluginapi.PluginConfig{"other": "value"},
-			key:     "testkey",
-			want:    "",
-			wantErr: true,
-		},
-		{
-			name:    "non-string value",
-			config:  pluginapi.PluginConfig{"testkey": 123},
-			key:     "testkey",
-			want:    "",
-			wantErr: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			bc := &BuiltinConfig{config: tt.config}
-			got, err := bc.GetStringRequired(tt.key)
-
-			if (err != nil) != tt.wantErr {
-				t.Errorf("GetStringRequired() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-
-			if got != tt.want {
-				t.Errorf("GetStringRequired() = %q, want %q", got, tt.want)
-			}
-		})
-	}
-}
-
 func TestGetRecordName_WithSubdomain(t *testing.T) {
 	p := &CloudflarePlugin{
 		zoneName:  "example.com",
@@ -235,7 +133,9 @@ func TestCloudflarePlugin_StructFields(t *testing.T) {
 // The current tests cover:
 // - Configuration validation
 // - Record name generation logic
-// - BuiltinConfig helper methods
+//
+// builtin.Config's own helper methods are tested in
+// internal/plugin/builtin/config_test.go.
 //
 // For full coverage, consider refactoring to use dependency injection:
 //   type CloudflarePlugin struct {

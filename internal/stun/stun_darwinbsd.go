@@ -4,7 +4,6 @@ package stun
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"net"
@@ -107,7 +106,7 @@ func New(ctx context.Context, excludeInterface string, port uint16, protocol str
 	// Create pcap handle for each selected interface
 	for _, ifaceName := range interfaceNames {
 		logger.Debug().Msgf("attempting to register OpenLive for interface: %s", ifaceName)
-		handle, err := pcap.OpenLive(ctx, ifaceName, PacketSize, false, time.Duration(StunTimeout)*time.Second, pcap.DefaultSyscalls)
+		handle, err := pcap.OpenLive(ctx, ifaceName, PacketSize, false, StunTimeout, pcap.DefaultSyscalls)
 		if err != nil {
 			// Tolerate open failures and move on; the daemon retries every
 			// refresh cycle, so a transiently-down interface heals itself. An
@@ -233,7 +232,7 @@ func (s *Stun) Start(ctx context.Context) {
 					logger.Debug().Msgf("closed handle for interface: %s", handle.name)
 					s.waitGroup.Done()
 				}()
-				timeout := time.After(time.Duration(StunTimeout) * time.Second)
+				timeout := time.After(StunTimeout)
 				for {
 					select {
 					case <-ctx.Done():
@@ -252,20 +251,13 @@ func (s *Stun) Start(ctx context.Context) {
 							logger.Trace().Msgf("fail to read packet data from %s, err %v", handle.name, err)
 							continue
 						}
-						// ReadPacketData can hand back a short or empty
-						// buffer with a nil error (a timed-out read yields
-						// len 0), so the payload offset is not safe to slice
-						// with until it is known to be in range.
-						if uint32(len(buf)) < handle.payloadOff {
-							logger.Trace().Msgf("short packet (%d bytes, need %d) from %s", len(buf), handle.payloadOff, handle.name)
-							continue
-						}
-						// decode STUN
-						m := &stun.Message{
-							Raw: buf[handle.payloadOff:],
-						}
-						if err := m.Decode(); err != nil {
-							logger.Debug().Msgf("fail to decode stun msg from %s", handle.name)
+						m, err := decodeStunPacket(buf, handle.payloadOff)
+						if err != nil {
+							if errors.Is(err, errShortPacket) {
+								logger.Trace().Msgf("%v from %s", err, handle.name)
+							} else {
+								logger.Debug().Msgf("fail to decode stun msg from %s", handle.name)
+							}
 							continue
 						}
 						select {
@@ -283,11 +275,28 @@ func (s *Stun) Start(ctx context.Context) {
 	})
 }
 
-func (s *Stun) getUDPAddressFamily() string {
-	if s.protocol == "ipv6" {
-		return "udp6"
+// errShortPacket marks decodeStunPacket's short-packet case so callers can
+// distinguish it from a STUN decode failure and log each at its own level.
+var errShortPacket = errors.New("short packet")
+
+// decodeStunPacket validates that buf is long enough to contain the STUN
+// payload at payloadOff, then decodes it. ReadPacketData can hand back a
+// short or empty buffer with a nil error (a timed-out read yields len 0), so
+// the payload offset is not safe to slice with until it is known to be in
+// range.
+func decodeStunPacket(buf []byte, payloadOff uint32) (*stun.Message, error) {
+	if uint32(len(buf)) < payloadOff {
+		return nil, fmt.Errorf("%w: %d bytes, need %d", errShortPacket, len(buf), payloadOff)
 	}
-	return "udp4"
+
+	m := &stun.Message{
+		Raw: buf[payloadOff:],
+	}
+	if err := m.Decode(); err != nil {
+		return nil, err
+	}
+
+	return m, nil
 }
 
 func (s *Stun) writeTo(packet []byte, addr net.Addr) (int, error) {
@@ -297,68 +306,15 @@ func (s *Stun) writeTo(packet []byte, addr net.Addr) (int, error) {
 	return s.conn4.WriteTo(packet, nil, addr)
 }
 
-func (s *Stun) Connect(ctx context.Context, stunAddr string) (_ string, _ int, err error) {
-	logger := zerolog.Ctx(ctx)
-
-	logger.Info().Msgf("connecting to STUN server: %s", stunAddr)
-
-	addr, err := net.ResolveUDPAddr(s.getUDPAddressFamily(), stunAddr)
-	if err != nil {
-		return "", 0, err
-	}
-
-	packet, err := createStunBindingPacket(s.port, uint16(addr.Port))
-	if err != nil {
-		return "", 0, err
-	}
-
-	if _, err = s.writeTo(packet, addr); err != nil {
-		return "", 0, err
-	}
-
-	reply, err := s.Read(ctx)
-	if err != nil {
-		return "", 0, err
-	}
-
-	// Parse returns nil when the reply carries no XOR-MAPPED-ADDRESS; the
-	// resolver treats the error as "this server failed" and moves to the next.
-	replyAddr := Parse(ctx, reply)
-	if replyAddr == nil {
-		return "", 0, ErrNoMappedAddress
-	}
-
-	return replyAddr.IP.String(), replyAddr.Port, nil
-}
-
 func (s *Stun) Read(ctx context.Context) (*stun.Message, error) {
 	select {
 	case m := <-s.packetChan:
 		return m, nil
-	case <-time.After(time.Duration(StunTimeout) * time.Second):
+	case <-time.After(StunTimeout):
 		return nil, ErrTimeout
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
-}
-
-func createStunBindingPacket(srcPort, dstPort uint16) ([]byte, error) {
-	// stun.TransactionID setter automatically generates a random transaction ID
-	msg, err := stun.Build(stun.TransactionID, stun.BindingRequest)
-	if err != nil {
-		return nil, err
-	}
-
-	packetLength := uint16(BindingPacketHeaderSize + len(msg.Raw))
-	checksum := uint16(0)
-
-	buf := make([]byte, BindingPacketHeaderSize)
-	binary.BigEndian.PutUint16(buf[0:], srcPort)
-	binary.BigEndian.PutUint16(buf[2:], dstPort)
-	binary.BigEndian.PutUint16(buf[4:], packetLength)
-	binary.BigEndian.PutUint16(buf[6:], checksum)
-
-	return append(buf, msg.Raw...), nil
 }
 
 // resolveListenInterfaces decides which underlay interfaces STUN discovery

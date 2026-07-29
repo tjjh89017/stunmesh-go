@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -13,12 +14,16 @@ import (
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/google/wire"
 	"github.com/rs/zerolog"
+	"github.com/tjjh89017/stunmesh-go/internal/entity"
 	pluginapi "github.com/tjjh89017/stunmesh-go/pluginapi"
 	"go.yaml.in/yaml/v3"
 )
 
+// DefaultSet excludes Load: main.go calls it directly to produce the
+// *Config that setup() takes as a parameter, since Load's two string
+// arguments (configFile, configDir) can't be told apart by Wire's
+// type-based injection.
 var DefaultSet = wire.NewSet(
-	Load,
 	NewDeviceConfig,
 )
 
@@ -58,35 +63,18 @@ func logLevels() []string {
 	return names
 }
 
-// Command-line overrides, set from main before Load runs. Each takes priority
-// over the corresponding config-file value or search path.
-var (
-	// ConfigFile, when non-empty, is the exact config file to read; it
-	// overrides ConfigDir and Paths and must be readable (no fallback to
-	// defaults).
-	ConfigFile string
+// ConfigFileNames lists candidate file names inside a directory; the first
+// one that exists wins.
+var ConfigFileNames = []string{"config.yaml", "config.yml"}
 
-	// ConfigDir, when non-empty, is a directory searched for ConfigFileNames;
-	// it overrides Paths and must contain a config file (no fallback to
-	// defaults).
-	ConfigDir string
-)
-
-// Where Load looks for a config file when ConfigFile is unset.
-var (
-	// ConfigFileNames lists candidate file names inside a directory; the first
-	// one that exists wins.
-	ConfigFileNames = []string{"config.yaml", "config.yml"}
-
-	// Paths lists directories (env-expanded) searched when neither ConfigFile
-	// nor ConfigDir is set.
-	Paths = []string{
-		"$STUNMESH_CONFIG_DIR",
-		"/etc/stunmesh",
-		"$HOME/.stunmesh",
-		".",
-	}
-)
+// defaultSearchPaths lists directories (env-expanded) Load searches when
+// neither configFile nor configDir is set.
+var defaultSearchPaths = []string{
+	"$STUNMESH_CONFIG_DIR",
+	"/etc/stunmesh",
+	"$HOME/.stunmesh",
+	".",
+}
 
 var (
 	ErrReadConfig      = errors.New("failed to read config")
@@ -143,25 +131,25 @@ type Config struct {
 	PingMonitor     PingMonitor                           `mapstructure:"ping_monitor"`
 }
 
-// findConfigFile resolves the config file path, honoring ConfigFile and ConfigDir before
-// the Paths search; "" with nil error means not found (proceed with defaults).
-func findConfigFile() (string, error) {
-	if ConfigFile != "" {
-		return ConfigFile, nil
+// findConfigFile resolves the config file path, honoring configFile and configDir before
+// the paths search; "" with nil error means not found (proceed with defaults).
+func findConfigFile(configFile, configDir string, paths []string) (string, error) {
+	if configFile != "" {
+		return configFile, nil
 	}
 
-	if ConfigDir != "" {
+	if configDir != "" {
 		for _, name := range ConfigFileNames {
-			candidate := filepath.Join(ConfigDir, name)
+			candidate := filepath.Join(configDir, name)
 			if _, err := os.Stat(candidate); err == nil {
 				return candidate, nil
 			}
 		}
-		// Explicit ConfigDir override must succeed: return the primary name so the read fails hard.
-		return filepath.Join(ConfigDir, ConfigFileNames[0]), nil
+		// Explicit configDir override must succeed: return the primary name so the read fails hard.
+		return filepath.Join(configDir, ConfigFileNames[0]), nil
 	}
 
-	for _, path := range Paths {
+	for _, path := range paths {
 		expanded := os.ExpandEnv(path)
 		if expanded == "" {
 			continue
@@ -177,7 +165,17 @@ func findConfigFile() (string, error) {
 	return "", nil
 }
 
-func Load() (*Config, error) {
+// Load reads and validates the config, searching for a file as documented in
+// CLAUDE.md's "Config Loading Priority": configFile (exact file) takes
+// priority over configDir (directory holding ConfigFileNames), which takes
+// priority over the built-in search paths.
+func Load(configFile, configDir string) (*Config, error) {
+	return load(configFile, configDir, defaultSearchPaths)
+}
+
+// load is Load with the search paths taken as a parameter, so tests can
+// point it at a temp directory without touching package state.
+func load(configFile, configDir string, paths []string) (*Config, error) {
 	var cfg Config
 	// Pre-Decode defaults; yaml keys absent from the file leave these untouched.
 	// Stun.Addresses must stay nil (not []) so "key absent" is distinguishable
@@ -189,7 +187,7 @@ func Load() (*Config, error) {
 	cfg.Log.Format = DefaultLogFormat
 	cfg.Log.Level = DefaultLogLevel
 
-	path, err := findConfigFile()
+	path, err := findConfigFile(configFile, configDir, paths)
 	if err != nil {
 		return nil, err
 	}
@@ -241,7 +239,7 @@ func Load() (*Config, error) {
 	switch {
 	case cfg.Stun.Addresses == nil && cfg.Stun.Address == "":
 		// logger.NewLogger needs this config; use a throwaway console logger here.
-		warnLog := zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout}).With().Timestamp().Logger()
+		warnLog := entity.NewStartupLogger()
 		warnLog.Warn().Msg("no STUN servers configured, defaulting to " + DefaultStunServer)
 		cfg.Stun.Addresses = []string{DefaultStunServer}
 	case effectiveAddresses == 0 && cfg.Stun.Address == "":
@@ -277,21 +275,21 @@ func validateConfigForGOOS(cfg *Config, goos string) error {
 	// Empty means unset, as it does for the protocol fields below; Load has
 	// already replaced it with the default on the path that reads a file.
 	if cfg.Log.Format != "" && !slices.Contains(LogFormats, cfg.Log.Format) {
-		return errors.New("invalid log format '" + cfg.Log.Format + "', must be one of: " + strings.Join(LogFormats, ", "))
+		return fmt.Errorf("invalid log format '%s', must be one of: %s", cfg.Log.Format, strings.Join(LogFormats, ", "))
 	}
 
 	// ParseLevel is the authority on what it accepts, including case; LogLevels
 	// only supplies the list its own error message leaves out.
 	if cfg.Log.Level != "" {
 		if _, err := zerolog.ParseLevel(cfg.Log.Level); err != nil {
-			return errors.New("invalid log level '" + cfg.Log.Level + "', must be one of: " + strings.Join(LogLevels, ", "))
+			return fmt.Errorf("invalid log level '%s', must be one of: %s", cfg.Log.Level, strings.Join(LogLevels, ", "))
 		}
 	}
 
 	for ifaceName, iface := range cfg.Interfaces {
 		// 0 means unset (ephemeral); reject anything outside the port range.
 		if iface.Proxy.Listen < 0 || iface.Proxy.Listen > 65535 {
-			return errors.New("invalid proxy listen port " + strconv.Itoa(iface.Proxy.Listen) + " for interface '" + ifaceName + "', must be between 1 and 65535")
+			return fmt.Errorf("invalid proxy listen port %s for interface '%s', must be between 0 and 65535", strconv.Itoa(iface.Proxy.Listen), ifaceName)
 		}
 
 		// 0 means unset (escape off); the true kernel limit is net.fibs-1,
@@ -299,19 +297,19 @@ func validateConfigForGOOS(cfg *Config, goos string) error {
 		// check -- a fib the running kernel rejects surfaces as a setsockopt
 		// error at runtime instead.
 		if iface.Proxy.Fib < 0 || iface.Proxy.Fib > 65535 {
-			return errors.New("invalid proxy fib " + strconv.Itoa(iface.Proxy.Fib) + " for interface '" + ifaceName + "', must be between 0 and 65535")
+			return fmt.Errorf("invalid proxy fib %s for interface '%s', must be between 0 and 65535", strconv.Itoa(iface.Proxy.Fib), ifaceName)
 		}
 
 		// Windows has no non-proxy mode; an explicit opt-out can't be honored.
 		if goos == "windows" && iface.Proxy.Enabled != nil && !*iface.Proxy.Enabled {
-			return errors.New("invalid proxy.enabled 'false' for interface '" + ifaceName + "': Windows has no non-proxy mode")
+			return fmt.Errorf("invalid proxy.enabled 'false' for interface '%s': Windows has no non-proxy mode", ifaceName)
 		}
 
 		if iface.Protocol != "" {
 			switch iface.Protocol {
 			case "ipv4", "ipv6", "dualstack":
 			default:
-				return errors.New("invalid interface protocol '" + iface.Protocol + "' for interface '" + ifaceName + "', must be one of: ipv4, ipv6, dualstack")
+				return fmt.Errorf("invalid interface protocol '%s' for interface '%s', must be one of: ipv4, ipv6, dualstack", iface.Protocol, ifaceName)
 			}
 		}
 
@@ -320,7 +318,7 @@ func validateConfigForGOOS(cfg *Config, goos string) error {
 				switch peer.Protocol {
 				case "ipv4", "ipv6", "prefer_ipv4", "prefer_ipv6":
 				default:
-					return errors.New("invalid peer protocol '" + peer.Protocol + "' for peer '" + peerName + "' on interface '" + ifaceName + "', must be one of: ipv4, ipv6, prefer_ipv4, prefer_ipv6")
+					return fmt.Errorf("invalid peer protocol '%s' for peer '%s' on interface '%s', must be one of: ipv4, ipv6, prefer_ipv4, prefer_ipv6", peer.Protocol, peerName, ifaceName)
 				}
 			}
 		}

@@ -5,13 +5,11 @@ package ctrl
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net"
 	"strconv"
 
 	"github.com/rs/zerolog"
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
-	"github.com/tjjh89017/stunmesh-go/internal/plugin"
 	"github.com/tjjh89017/stunmesh-go/internal/plugin/dialer"
 	"github.com/tjjh89017/stunmesh-go/internal/queue"
 	"github.com/tjjh89017/stunmesh-go/internal/routeprobe"
@@ -28,7 +26,7 @@ type DeviceConfigProvider interface {
 type PublishController struct {
 	devices       DeviceRepository
 	peers         PeerRepository
-	pluginManager *plugin.Manager
+	pluginManager PluginProvider
 	resolver      StunResolver
 	encryptor     EndpointEncryptor
 	deviceConfig  DeviceConfigProvider
@@ -43,7 +41,7 @@ type PublishController struct {
 	lastPublished map[string]string
 }
 
-func NewPublishController(devices DeviceRepository, peers PeerRepository, pluginManager *plugin.Manager, resolver StunResolver, encryptor EndpointEncryptor, deviceConfig DeviceConfigProvider, logger *zerolog.Logger) *PublishController {
+func NewPublishController(devices DeviceRepository, peers PeerRepository, pluginManager PluginProvider, resolver StunResolver, encryptor EndpointEncryptor, deviceConfig DeviceConfigProvider, logger *zerolog.Logger) *PublishController {
 	return &PublishController{
 		devices:       devices,
 		peers:         peers,
@@ -58,79 +56,95 @@ func NewPublishController(devices DeviceRepository, peers PeerRepository, plugin
 	}
 }
 
-// discoverEndpoints performs STUN discovery based on device protocol
-// Returns IPv4 and IPv6 endpoints, or error if discovery failed
+// discoverEndpoints performs STUN discovery based on device protocol.
+// Returns IPv4 and IPv6 endpoints, or error if discovery failed. The
+// resolution and dualstack partial-failure policy live in the shared
+// DiscoverEndpoints (internal/ctrl/discover.go); this wraps it with the
+// raw-socket StunResolver and this controller's logging.
 func (c *PublishController) discoverEndpoints(ctx context.Context, device *entity.Device, logger zerolog.Logger) (ipv4Endpoint, ipv6Endpoint string, err error) {
-	protocol := device.Protocol()
+	resolveFamily := func(family string) FamilyResolver {
+		return func(ctx context.Context) (string, error) {
+			host, port, err := c.resolver.Resolve(ctx, string(device.Name()), uint16(device.ListenPort()), family, device.FirewallMark())
+			if err != nil {
+				return "", err
+			}
+			return net.JoinHostPort(host, strconv.Itoa(port)), nil
+		}
+	}
 
-	// Determine which protocols to resolve
-	var resolveIPv4, resolveIPv6 bool
-	switch protocol {
-	case "ipv4":
-		resolveIPv4 = true
-	case "ipv6":
-		resolveIPv6 = true
-	case "dualstack":
-		resolveIPv4 = true
-		resolveIPv6 = true
-	default:
-		err := errors.New("unknown protocol: " + protocol)
-		logger.Error().Err(err).Msg("invalid protocol")
+	warn := func(family string, ferr error) {
+		logger.Warn().Err(ferr).Msg("failed to resolve " + family + " address in dualstack mode")
+	}
+
+	ipv4Endpoint, ipv6Endpoint, err = DiscoverEndpoints(ctx, device.Protocol(), warn, resolveFamily("ipv4"), resolveFamily("ipv6"))
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to discover endpoints")
 		return "", "", err
 	}
 
-	// Perform IPv4 STUN discovery if needed
-	var ipv4Err error
-	if resolveIPv4 {
-		host, port, err := c.resolver.Resolve(ctx, string(device.Name()), uint16(device.ListenPort()), "ipv4", device.FirewallMark())
-		if err != nil {
-			ipv4Err = err
-		} else {
-			ipv4Endpoint = net.JoinHostPort(host, strconv.Itoa(port))
-			logger.Info().Str("ipv4", ipv4Endpoint).Msg("discovered IPv4 endpoint")
-		}
+	if ipv4Endpoint != "" {
+		logger.Info().Str("ipv4", ipv4Endpoint).Msg("discovered IPv4 endpoint")
 	}
-
-	// Perform IPv6 STUN discovery if needed
-	var ipv6Err error
-	if resolveIPv6 {
-		host, port, err := c.resolver.Resolve(ctx, string(device.Name()), uint16(device.ListenPort()), "ipv6", device.FirewallMark())
-		if err != nil {
-			ipv6Err = err
-		} else {
-			ipv6Endpoint = net.JoinHostPort(host, strconv.Itoa(port))
-			logger.Info().Str("ipv6", ipv6Endpoint).Msg("discovered IPv6 endpoint")
-		}
-	}
-
-	// Handle errors based on protocol mode
-	switch protocol {
-	case "ipv4":
-		if ipv4Err != nil {
-			logger.Error().Err(ipv4Err).Msg("failed to resolve IPv4 address")
-			return "", "", ipv4Err
-		}
-	case "ipv6":
-		if ipv6Err != nil {
-			logger.Error().Err(ipv6Err).Msg("failed to resolve IPv6 address")
-			return "", "", ipv6Err
-		}
-	case "dualstack":
-		if ipv4Err != nil {
-			logger.Warn().Err(ipv4Err).Msg("failed to resolve IPv4 address in dualstack mode")
-		}
-		if ipv6Err != nil {
-			logger.Warn().Err(ipv6Err).Msg("failed to resolve IPv6 address in dualstack mode")
-		}
-		// If both failed, return error
-		if ipv4Endpoint == "" && ipv6Endpoint == "" {
-			err := errors.New("both IPv4 and IPv6 STUN discovery failed")
-			logger.Error().Err(err).Msg("dualstack discovery failed")
-			return "", "", err
-		}
+	if ipv6Endpoint != "" {
+		logger.Info().Str("ipv6", ipv6Endpoint).Msg("discovered IPv6 endpoint")
 	}
 
 	return ipv4Endpoint, ipv6Endpoint, nil
+}
+
+// publishToPeer builds the endpoint JSON, applies dedup, encrypts and
+// stores it for a single peer, and records it in lastPublished on success.
+// storeCtx is the context used for the store.Set call (after applying the
+// dialer escape); callers pass different bases (Execute keeps the
+// peer-scoped logger attached, ExecuteForPeer detaches from cancellation)
+// while ctx is used unchanged for encryption.
+func (c *PublishController) publishToPeer(ctx, storeCtx context.Context, device *entity.Device, peer *entity.Peer, ipv4Endpoint, ipv6Endpoint string, logger zerolog.Logger) error {
+	// Build endpoint data in plain JSON
+	endpointData := EndpointData{
+		IPv4: ipv4Endpoint,
+		IPv6: ipv6Endpoint,
+	}
+
+	jsonPlain, err := json.Marshal(endpointData)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to marshal endpoint data")
+		return err
+	}
+
+	// Skip publishing if the plaintext endpoint hasn't changed since
+	// the last successful publish for this peer, and the peer's
+	// plugin instance has dedup enabled.
+	if c.pluginManager.IsDedup(peer.Plugin()) && c.lastPublished[peer.LocalId()] == string(jsonPlain) {
+		logger.Debug().Msg("endpoint unchanged, skip publish")
+		return nil
+	}
+
+	// Encrypt entire JSON content
+	res, err := c.encryptor.Encrypt(ctx, &EndpointEncryptRequest{
+		PeerPublicKey: peer.PublicKey(),
+		PrivateKey:    device.PrivateKey(),
+		Content:       string(jsonPlain),
+	})
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to encrypt endpoint")
+		return err
+	}
+
+	store, err := c.pluginManager.GetPlugin(peer.Plugin())
+	if err != nil {
+		logger.Error().Err(err).Str("plugin", peer.Plugin()).Msg("failed to get plugin")
+		return err
+	}
+
+	logger.Info().Str("plugin", peer.Plugin()).Msg("store endpoint")
+	err = store.Set(dialer.WithEscape(storeCtx, escapeFor(c.deviceConfig, device)), peer.LocalId(), res.Data)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to store endpoint")
+		return err
+	}
+
+	c.lastPublished[peer.LocalId()] = string(jsonPlain)
+	return nil
 }
 
 func (c *PublishController) Execute(ctx context.Context) {
@@ -165,52 +179,9 @@ func (c *PublishController) Execute(ctx context.Context) {
 		for _, peer := range peers {
 			logger := logger.With().Str("peer", peer.LocalId()).Logger()
 
-			// Build endpoint data in plain JSON
-			endpointData := EndpointData{
-				IPv4: ipv4Endpoint,
-				IPv6: ipv6Endpoint,
-			}
-
-			jsonPlain, err := json.Marshal(endpointData)
-			if err != nil {
-				logger.Error().Err(err).Msg("failed to marshal endpoint data")
+			if err := c.publishToPeer(ctx, logger.WithContext(ctx), device, peer, ipv4Endpoint, ipv6Endpoint, logger); err != nil {
 				continue
 			}
-
-			// Skip publishing if the plaintext endpoint hasn't changed since
-			// the last successful publish for this peer, and the peer's
-			// plugin instance has dedup enabled.
-			if c.pluginManager.IsDedup(peer.Plugin()) && c.lastPublished[peer.LocalId()] == string(jsonPlain) {
-				logger.Debug().Msg("endpoint unchanged, skip publish")
-				continue
-			}
-
-			// Encrypt entire JSON content
-			res, err := c.encryptor.Encrypt(ctx, &EndpointEncryptRequest{
-				PeerPublicKey: peer.PublicKey(),
-				PrivateKey:    device.PrivateKey(),
-				Content:       string(jsonPlain),
-			})
-			if err != nil {
-				logger.Error().Err(err).Msg("failed to encrypt endpoint")
-				continue
-			}
-
-			store, err := c.pluginManager.GetPlugin(peer.Plugin())
-			if err != nil {
-				logger.Error().Err(err).Str("plugin", peer.Plugin()).Msg("failed to get plugin")
-				continue
-			}
-
-			logger.Info().Str("plugin", peer.Plugin()).Msg("store endpoint")
-			storeCtx := dialer.WithEscape(logger.WithContext(ctx), escapeFor(c.deviceConfig, device))
-			err = store.Set(storeCtx, peer.LocalId(), res.Data)
-			if err != nil {
-				logger.Error().Err(err).Msg("failed to store endpoint")
-				continue
-			}
-
-			c.lastPublished[peer.LocalId()] = string(jsonPlain)
 		}
 	}
 }
@@ -219,14 +190,14 @@ func (c *PublishController) ExecuteForPeer(ctx context.Context, peerId entity.Pe
 	// Find the specific peer
 	peer, err := c.peers.Find(ctx, peerId)
 	if err != nil {
-		c.logger.Error().Err(err).Str("peer_id", peerId.String()).Msg("failed to find peer")
+		c.logger.Error().Err(err).Str("peer_id", peerId.PeerPublicKeyString()).Msg("failed to find peer")
 		return
 	}
 
 	// Find the device for this peer
-	device, err := c.devices.Find(ctx, entity.DeviceId(peer.DeviceName()))
+	device, err := c.devices.Find(ctx, peer.DeviceName())
 	if err != nil {
-		c.logger.Error().Err(err).Str("device", peer.DeviceName()).Msg("failed to find device")
+		c.logger.Error().Err(err).Str("device", string(peer.DeviceName())).Msg("failed to find device")
 		return
 	}
 
@@ -248,53 +219,9 @@ func (c *PublishController) ExecuteForPeer(ctx context.Context, peerId entity.Pe
 		Str("ipv6", ipv6Endpoint).
 		Msg("discovered endpoints for peer")
 
-	// Build endpoint data in plain JSON
-	endpointData := EndpointData{
-		IPv4: ipv4Endpoint,
-		IPv6: ipv6Endpoint,
-	}
-
-	jsonPlain, err := json.Marshal(endpointData)
-	if err != nil {
-		logger.Error().Err(err).Msg("failed to marshal endpoint data")
+	if err := c.publishToPeer(ctx, context.WithoutCancel(ctx), device, peer, ipv4Endpoint, ipv6Endpoint, logger); err != nil {
 		return
 	}
-
-	// Skip publishing if the plaintext endpoint hasn't changed since the
-	// last successful publish for this peer, and the peer's plugin
-	// instance has dedup enabled.
-	if c.pluginManager.IsDedup(peer.Plugin()) && c.lastPublished[peer.LocalId()] == string(jsonPlain) {
-		logger.Debug().Msg("endpoint unchanged, skip publish")
-		return
-	}
-
-	// Encrypt entire JSON content
-	res, err := c.encryptor.Encrypt(ctx, &EndpointEncryptRequest{
-		PeerPublicKey: peer.PublicKey(),
-		PrivateKey:    device.PrivateKey(),
-		Content:       string(jsonPlain),
-	})
-	if err != nil {
-		logger.Error().Err(err).Msg("failed to encrypt endpoint")
-		return
-	}
-
-	// Get plugin store
-	store, err := c.pluginManager.GetPlugin(peer.Plugin())
-	if err != nil {
-		logger.Error().Err(err).Str("plugin", peer.Plugin()).Msg("failed to get plugin")
-		return
-	}
-
-	// Store endpoint data
-	storeCtx := dialer.WithEscape(context.WithoutCancel(ctx), escapeFor(c.deviceConfig, device))
-	err = store.Set(storeCtx, peer.LocalId(), res.Data)
-	if err != nil {
-		logger.Error().Err(err).Msg("failed to store endpoint for specific peer")
-		return
-	}
-
-	c.lastPublished[peer.LocalId()] = string(jsonPlain)
 
 	logger.Info().Msg("successfully published endpoint for specific peer")
 }
@@ -327,9 +254,9 @@ func (c *PublishController) Trigger() {
 // TriggerForPeer requests a publish operation for a specific peer (non-blocking)
 func (c *PublishController) TriggerForPeer(peerId entity.PeerId) {
 	if c.peerQueue.TryEnqueue(peerId) {
-		c.logger.Debug().Str("peer", peerId.String()).Msg("publish triggered for peer")
+		c.logger.Debug().Str("peer", peerId.PeerPublicKeyString()).Msg("publish triggered for peer")
 	} else {
-		c.logger.Warn().Str("peer", peerId.String()).Msg("peer publish queue full, dropping trigger")
+		c.logger.Warn().Str("peer", peerId.PeerPublicKeyString()).Msg("peer publish queue full, dropping trigger")
 	}
 }
 

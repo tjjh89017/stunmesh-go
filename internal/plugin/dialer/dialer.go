@@ -23,7 +23,8 @@ import (
 
 // Escape is what a socket needs to leave a covering tunnel. Each platform uses
 // the part it has: Linux the mark, freebsd the fib, darwin and windows the
-// interface the probe resolves. Mirrors wgproxy.WithEscape's arguments.
+// interface the probe resolves, android the protector. Mirrors
+// wgproxy.WithEscape's arguments.
 type Escape struct {
 	// FirewallMark is the device's fwmark. Zero means the device has none,
 	// which is the case without a covering route.
@@ -34,6 +35,18 @@ type Escape struct {
 	// TunnelIfaces names the interfaces stunmesh manages, so the probe can
 	// tell a covering tunnel route from the physical path.
 	TunnelIfaces routeprobe.TunnelInterfaces
+	// Protector excludes a socket from the tunnel via Android's
+	// VpnService.protect, for platforms with no mark/fib/interface primitive.
+	// Nil means nothing to call, which is every caller except mobile.
+	Protector Protector
+}
+
+// Protector is the fd-level escape Android provides in place of a
+// mark/fib/interface primitive: mobile/api.go's SocketProtector, structurally,
+// kept as its own type here so this package does not import mobile.
+type Protector interface {
+	// Protect returns true when the socket was excluded from the tunnel.
+	Protect(fd int32) bool
 }
 
 type contextKey struct{}
@@ -46,6 +59,13 @@ func WithEscape(ctx context.Context, escape Escape) context.Context {
 func escapeFrom(ctx context.Context) Escape {
 	escape, _ := ctx.Value(contextKey{}).(Escape)
 	return escape
+}
+
+// EscapeFrom exposes the Escape a context carries, for callers (tests, mainly)
+// that need to verify a caller wired WithEscape correctly without duplicating
+// dialer's internal Control logic.
+func EscapeFrom(ctx context.Context) Escape {
+	return escapeFrom(ctx)
 }
 
 // family reports which address family a dial is for. Control sees the network

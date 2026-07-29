@@ -4,7 +4,6 @@ package routeprobe
 
 import (
 	"fmt"
-	"net"
 	"net/netip"
 	"unsafe"
 
@@ -14,7 +13,7 @@ import (
 // currentRoutes reads the live IPv4 or IPv6 forwarding table via
 // GetIpForwardTable2 (netioapi.h), the API wireguard-windows and winipcfg
 // tooling use for the same purpose. Interface names are resolved from each
-// row's InterfaceIndex via net.InterfaceByIndex, matching how the
+// row's InterfaceIndex via resolveRouteInterface, matching how the
 // darwin/freebsd probe resolves its route.Index; a row whose interface has
 // disappeared since the table snapshot was taken is skipped rather than
 // failing the whole probe.
@@ -35,7 +34,7 @@ func currentRoutes(family Family) ([]Route, error) {
 	return routes, nil
 }
 
-// routesFromRows resolves each row's InterfaceIndex via net.InterfaceByIndex
+// routesFromRows resolves each row's InterfaceIndex via resolveRouteInterface
 // and filters by family, mirroring the darwin/freebsd probe's
 // routesFromMessages. Must run before the caller frees the MibTable that
 // rows was sliced from.
@@ -47,12 +46,12 @@ func routesFromRows(rows []windows.MibIpForwardRow2, family Family) []Route {
 			continue
 		}
 
-		ifi, err := net.InterfaceByIndex(int(row.InterfaceIndex))
-		if err != nil {
+		r, ok := resolveRouteInterface(prefix, int(row.InterfaceIndex))
+		if !ok {
 			continue
 		}
 
-		routes = append(routes, Route{Prefix: prefix, Interface: ifi.Name, Index: ifi.Index})
+		routes = append(routes, r)
 	}
 
 	return routes

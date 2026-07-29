@@ -2,6 +2,7 @@ package repo_test
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
@@ -215,4 +216,61 @@ func Test_PeerListByDevice(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Test_PeerRepository_ConcurrentAccess spawns concurrent readers and
+// writers on a shared repo instance to exercise the sync.RWMutex under
+// `go test -race`. It intentionally mixes Save (write lock) with Find and
+// List (read lock) so the writer/reader distinction is actually exercised,
+// rather than only ever taking one side of the lock.
+func Test_PeerRepository_ConcurrentAccess(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+
+	mockWgClient := mock.NewMockWireGuardClient(mockCtrl)
+
+	const goroutinesPerOp = 50
+
+	peers := repo.NewPeers(mockWgClient)
+
+	var wg sync.WaitGroup
+	wg.Add(goroutinesPerOp * 3)
+
+	for i := 0; i < goroutinesPerOp; i++ {
+		go func(i int) {
+			defer wg.Done()
+
+			id := entity.NewPeerId([]byte{byte(i)}, []byte{byte(i)})
+			peer := entity.NewPeer(
+				id,
+				"wg0",
+				[32]byte{},
+				"exec",
+				"ipv4",
+				entity.PeerPingConfig{Enabled: false},
+			)
+			peers.Save(context.TODO(), peer)
+		}(i)
+
+		go func(i int) {
+			defer wg.Done()
+
+			id := entity.NewPeerId([]byte{byte(i)}, []byte{byte(i)})
+			// The target peer may not have been saved yet by its writer
+			// goroutine; a not-found error is expected and fine, what
+			// matters is that access is race-free.
+			_, _ = peers.Find(context.TODO(), id)
+		}(i)
+
+		go func() {
+			defer wg.Done()
+
+			_, err := peers.List(context.TODO())
+			if err != nil {
+				t.Errorf("PeerRepository.List() error = %v", err)
+			}
+		}()
+	}
+
+	wg.Wait()
 }

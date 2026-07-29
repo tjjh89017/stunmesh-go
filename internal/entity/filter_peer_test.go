@@ -56,9 +56,9 @@ func TestFilterPeerService_Execute_Success(t *testing.T) {
 		Return(configPeers, nil)
 
 	// Mock: device has peers 1 and 2, but not 3
-	devicePeerMap := map[string]bool{
-		string(pubKey1[:]): true,
-		string(pubKey2[:]): true,
+	devicePeerMap := map[entity.PeerKey]bool{
+		entity.PeerKey(pubKey1): true,
+		entity.PeerKey(pubKey2): true,
 	}
 	deviceChecker.EXPECT().
 		GetDevicePeerMap(ctx, "wg0").
@@ -124,7 +124,7 @@ func TestFilterPeerService_Execute_EmptyDevice(t *testing.T) {
 		Return(configPeers, nil)
 
 	// Mock: device has no peers
-	devicePeerMap := map[string]bool{}
+	devicePeerMap := map[entity.PeerKey]bool{}
 	deviceChecker.EXPECT().
 		GetDevicePeerMap(ctx, "wg0").
 		Return(devicePeerMap, nil)
@@ -159,8 +159,8 @@ func TestFilterPeerService_Execute_NoPeersInConfig(t *testing.T) {
 		Return([]*entity.Peer{}, nil)
 
 	// Mock: device has some peers (doesn't matter since config is empty)
-	devicePeerMap := map[string]bool{
-		"some_key": true,
+	devicePeerMap := map[entity.PeerKey]bool{
+		entity.PeerKey([32]byte{9, 9, 9}): true,
 	}
 	deviceChecker.EXPECT().
 		GetDevicePeerMap(ctx, "wg0").
@@ -287,9 +287,9 @@ func TestFilterPeerService_Execute_AllPeersExist(t *testing.T) {
 		Return(configPeers, nil)
 
 	// Mock: device has both peers
-	devicePeerMap := map[string]bool{
-		string(pubKey1[:]): true,
-		string(pubKey2[:]): true,
+	devicePeerMap := map[entity.PeerKey]bool{
+		entity.PeerKey(pubKey1): true,
+		entity.PeerKey(pubKey2): true,
 	}
 	deviceChecker.EXPECT().
 		GetDevicePeerMap(ctx, "wg0").

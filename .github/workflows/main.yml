@@ -200,7 +200,18 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
 
       # mobile/ and internal/mobilebind are excluded from every default build
-      # by the mobile tag, so the Test job never compiles them.
+      # by the mobile tag, so neither the Lint nor the Test job above sees
+      # them; lint and test them here instead, under the same tags as `make
+      # lint-mobile` (MOBILE_TAGS = builtin_all + mobile, so the real builtin
+      # implementations are linted, not their stubs). Run via the action
+      # directly (like the main Lint job) rather than `make lint-mobile`,
+      # since this job doesn't otherwise install golangci-lint.
+      - name: Lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: latest
+          args: --build-tags=builtin_all,mobile ./mobile/... ./internal/mobilebind/...
+
       - name: Test
         run: make mobile-test
 
@@ -254,6 +265,7 @@ jobs:
       - build-plugins-required
     strategy:
       fail-fast: false
+      # Arch coverage narrows deliberately across the three e2e layers (build: 4 arches -> e2e: 2 -> e2e-realnet: 1 per subject OS) as runner cost/availability tighten.
       matrix:
         include:
           - { os: linux, arch: amd64, runner: ubuntu-24.04 }

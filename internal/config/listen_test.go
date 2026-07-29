@@ -9,16 +9,12 @@ import (
 // loadConfigFromYAML writes content to a temp config.yaml and loads it.
 func loadConfigFromYAML(t *testing.T, content string) *Config {
 	t.Helper()
-	resetConfigGlobals(t)
-
 	tmpDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte(content), 0644); err != nil {
 		t.Fatal(err)
 	}
 
-	Paths = []string{tmpDir}
-
-	cfg, err := Load()
+	cfg, err := load("", "", []string{tmpDir})
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
@@ -26,6 +22,7 @@ func loadConfigFromYAML(t *testing.T, content string) *Config {
 }
 
 func TestGetListenConfig_Parsed(t *testing.T) {
+	t.Parallel()
 	cfg := loadConfigFromYAML(t, `
 interfaces:
   wg0:
@@ -50,6 +47,7 @@ interfaces:
 // omits both keys reports no restriction, which the STUN layer reads as "listen
 // on all".
 func TestGetListenConfig_Defaults(t *testing.T) {
+	t.Parallel()
 	cfg := loadConfigFromYAML(t, `
 interfaces:
   wg0:
@@ -70,6 +68,7 @@ interfaces:
 
 // TestGetListenConfig_UnknownDevice must not panic and reports no restriction.
 func TestGetListenConfig_UnknownDevice(t *testing.T) {
+	t.Parallel()
 	cfg := loadConfigFromYAML(t, `
 interfaces:
   wg0:

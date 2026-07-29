@@ -115,12 +115,12 @@ func TestBootstrap_WithMultipleInterfaces(t *testing.T) {
 	mockPeers.EXPECT().Save(gomock.Any(), gomock.Any()).Times(3)
 
 	// Mock device peer map expectations - the new approach uses GetDevicePeerMap
-	wg0PeerMap := map[string]bool{
-		string(mockDevice0.PeerKeys[0][:]): true,
+	wg0PeerMap := map[entity.PeerKey]bool{
+		entity.PeerKey(mockDevice0.PeerKeys[0]): true,
 	}
-	wg1PeerMap := map[string]bool{
-		string(mockDevice1.PeerKeys[0][:]): true,
-		string(mockDevice1.PeerKeys[1][:]): true,
+	wg1PeerMap := map[entity.PeerKey]bool{
+		entity.PeerKey(mockDevice1.PeerKeys[0]): true,
+		entity.PeerKey(mockDevice1.PeerKeys[1]): true,
 	}
 	mockDevicePeerChecker.EXPECT().GetDevicePeerMap(gomock.Any(), "wg0").Return(wg0PeerMap, nil)
 	mockDevicePeerChecker.EXPECT().GetDevicePeerMap(gomock.Any(), "wg1").Return(wg1PeerMap, nil)

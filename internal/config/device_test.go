@@ -1,11 +1,14 @@
 package config
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/rs/zerolog"
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
 )
 
@@ -139,6 +142,7 @@ func TestDeviceConfig_GetConfigPeers(t *testing.T) {
 		interfaces     Interfaces
 		wantPeerCount  int
 		wantErr        bool
+		wantLogContain string
 		checkFirstPeer func(t *testing.T, peers []*entity.Peer)
 	}{
 		{
@@ -264,8 +268,31 @@ func TestDeviceConfig_GetConfigPeers(t *testing.T) {
 					},
 				},
 			},
-			wantPeerCount: 1, // Only peer2 should be included
-			wantErr:       false,
+			wantPeerCount:  1, // Only peer2 should be included
+			wantErr:        false,
+			wantLogContain: "not valid base64",
+		},
+		{
+			name:       "peer with wrong-length decoded public key (should skip)",
+			deviceName: "wg0",
+			interfaces: Interfaces{
+				"wg0": Interface{
+					Peers: map[string]Peer{
+						"peer1": {
+							// Valid base64, but decodes to fewer than 32 bytes.
+							PublicKey: base64.StdEncoding.EncodeToString([]byte("too-short")),
+							Plugin:    "test_plugin",
+						},
+						"peer2": {
+							PublicKey: peerPublicKey1,
+							Plugin:    "test_plugin",
+						},
+					},
+				},
+			},
+			wantPeerCount:  1, // Only peer2 should be included
+			wantErr:        false,
+			wantLogContain: "not 32 bytes",
 		},
 		{
 			name:          "nonexistent device",
@@ -293,6 +320,11 @@ func TestDeviceConfig_GetConfigPeers(t *testing.T) {
 				interfaces: tt.interfaces,
 			}
 
+			var logBuf bytes.Buffer
+			prevLogger := deviceConfigLogger
+			deviceConfigLogger = zerolog.New(&logBuf)
+			defer func() { deviceConfigLogger = prevLogger }()
+
 			peers, err := dc.GetConfigPeers(ctx, tt.deviceName, localPublicKey)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GetConfigPeers() error = %v, wantErr %v", err, tt.wantErr)
@@ -305,6 +337,13 @@ func TestDeviceConfig_GetConfigPeers(t *testing.T) {
 
 			if tt.checkFirstPeer != nil && len(peers) > 0 {
 				tt.checkFirstPeer(t, peers)
+			}
+
+			if tt.wantLogContain != "" && !strings.Contains(logBuf.String(), tt.wantLogContain) {
+				t.Errorf("GetConfigPeers() log = %q, want it to contain %q", logBuf.String(), tt.wantLogContain)
+			}
+			if tt.wantLogContain == "" && logBuf.Len() != 0 {
+				t.Errorf("GetConfigPeers() unexpected warning logged: %q", logBuf.String())
 			}
 		})
 	}

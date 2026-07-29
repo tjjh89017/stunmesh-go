@@ -8,7 +8,7 @@ type ConfigPeerProvider interface {
 }
 
 type DevicePeerChecker interface {
-	GetDevicePeerMap(ctx context.Context, deviceName string) (map[string]bool, error)
+	GetDevicePeerMap(ctx context.Context, deviceName string) (map[PeerKey]bool, error)
 }
 
 type FilterPeerService struct {
@@ -39,8 +39,7 @@ func (svc *FilterPeerService) Execute(ctx context.Context, deviceName DeviceId, 
 	// Filter config peers that exist in the device
 	existingPeers := make([]*Peer, 0, len(configPeers))
 	for _, peer := range configPeers {
-		publicKey := peer.PublicKey()
-		if devicePeerMap[string(publicKey[:])] {
+		if devicePeerMap[PeerKey(peer.PublicKey())] {
 			existingPeers = append(existingPeers, peer)
 		}
 	}

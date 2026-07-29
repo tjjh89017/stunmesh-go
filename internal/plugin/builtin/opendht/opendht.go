@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tjjh89017/stunmesh-go/internal/plugin/builtin"
 	"github.com/tjjh89017/stunmesh-go/internal/plugin/dialer"
 
 	"github.com/rs/zerolog"
@@ -71,71 +72,6 @@ type value struct {
 	Data string `json:"data"`
 }
 
-// BuiltinConfig helper
-type BuiltinConfig struct {
-	config pluginapi.PluginConfig
-}
-
-func (c *BuiltinConfig) GetString(key string) (string, bool) {
-	val, ok := c.config[key]
-	if !ok {
-		return "", false
-	}
-	str, ok := val.(string)
-	return str, ok
-}
-
-// GetStringSlice reads a list that YAML may deliver as []interface{}, or that
-// mapstructure's weak typing may have already turned into []string.
-func (c *BuiltinConfig) GetStringSlice(key string) ([]string, error) {
-	val, ok := c.config[key]
-	if !ok {
-		return nil, nil
-	}
-
-	switch v := val.(type) {
-	case []string:
-		return v, nil
-	case []interface{}:
-		items := make([]string, 0, len(v))
-		for _, item := range v {
-			str, ok := item.(string)
-			if !ok {
-				return nil, fmt.Errorf("%s must be a list of strings", key)
-			}
-			items = append(items, str)
-		}
-		return items, nil
-	default:
-		return nil, fmt.Errorf("%s must be a list of strings", key)
-	}
-}
-
-// GetDuration reads a timeout expressed either as a duration string such as
-// "20s" or as a plain number of seconds, since a YAML scalar may arrive as
-// either depending on how it was written.
-func (c *BuiltinConfig) GetDuration(key string) (time.Duration, bool, error) {
-	val, ok := c.config[key]
-	if !ok {
-		return 0, false, nil
-	}
-
-	switch v := val.(type) {
-	case string:
-		d, err := time.ParseDuration(v)
-		if err != nil {
-			return 0, false, fmt.Errorf("%s is not a valid duration: %w", key, err)
-		}
-		return d, true, nil
-	case int:
-		return time.Duration(v) * time.Second, true, nil
-	case float64:
-		return time.Duration(v * float64(time.Second)), true, nil
-	default:
-		return 0, false, fmt.Errorf("%s must be a duration or a number of seconds", key)
-	}
-}
-
 // normalizeEndpoint requires an explicit http:// or https:// scheme. Go's http
 // client rejects a bare host with "unsupported protocol scheme", but only once
 // a request is made -- every refresh cycle, long after startup. curl would
@@ -156,7 +92,7 @@ func normalizeEndpoint(endpoint string) (string, error) {
 // and deduplicates preserving order, the same shape as stun.address feeding
 // stun.addresses. Every entry is validated here so a typo in the third one is
 // not discovered only when the first two happen to be down.
-func resolveEndpoints(cfg *BuiltinConfig) ([]string, error) {
+func resolveEndpoints(cfg *builtin.Config) ([]string, error) {
 	list, err := cfg.GetStringSlice(configKeyEndpoints)
 	if err != nil {
 		return nil, err
@@ -194,7 +130,7 @@ func resolveEndpoints(cfg *BuiltinConfig) ([]string, error) {
 
 // NewOpenDHTPlugin creates a new OpenDHT plugin instance
 func NewOpenDHTPlugin(config pluginapi.PluginConfig) (pluginapi.Store, error) {
-	cfg := &BuiltinConfig{config: config}
+	cfg := builtin.NewConfig(config)
 
 	endpoints, err := resolveEndpoints(cfg)
 	if err != nil {

@@ -62,7 +62,7 @@ func (s *swappableTun) swap(newDev tun.Device) {
 	s.gen++
 	s.mu.Unlock()
 	go s.forwardEvents(newDev)
-	old.Close()
+	_ = old.Close()
 }
 
 func (s *swappableTun) Read(bufs [][]byte, sizes []int, offset int) (int, error) {

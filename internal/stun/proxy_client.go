@@ -40,13 +40,6 @@ func NewProxyBacked(transport StunTransport, protocol string, logger *zerolog.Lo
 	}
 }
 
-// NewProxyBackedFactory adapts one fixed transport into a ClientFactory.
-func NewProxyBackedFactory(transport StunTransport, logger *zerolog.Logger) ClientFactory {
-	return NewProxyLookupFactory(func(string) (StunTransport, error) {
-		return transport, nil
-	}, logger)
-}
-
 // TransportLookup resolves a device name to its STUN transport. It must never
 // create one — proxies are bound by the wg decorator before any Resolve.
 type TransportLookup func(deviceName string) (StunTransport, error)

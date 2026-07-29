@@ -44,10 +44,12 @@ func main() {
 		return
 	}
 
-	config.ConfigFile = configFile
-	config.ConfigDir = configDir
+	cfg, err := config.Load(configFile, configDir)
+	if err != nil {
+		panic(err)
+	}
 
-	daemon, cleanup, err := setup()
+	daemon, cleanup, err := setup(cfg)
 	if err != nil {
 		panic(err)
 	}

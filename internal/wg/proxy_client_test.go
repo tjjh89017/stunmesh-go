@@ -42,12 +42,18 @@ type fakeProxyConfig struct {
 	protocol     string
 	listen       uint16
 	tunnelIfaces []string
+	// disabled, not enabled: zero value keeps every existing literal in this
+	// file exercising the proxy path unchanged.
+	disabled bool
 }
 
 func (f *fakeProxyConfig) GetInterfaceProtocol(deviceName string) string { return f.protocol }
 func (f *fakeProxyConfig) GetProxyListenPort(deviceName string) uint16   { return f.listen }
 func (f *fakeProxyConfig) GetProxyFib(deviceName string) int             { return 0 }
 func (f *fakeProxyConfig) TunnelInterfaceNames() []string                { return f.tunnelIfaces }
+func (f *fakeProxyConfig) GetProxyEnabled(deviceName string, goos string) bool {
+	return !f.disabled
+}
 
 func newTestProxyClient(t *testing.T, inner Client, cfg ProxyConfig) (Client, *wgproxy.Manager) {
 	t.Helper()
@@ -329,6 +335,82 @@ func TestProxyClient_ListenOverride(t *testing.T) {
 	}
 	if got := proxy.OuterPort(wgproxy.FamilyIPv4); got != port {
 		t.Errorf("outer port = %d, want configured %d", got, port)
+	}
+}
+
+// A device with proxy.enabled=false must be passed straight through to the
+// inner client even though the decorator is installed (because some other
+// interface in the same process opted in) — this is the mixed-config case.
+func TestProxyClient_Device_Disabled_PassesThroughToInner(t *testing.T) {
+	peer := testKey(0x07)
+	info := &DeviceInfo{Name: "wg1", ListenPort: 51820, PeerKeys: []Key{peer}}
+	inner := &fakeClient{device: info}
+	pc, manager := newTestProxyClient(t, inner, &fakeProxyConfig{protocol: "ipv4", disabled: true})
+
+	got, err := pc.Device("wg1")
+	if err != nil {
+		t.Fatalf("Device: %v", err)
+	}
+	if got != info {
+		t.Errorf("Device returned %v, want the inner client's DeviceInfo unchanged", got)
+	}
+	if _, err := manager.Get("wg1"); err == nil {
+		t.Error("a proxy was created for a device with proxy.enabled=false")
+	}
+}
+
+func TestProxyClient_UpdatePeerEndpoint_Disabled_PassesThroughUnchanged(t *testing.T) {
+	peer := testKey(0x08)
+	inner := &fakeClient{}
+	pc, manager := newTestProxyClient(t, inner, &fakeProxyConfig{protocol: "ipv4", disabled: true})
+
+	update := PeerEndpointUpdate{
+		DeviceName: "wg1",
+		PublicKey:  peer,
+		Host:       "203.0.113.9",
+		Port:       4242,
+	}
+	if err := pc.UpdatePeerEndpoint(update); err != nil {
+		t.Fatalf("UpdatePeerEndpoint: %v", err)
+	}
+
+	if len(inner.updates) != 1 {
+		t.Fatalf("inner updates = %d, want 1", len(inner.updates))
+	}
+	if inner.updates[0] != update {
+		t.Errorf("delegated update = %+v, want the original endpoint unchanged: %+v", inner.updates[0], update)
+	}
+	if _, err := manager.Get("wg1"); err == nil {
+		t.Error("a proxy was created for a device with proxy.enabled=false")
+	}
+}
+
+// A single-interface config must behave identically to before this change:
+// when that lone interface is enabled the proxy path still runs end to end.
+func TestProxyClient_SingleInterfaceEnabled_UnaffectedByPerDeviceCheck(t *testing.T) {
+	peer := testKey(0x09)
+	inner := &fakeClient{device: &DeviceInfo{Name: "wg0", ListenPort: 51820, PeerKeys: []Key{peer}}}
+	pc, manager := newTestProxyClient(t, inner, &fakeProxyConfig{protocol: "ipv4"})
+
+	if _, err := pc.Device("wg0"); err != nil {
+		t.Fatalf("Device: %v", err)
+	}
+	if err := pc.UpdatePeerEndpoint(PeerEndpointUpdate{
+		DeviceName: "wg0",
+		PublicKey:  peer,
+		Host:       "203.0.113.9",
+		Port:       4242,
+	}); err != nil {
+		t.Fatalf("UpdatePeerEndpoint: %v", err)
+	}
+	if len(inner.updates) != 1 {
+		t.Fatalf("inner updates = %d, want 1", len(inner.updates))
+	}
+	if inner.updates[0].Host == "203.0.113.9" {
+		t.Error("endpoint was not substituted with the proxy inner socket")
+	}
+	if _, err := manager.Get("wg0"); err != nil {
+		t.Errorf("manager.Get(wg0): %v, want a proxy to exist", err)
 	}
 }
 

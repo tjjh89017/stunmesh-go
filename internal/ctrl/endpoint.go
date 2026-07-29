@@ -2,7 +2,11 @@
 
 package ctrl
 
-import "context"
+import (
+	"context"
+
+	"github.com/tjjh89017/stunmesh-go/internal/entity"
+)
 
 // EndpointData represents the encrypted endpoint information stored for peers
 // This structure is serialized to JSON and stored via plugins
@@ -17,8 +21,8 @@ type EndpointData struct {
 }
 
 type EndpointEncryptRequest struct {
-	PeerPublicKey [32]byte
-	PrivateKey    [32]byte
+	PeerPublicKey entity.PeerPublicKey
+	PrivateKey    entity.PrivateKey
 	Content       string // JSON content to encrypt
 }
 
@@ -31,8 +35,8 @@ type EndpointEncryptor interface {
 }
 
 type EndpointDecryptRequest struct {
-	PeerPublicKey [32]byte
-	PrivateKey    [32]byte
+	PeerPublicKey entity.PeerPublicKey
+	PrivateKey    entity.PrivateKey
 	Data          string // Encrypted base64/hex string
 }
 

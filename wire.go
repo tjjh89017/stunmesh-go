@@ -18,7 +18,7 @@ import (
 	"github.com/tjjh89017/stunmesh-go/internal/wg"
 )
 
-func setup() (*daemon.Daemon, func(), error) {
+func setup(cfg *config.Config) (*daemon.Daemon, func(), error) {
 	wire.Build(
 		newProxyStack,
 		wire.FieldsOf(new(*proxyStack), "Client", "Resolver"),
@@ -27,9 +27,15 @@ func setup() (*daemon.Daemon, func(), error) {
 		wire.Bind(new(entity.ConfigPeerProvider), new(*config.DeviceConfig)),
 		wire.Bind(new(entity.DevicePeerChecker), new(*repo.Peers)),
 		wire.Bind(new(ctrl.DeviceConfigProvider), new(*config.DeviceConfig)),
+		wire.Bind(new(ctrl.PluginProvider), new(*plugin.Manager)),
 		providePluginManager,
 		wire.Bind(new(ctrl.StunResolver), new(*stun.Resolver)),
-		ctrl.NewPingMonitorController,
+		wire.Bind(new(daemon.BootstrapExecutor), new(*ctrl.BootstrapController)),
+		wire.Bind(new(daemon.PublishRunner), new(*ctrl.PublishController)),
+		wire.Bind(new(daemon.EstablishRunner), new(*ctrl.EstablishController)),
+		wire.Bind(new(daemon.PingMonitorExecutor), new(*ctrl.PingMonitorController)),
+		wire.Bind(new(ctrl.Publisher), new(*ctrl.PublishController)),
+		wire.Bind(new(ctrl.Establisher), new(*ctrl.EstablishController)),
 		config.DefaultSet,
 		logger.DefaultSet,
 		repo.DefaultSet,

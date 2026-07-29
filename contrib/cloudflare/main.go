@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/sha1"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -107,14 +106,12 @@ func (p *CloudflarePlugin) Set(ctx context.Context, key string, value string) er
 }
 
 func (p *CloudflarePlugin) getRecordName(key string) string {
-	// Hash the key to create a DNS-safe record name
-	hash := sha1.Sum([]byte(key))
-	hashedKey := fmt.Sprintf("%x", hash)
-
+	// key is already the SHA1 hex digest stunmesh derives per peer; hashing
+	// it again here would diverge from the builtin plugin and cloudflare-shell.sh.
 	if p.subdomain != "" {
-		return fmt.Sprintf("%s.%s.%s", hashedKey, p.subdomain, p.zoneName)
+		return fmt.Sprintf("%s.%s.%s", key, p.subdomain, p.zoneName)
 	}
-	return fmt.Sprintf("%s.%s", hashedKey, p.zoneName)
+	return fmt.Sprintf("%s.%s", key, p.zoneName)
 }
 
 func (p *CloudflarePlugin) associatedRecords(ctx context.Context, key string) ([]cloudflare.DNSRecord, *cloudflare.ResultInfo, error) {
@@ -135,60 +132,78 @@ func main() {
 	// Initialize plugin
 	cloudflarePlugin, err := NewCloudflarePlugin(*zoneName, *apiToken, *subdomain)
 	if err != nil {
-		respondError(err)
+		respondError(os.Stdout, err)
 		os.Exit(1)
 	}
 
-	// Read request from stdin
-	data, err := io.ReadAll(os.Stdin)
+	os.Exit(handleRequest(context.Background(), cloudflarePlugin, os.Stdin, os.Stdout))
+}
+
+// handleRequest reads one exec-protocol request from stdin, dispatches it
+// against store, and writes the response envelope to stdout. It is
+// extracted from main() as a seam: store is already-constructed here, so
+// tests can exercise stdin parsing and dispatch (including malformed JSON)
+// against a fake store without going through NewCloudflarePlugin, which
+// makes a real Cloudflare API call before stdin is ever read. Returns the
+// process exit code main() should use.
+func handleRequest(ctx context.Context, store pluginapi.Store, stdin io.Reader, stdout io.Writer) int {
+	data, err := io.ReadAll(stdin)
 	if err != nil {
-		respondError(fmt.Errorf("failed to read stdin: %w", err))
-		os.Exit(1)
+		respondError(stdout, fmt.Errorf("failed to read stdin: %w", err))
+		return 1
 	}
 
 	var req pluginapi.ExecRequest
 	if err := json.Unmarshal(data, &req); err != nil {
-		respondError(fmt.Errorf("failed to parse request: %w", err))
-		os.Exit(1)
+		respondError(stdout, fmt.Errorf("failed to parse request: %w", err))
+		return 1
 	}
 
-	ctx := context.Background()
-
-	// Handle action
 	switch req.Action {
 	case pluginapi.OpGet:
-		value, err := cloudflarePlugin.Get(ctx, req.Key)
+		value, err := store.Get(ctx, req.Key)
 		if err != nil {
-			respondError(err)
-			os.Exit(1)
+			respondError(stdout, err)
+			return 1
 		}
-		respondSuccess(value)
+		respondSuccess(stdout, value)
 
 	case pluginapi.OpSet:
-		if err := cloudflarePlugin.Set(ctx, req.Key, req.Value); err != nil {
-			respondError(err)
-			os.Exit(1)
+		if err := store.Set(ctx, req.Key, req.Value); err != nil {
+			respondError(stdout, err)
+			return 1
 		}
-		respondSuccess("")
+		respondSuccess(stdout, "")
 
 	default:
-		respondError(fmt.Errorf("unknown action: %s", req.Action))
-		os.Exit(1)
+		respondError(stdout, fmt.Errorf("unknown action: %s", req.Action))
+		return 1
 	}
+
+	return 0
 }
 
-func respondSuccess(value string) {
+func respondSuccess(w io.Writer, value string) {
 	resp := pluginapi.ExecResponse{
 		Success: true,
 		Value:   value,
 	}
-	json.NewEncoder(os.Stdout).Encode(resp)
+	// A failed Encode here means the caller never gets a parsable envelope
+	// at all (internal/plugin/exec.go's Decode then fails), so surface it
+	// on stderr rather than let it pass unnoticed.
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to encode response: %v\n", err)
+		os.Exit(1)
+	}
 }
 
-func respondError(err error) {
+func respondError(w io.Writer, err error) {
 	resp := pluginapi.ExecResponse{
 		Success: false,
 		Error:   err.Error(),
 	}
-	json.NewEncoder(os.Stdout).Encode(resp)
+	if encErr := json.NewEncoder(w).Encode(resp); encErr != nil {
+		fmt.Fprintf(os.Stderr, "failed to encode error response: %v (original error: %v)\n", encErr, err)
+		os.Exit(1)
+	}
 }

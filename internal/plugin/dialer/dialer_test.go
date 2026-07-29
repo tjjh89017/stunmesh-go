@@ -22,6 +22,38 @@ func TestEscapeRoundTrip(t *testing.T) {
 	}
 }
 
+// fakeProtector is a minimal Protector for tests, independent of mobile's
+// SocketProtector -- this package must not import mobile.
+type fakeProtector struct{ protected bool }
+
+func (p *fakeProtector) Protect(int32) bool {
+	p.protected = true
+	return true
+}
+
+// A Protector is carried the same way as the rest of Escape: mobile is the
+// only caller today, but the round trip itself is platform-independent.
+func TestEscapeRoundTripProtector(t *testing.T) {
+	if got := escapeFrom(context.Background()).Protector; got != nil {
+		t.Errorf("bare context reported a Protector, want nil")
+	}
+
+	p := &fakeProtector{}
+	got := escapeFrom(WithEscape(context.Background(), Escape{Protector: p})).Protector
+	if got != Protector(p) {
+		t.Errorf("reported %+v, want %+v", got, p)
+	}
+}
+
+// EscapeFrom is the exported introspection point other packages' tests (e.g.
+// mobile's) use to verify they wired WithEscape correctly.
+func TestEscapeFromExported(t *testing.T) {
+	want := Escape{FirewallMark: 7}
+	if got := EscapeFrom(WithEscape(context.Background(), want)); got.FirewallMark != want.FirewallMark {
+		t.Errorf("EscapeFrom reported %+v, want %+v", got, want)
+	}
+}
+
 // The bind-to-interface options are per-family, so the network of the attempt
 // has to pick one. Control sees "tcp4"/"tcp6", never the "tcp" a caller asked
 // for.

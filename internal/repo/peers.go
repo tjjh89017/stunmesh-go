@@ -42,7 +42,7 @@ func (r *Peers) ListByDevice(ctx context.Context, deviceName entity.DeviceId) ([
 
 	peers := make([]*entity.Peer, 0)
 	for _, peer := range r.entities {
-		if peer.DeviceName() == string(deviceName) {
+		if peer.DeviceName() == deviceName {
 			peers = append(peers, peer)
 		}
 	}
@@ -69,15 +69,15 @@ func (r *Peers) Save(ctx context.Context, peer *entity.Peer) {
 	r.entities[peer.Id()] = peer
 }
 
-func (r *Peers) GetDevicePeerMap(ctx context.Context, deviceName string) (map[string]bool, error) {
+func (r *Peers) GetDevicePeerMap(ctx context.Context, deviceName string) (map[entity.PeerKey]bool, error) {
 	device, err := r.wgCtrl.Device(deviceName)
 	if err != nil {
 		return nil, err
 	}
 
-	peerMap := make(map[string]bool)
+	peerMap := make(map[entity.PeerKey]bool)
 	for _, k := range device.PeerKeys {
-		peerMap[string(k[:])] = true
+		peerMap[entity.PeerKey(k)] = true
 	}
 
 	return peerMap, nil

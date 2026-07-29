@@ -1,9 +1,11 @@
 package ctrl_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/rs/zerolog"
@@ -11,8 +13,6 @@ import (
 	mock "github.com/tjjh89017/stunmesh-go/internal/ctrl/mock"
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
 	"github.com/tjjh89017/stunmesh-go/internal/plugin"
-	"github.com/tjjh89017/stunmesh-go/internal/plugin/registry"
-	"github.com/tjjh89017/stunmesh-go/pluginapi"
 	"go.uber.org/mock/gomock"
 )
 
@@ -43,33 +43,18 @@ func (f *fakeDedupStore) Set(ctx context.Context, key string, value string) erro
 	return nil
 }
 
-// newDedupTestManager builds a real *plugin.Manager with a single "builtin"
-// plugin instance named "test_plugin" backed by a fakeDedupStore, with
-// dedup configured as requested. Using the real Manager (instead of a mock)
-// exercises the actual IsDedup() lookup path.
-func newDedupTestManager(t *testing.T, builtinName string, dedup bool) (*plugin.Manager, *fakeDedupStore) {
-	t.Helper()
-
+// newDedupTestPluginProvider builds a mock ctrl.PluginProvider that always
+// resolves "test_plugin" to a fakeDedupStore and reports the given dedup
+// setting for it, so dedup tests exercise PublishController's use of the
+// PluginProvider seam instead of a real plugin.Manager backed by the global
+// registry.
+func newDedupTestPluginProvider(mockCtrl *gomock.Controller, dedup bool) (*mock.MockPluginProvider, *fakeDedupStore) {
 	store := &fakeDedupStore{}
-	registry.Register(builtinName, func(config pluginapi.PluginConfig) (pluginapi.Store, error) {
-		return store, nil
-	})
+	provider := mock.NewMockPluginProvider(mockCtrl)
+	provider.EXPECT().IsDedup("test_plugin").Return(dedup).AnyTimes()
+	provider.EXPECT().GetPlugin("test_plugin").Return(store, nil).AnyTimes()
 
-	m := plugin.NewManager()
-	err := m.LoadPlugins(context.Background(), map[string]pluginapi.PluginDefinition{
-		"test_plugin": {
-			Type: "builtin",
-			Config: pluginapi.PluginConfig{
-				"name":  builtinName,
-				"dedup": dedup,
-			},
-		},
-	})
-	if err != nil {
-		t.Fatalf("failed to load test plugin: %v", err)
-	}
-
-	return m, store
+	return provider, store
 }
 
 // Helper function to create test device
@@ -84,7 +69,7 @@ func createTestPeer(deviceName string, plugin string, protocol string) *entity.P
 	copy(peerPublicKey[:], []byte("test_peer_key_12345678901234567"))
 
 	peerId := entity.NewPeerId(devicePublicKey, peerPublicKey[:])
-	return entity.NewPeer(peerId, deviceName, peerPublicKey, plugin, protocol, entity.PeerPingConfig{})
+	return entity.NewPeer(peerId, entity.DeviceId(deviceName), peerPublicKey, plugin, protocol, entity.PeerPingConfig{})
 }
 
 // Test Execute with device list error
@@ -478,6 +463,85 @@ func TestPublishController_Execute_Dualstack_BothFail(t *testing.T) {
 	controller.Execute(ctx)
 }
 
+// Test Execute with dualstack - one family resolves, the other fails.
+// Proves PublishController.Execute's real call path (Execute ->
+// discoverEndpoints -> shared DiscoverEndpoints) wires the soft-fail
+// dualstack policy correctly: the publish still succeeds using the
+// resolved family's endpoint, and a warning is logged for the failed
+// family, rather than hard-failing the whole device like a single-family
+// protocol would. Complements TestPublishController_Execute_Dualstack
+// (both succeed) and TestPublishController_Execute_Dualstack_BothFail
+// (both fail), which don't exercise this middle branch.
+func TestPublishController_Execute_Dualstack_PartialFail(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+
+	mockDevices := mock.NewMockDeviceRepository(mockCtrl)
+	mockPeers := mock.NewMockPeerRepository(mockCtrl)
+	mockResolver := mock.NewMockStunResolver(mockCtrl)
+	mockEncryptor := mock.NewMockEndpointEncryptor(mockCtrl)
+
+	var logBuf bytes.Buffer
+	logger := zerolog.New(&logBuf)
+
+	ctx := context.Background()
+	pluginManager := plugin.NewManager()
+
+	device := createTestDevice("wg0", 51820, "dualstack")
+	peer := createTestPeer("wg0", "test_plugin", "prefer_ipv4")
+
+	// Setup expectations
+	mockDevices.EXPECT().List(ctx).Return([]*entity.Device{device}, nil)
+	mockPeers.EXPECT().ListByDevice(ctx, entity.DeviceId("wg0")).Return([]*entity.Peer{peer}, nil)
+
+	// IPv4 resolves, IPv6 fails
+	mockResolver.EXPECT().
+		Resolve(ctx, "wg0", uint16(51820), "ipv4", gomock.Any()).
+		Return("1.2.3.4", 51820, nil)
+	mockResolver.EXPECT().
+		Resolve(ctx, "wg0", uint16(51820), "ipv6", gomock.Any()).
+		Return("", 0, errors.New("IPv6 failed"))
+
+	encryptCalled := false
+	mockEncryptor.EXPECT().
+		Encrypt(ctx, gomock.Any()).
+		DoAndReturn(func(ctx context.Context, req *ctrl.EndpointEncryptRequest) (*ctrl.EndpointEncryptResponse, error) {
+			encryptCalled = true
+			var endpointData ctrl.EndpointData
+			if err := json.Unmarshal([]byte(req.Content), &endpointData); err != nil {
+				t.Errorf("Invalid JSON content: %v", err)
+			}
+			if endpointData.IPv4 != "1.2.3.4:51820" {
+				t.Errorf("Unexpected IPv4 endpoint: got %q, want %q", endpointData.IPv4, "1.2.3.4:51820")
+			}
+			if endpointData.IPv6 != "" {
+				t.Errorf("Unexpected IPv6 endpoint: got %q, want empty", endpointData.IPv6)
+			}
+			return &ctrl.EndpointEncryptResponse{Data: "encrypted_data"}, nil
+		})
+
+	controller := ctrl.NewPublishController(
+		mockDevices,
+		mockPeers,
+		pluginManager,
+		mockResolver,
+		mockEncryptor,
+		nil,
+		&logger,
+	)
+
+	controller.Execute(ctx)
+
+	if !encryptCalled {
+		t.Fatal("Encrypt was not called; publish should proceed with the IPv4 endpoint despite IPv6 failure (soft-fail policy)")
+	}
+
+	logOutput := logBuf.String()
+	if !strings.Contains(logOutput, "failed to resolve ipv6 address in dualstack mode") {
+		t.Errorf("expected a warning about the failed ipv6 resolution, got log output: %s", logOutput)
+	}
+}
+
 // Test Execute with multiple devices
 func TestPublishController_Execute_MultipleDevices(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
@@ -672,7 +736,7 @@ func TestPublishController_Execute_Dedup_ChangedEndpoint_Publishes(t *testing.T)
 	logger := zerolog.Nop()
 
 	ctx := context.Background()
-	pluginManager, store := newDedupTestManager(t, "dedup_test_changed", true)
+	pluginProvider, store := newDedupTestPluginProvider(mockCtrl, true)
 
 	device := createTestDevice("wg0", 51820, "ipv4")
 	peer := createTestPeer("wg0", "test_plugin", "ipv4")
@@ -698,7 +762,7 @@ func TestPublishController_Execute_Dedup_ChangedEndpoint_Publishes(t *testing.T)
 	controller := ctrl.NewPublishController(
 		mockDevices,
 		mockPeers,
-		pluginManager,
+		pluginProvider,
 		mockResolver,
 		mockEncryptor,
 		nil,
@@ -725,7 +789,7 @@ func TestPublishController_Execute_Dedup_UnchangedEndpoint_Skips(t *testing.T) {
 	logger := zerolog.Nop()
 
 	ctx := context.Background()
-	pluginManager, store := newDedupTestManager(t, "dedup_test_unchanged", true)
+	pluginProvider, store := newDedupTestPluginProvider(mockCtrl, true)
 
 	device := createTestDevice("wg0", 51820, "ipv4")
 	peer := createTestPeer("wg0", "test_plugin", "ipv4")
@@ -748,7 +812,7 @@ func TestPublishController_Execute_Dedup_UnchangedEndpoint_Skips(t *testing.T) {
 	controller := ctrl.NewPublishController(
 		mockDevices,
 		mockPeers,
-		pluginManager,
+		pluginProvider,
 		mockResolver,
 		mockEncryptor,
 		nil,
@@ -775,7 +839,7 @@ func TestPublishController_Execute_Dedup_OffByDefault_AlwaysPublishes(t *testing
 	logger := zerolog.Nop()
 
 	ctx := context.Background()
-	pluginManager, store := newDedupTestManager(t, "dedup_test_off", false)
+	pluginProvider, store := newDedupTestPluginProvider(mockCtrl, false)
 
 	device := createTestDevice("wg0", 51820, "ipv4")
 	peer := createTestPeer("wg0", "test_plugin", "ipv4")
@@ -797,7 +861,7 @@ func TestPublishController_Execute_Dedup_OffByDefault_AlwaysPublishes(t *testing
 	controller := ctrl.NewPublishController(
 		mockDevices,
 		mockPeers,
-		pluginManager,
+		pluginProvider,
 		mockResolver,
 		mockEncryptor,
 		nil,
@@ -825,7 +889,7 @@ func TestPublishController_ExecuteForPeer_Dedup_UnchangedEndpoint_Skips(t *testi
 	logger := zerolog.Nop()
 
 	ctx := context.Background()
-	pluginManager, store := newDedupTestManager(t, "dedup_test_peer_unchanged", true)
+	pluginProvider, store := newDedupTestPluginProvider(mockCtrl, true)
 
 	device := createTestDevice("wg0", 51820, "ipv4")
 	peer := createTestPeer("wg0", "test_plugin", "ipv4")
@@ -852,7 +916,7 @@ func TestPublishController_ExecuteForPeer_Dedup_UnchangedEndpoint_Skips(t *testi
 	controller := ctrl.NewPublishController(
 		mockDevices,
 		mockPeers,
-		pluginManager,
+		pluginProvider,
 		mockResolver,
 		mockEncryptor,
 		nil,
@@ -880,7 +944,7 @@ func TestPublishController_ExecuteForPeer_Dedup_ChangedEndpoint_Publishes(t *tes
 	logger := zerolog.Nop()
 
 	ctx := context.Background()
-	pluginManager, store := newDedupTestManager(t, "dedup_test_peer_changed", true)
+	pluginProvider, store := newDedupTestPluginProvider(mockCtrl, true)
 
 	device := createTestDevice("wg0", 51820, "ipv4")
 	peer := createTestPeer("wg0", "test_plugin", "ipv4")
@@ -908,7 +972,7 @@ func TestPublishController_ExecuteForPeer_Dedup_ChangedEndpoint_Publishes(t *tes
 	controller := ctrl.NewPublishController(
 		mockDevices,
 		mockPeers,
-		pluginManager,
+		pluginProvider,
 		mockResolver,
 		mockEncryptor,
 		nil,
@@ -937,7 +1001,7 @@ func TestPublishController_Execute_Dedup_FailedStore_DoesNotCacheAndRetries(t *t
 	logger := zerolog.Nop()
 
 	ctx := context.Background()
-	pluginManager, store := newDedupTestManager(t, "dedup_test_failed_store", true)
+	pluginProvider, store := newDedupTestPluginProvider(mockCtrl, true)
 	// The first Set call fails; the second (retry) succeeds.
 	store.setErr = errors.New("store unavailable")
 
@@ -964,7 +1028,7 @@ func TestPublishController_Execute_Dedup_FailedStore_DoesNotCacheAndRetries(t *t
 	controller := ctrl.NewPublishController(
 		mockDevices,
 		mockPeers,
-		pluginManager,
+		pluginProvider,
 		mockResolver,
 		mockEncryptor,
 		nil,

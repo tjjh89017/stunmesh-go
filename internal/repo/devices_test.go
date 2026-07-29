@@ -2,6 +2,8 @@ package repo_test
 
 import (
 	"context"
+	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
@@ -92,4 +94,49 @@ func Test_DeviceList(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Test_DeviceRepository_ConcurrentAccess spawns concurrent readers and
+// writers on a shared repo instance to exercise the sync.RWMutex under
+// `go test -race`. It intentionally mixes Save (write lock) with Find and
+// List (read lock) so the writer/reader distinction is actually exercised,
+// rather than only ever taking one side of the lock.
+func Test_DeviceRepository_ConcurrentAccess(t *testing.T) {
+	const goroutinesPerOp = 50
+
+	devices := repo.NewDevices()
+
+	var wg sync.WaitGroup
+	wg.Add(goroutinesPerOp * 3)
+
+	for i := 0; i < goroutinesPerOp; i++ {
+		go func(i int) {
+			defer wg.Done()
+
+			name := entity.DeviceId(fmt.Sprintf("wg%d", i))
+			device := entity.NewDevice(name, 6379+i, []byte{}, "ipv4", 0)
+			devices.Save(context.TODO(), device)
+		}(i)
+
+		go func(i int) {
+			defer wg.Done()
+
+			name := entity.DeviceId(fmt.Sprintf("wg%d", i))
+			// The target device may not have been saved yet by its
+			// writer goroutine; a not-found error is expected and fine,
+			// what matters is that access is race-free.
+			_, _ = devices.Find(context.TODO(), name)
+		}(i)
+
+		go func() {
+			defer wg.Done()
+
+			_, err := devices.List(context.TODO())
+			if err != nil {
+				t.Errorf("DeviceRepository.List() error = %v", err)
+			}
+		}()
+	}
+
+	wg.Wait()
 }

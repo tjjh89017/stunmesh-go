@@ -3,6 +3,7 @@
 package mobilebind
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -98,7 +99,7 @@ func (b *Bind) listen(network string, port uint16) (*net.UDPConn, error) {
 			return protectErr
 		},
 	}
-	pc, err := lc.ListenPacket(nil, network, ":"+strconv.Itoa(int(port)))
+	pc, err := lc.ListenPacket(context.TODO(), network, ":"+strconv.Itoa(int(port)))
 	if err != nil {
 		return nil, err
 	}
@@ -149,7 +150,7 @@ func (b *Bind) Send(bufs [][]byte, ep wgconn.Endpoint) error {
 	if !ok {
 		return wgconn.ErrWrongEndpointType
 	}
-	conn := b.connFor(end.AddrPort.Addr())
+	conn := b.connFor(end.Addr())
 	if conn == nil {
 		return net.ErrClosed
 	}

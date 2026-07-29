@@ -33,14 +33,17 @@ go test ./internal/repo -v       # Run repository tests
 
 ### Linting
 ```bash
-make lint                        # Lint for linux, darwin and freebsd
+make lint                        # Lint for linux, darwin, freebsd and windows, plus mobile/
 make lint LINT_PLATFORMS=linux   # Just the host, for a faster loop
 ```
 
 `.golangci.yaml` sets `build-tags: [builtin_all]`, so a bare `golangci-lint run`
 and CI check the same files — the built-ins included, and no list to update when
 one is added. `GOOS` can't come from the config, so `make lint` loops over the
-three platforms and CI runs them as a matrix.
+four platforms and CI runs them as a matrix. `mobile/` and `internal/mobilebind`
+sit behind the `mobile` build tag, so the platform loop never sees them; a
+separate `lint-mobile` target (always run as part of `make lint`) covers them
+with `GOOS=linux` and the mobile tags.
 
 ### Dependency Management
 ```bash
@@ -145,7 +148,10 @@ interfaces:
 ```
 
 ### Controller Architecture
-Four main controllers orchestrate the application workflow:
+Four controllers orchestrate the application workflow. A fifth,
+top-level ticker in `internal/daemon/daemon.go` drives the periodic
+publish/establish refresh cycle; it is daemon-level, not a controller
+of its own.
 
 1. **BootstrapController** (`internal/ctrl/bootstrap.go`):
    - Initializes WireGuard devices and discovers existing peers
@@ -177,8 +183,11 @@ Four main controllers orchestrate the application workflow:
    - **No port validation needed**: Since publish validates before storage, port should never be 0
    - Configures WireGuard peer with selected endpoint
 
-4. **RefreshController** (`internal/ctrl/refresh.go`):
-   - Queues peer refresh operations on a periodic schedule
+4. **PingMonitorController** (`internal/ctrl/ping_monitor.go`):
+   - Sends periodic ICMP pings to peers with `ping` enabled in their config
+   - On failure, triggers `PublishController`/`EstablishController` for the
+     affected peer with retry backoff, handing over to the daemon-level
+     refresh ticker once backoff exceeds `RefreshInterval`
 
 ### FilterPeerService Pattern
 Key architectural pattern in `internal/entity/filter_peer.go`:
@@ -281,7 +290,7 @@ The protocol configuration operates at two distinct levels:
 ## Configuration System
 
 ### Config Loading Priority
-Config parsing uses `go.yaml.in/yaml/v3` + `github.com/go-viper/mapstructure/v2` (with `StringToTimeDurationHookFunc` for duration strings like `"10m"`). Command-line flags take highest priority:
+Config parsing uses `go.yaml.in/yaml/v3` + `github.com/go-viper/mapstructure/v2` (with `StringToTimeDurationHookFunc` for duration strings like `"10m"`). `config.Load(configFile, configDir string) (*Config, error)` takes the two CLI-derived overrides as parameters (not package globals); `main.go` parses the flags and calls `config.Load(configFile, configDir)` itself before wiring up the rest of the app via `setup(cfg)`. Command-line flags take highest priority:
 
 1. `-c` / `--config <file>`: exact config file to read; must be readable, no fallback to defaults
 2. `--config-dir <dir>`: directory searched for `config.yaml` then `config.yml`; must contain one, no fallback to defaults (ignored if `-c`/`--config` is set)

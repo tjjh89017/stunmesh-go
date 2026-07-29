@@ -7,6 +7,7 @@ import (
 )
 
 func TestLoad_ProxyListen_Present(t *testing.T) {
+	t.Parallel()
 	cfg := loadConfigFromYAML(t, `
 interfaces:
   wg0:
@@ -28,6 +29,7 @@ interfaces:
 
 // No proxy key means ephemeral (0) — the zero-breaking default.
 func TestGetProxyListenPort_Absent(t *testing.T) {
+	t.Parallel()
 	cfg := loadConfigFromYAML(t, `
 interfaces:
   wg0:
@@ -42,6 +44,7 @@ interfaces:
 }
 
 func TestGetProxyListenPort_UnknownDevice(t *testing.T) {
+	t.Parallel()
 	cfg := loadConfigFromYAML(t, `
 interfaces:
   wg0:
@@ -56,6 +59,7 @@ interfaces:
 }
 
 func TestValidateConfig_ProxyListen(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		listen  int
@@ -87,7 +91,8 @@ func TestValidateConfig_ProxyListen(t *testing.T) {
 }
 
 func TestLoad_ProxyListen_OutOfRange(t *testing.T) {
-	writeWeakTypingConfig(t, `
+	t.Parallel()
+	paths := writeWeakTypingConfig(t, `
 interfaces:
   wg0:
     proxy:
@@ -95,13 +100,14 @@ interfaces:
     peers: {}
 `)
 
-	if _, err := Load(); err == nil {
+	if _, err := load("", "", paths); err == nil {
 		t.Fatal("Load() with proxy.listen 70000 should return an error")
 	}
 }
 
 func TestLoad_ProxyListen_NonInteger(t *testing.T) {
-	writeWeakTypingConfig(t, `
+	t.Parallel()
+	paths := writeWeakTypingConfig(t, `
 interfaces:
   wg0:
     proxy:
@@ -109,7 +115,7 @@ interfaces:
     peers: {}
 `)
 
-	_, err := Load()
+	_, err := load("", "", paths)
 	if err == nil {
 		t.Fatal("Load() with non-integer proxy.listen should return an error")
 	}
@@ -120,6 +126,7 @@ interfaces:
 
 // Quoted scalar keeps loading, matching WeaklyTypedInput on other numeric fields.
 func TestLoad_ProxyListen_QuotedScalar(t *testing.T) {
+	t.Parallel()
 	cfg := loadConfigFromYAML(t, `
 interfaces:
   wg0:
@@ -135,6 +142,7 @@ interfaces:
 }
 
 func TestLoad_ProxyFib_Present(t *testing.T) {
+	t.Parallel()
 	cfg := loadConfigFromYAML(t, `
 interfaces:
   wg0:
@@ -158,6 +166,7 @@ interfaces:
 // default, and also correct since FIB 0 is where the covering WireGuard
 // default route already lives.
 func TestGetProxyFib_Absent(t *testing.T) {
+	t.Parallel()
 	cfg := loadConfigFromYAML(t, `
 interfaces:
   wg0:
@@ -172,6 +181,7 @@ interfaces:
 }
 
 func TestGetProxyFib_UnknownDevice(t *testing.T) {
+	t.Parallel()
 	cfg := loadConfigFromYAML(t, `
 interfaces:
   wg0:
@@ -186,6 +196,7 @@ interfaces:
 }
 
 func TestValidateConfig_ProxyFib(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		fib     int
@@ -217,7 +228,8 @@ func TestValidateConfig_ProxyFib(t *testing.T) {
 }
 
 func TestLoad_ProxyFib_OutOfRange(t *testing.T) {
-	writeWeakTypingConfig(t, `
+	t.Parallel()
+	paths := writeWeakTypingConfig(t, `
 interfaces:
   wg0:
     proxy:
@@ -225,12 +237,13 @@ interfaces:
     peers: {}
 `)
 
-	if _, err := Load(); err == nil {
+	if _, err := load("", "", paths); err == nil {
 		t.Fatal("Load() with proxy.fib 70000 should return an error")
 	}
 }
 
 func TestProxy_IsEnabled_Absent(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		goos string
 		want bool
@@ -252,6 +265,7 @@ func TestProxy_IsEnabled_Absent(t *testing.T) {
 }
 
 func TestProxy_IsEnabled_Explicit(t *testing.T) {
+	t.Parallel()
 	trueVal := true
 	falseVal := false
 
@@ -280,6 +294,7 @@ func TestProxy_IsEnabled_Explicit(t *testing.T) {
 
 // A lone proxy.listen must not flip proxy mode on.
 func TestProxy_IsEnabled_ListenAloneDoesNotEnable(t *testing.T) {
+	t.Parallel()
 	p := Proxy{Listen: 51999}
 	if got := p.IsEnabled("linux"); got != false {
 		t.Errorf("IsEnabled(linux) = %v, want false (listen alone must not enable proxy)", got)
@@ -291,6 +306,7 @@ func TestProxy_IsEnabled_ListenAloneDoesNotEnable(t *testing.T) {
 // platform-dependent for that case; assert accordingly instead of assuming
 // success everywhere.
 func TestLoad_ProxyEnabled_Present(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		yaml string
@@ -312,9 +328,9 @@ interfaces:
 `
 
 			if !tt.want && runtime.GOOS == "windows" {
-				writeWeakTypingConfig(t, yaml)
+				paths := writeWeakTypingConfig(t, yaml)
 
-				if _, err := Load(); err == nil {
+				if _, err := load("", "", paths); err == nil {
 					t.Fatal("Load() with proxy.enabled false on windows should return an error")
 				}
 				return
@@ -336,6 +352,7 @@ interfaces:
 // Absent proxy.enabled must decode to nil, not false, so IsEnabled can tell
 // "unset" from "explicitly disabled".
 func TestLoad_ProxyEnabled_Absent(t *testing.T) {
+	t.Parallel()
 	cfg := loadConfigFromYAML(t, `
 interfaces:
   wg0:
@@ -351,6 +368,7 @@ interfaces:
 }
 
 func TestGetProxyEnabled_UnknownDevice(t *testing.T) {
+	t.Parallel()
 	cfg := loadConfigFromYAML(t, `
 interfaces:
   wg0:
@@ -368,6 +386,7 @@ interfaces:
 }
 
 func TestValidateConfig_ProxyEnabled_WindowsFalseIsError(t *testing.T) {
+	t.Parallel()
 	falseVal := false
 	trueVal := true
 
@@ -406,10 +425,8 @@ func TestValidateConfig_ProxyEnabled_WindowsFalseIsError(t *testing.T) {
 // --- testdata fixtures ---
 
 func TestLoad_Testdata_ProxyListen(t *testing.T) {
-	resetConfigGlobals(t)
-	ConfigFile = "testdata/valid_config.yaml"
-
-	cfg, err := Load()
+	t.Parallel()
+	cfg, err := load("testdata/valid_config.yaml", "", nil)
 	if err != nil {
 		t.Fatalf("Load() error = %v, want nil", err)
 	}
@@ -424,10 +441,8 @@ func TestLoad_Testdata_ProxyListen(t *testing.T) {
 }
 
 func TestLoad_Testdata_InvalidProxyListen(t *testing.T) {
-	resetConfigGlobals(t)
-	ConfigFile = "testdata/invalid_proxy_listen.yaml"
-
-	if _, err := Load(); err == nil {
+	t.Parallel()
+	if _, err := load("testdata/invalid_proxy_listen.yaml", "", nil); err == nil {
 		t.Fatal("Load() with invalid proxy.listen fixture should return an error")
 	}
 }

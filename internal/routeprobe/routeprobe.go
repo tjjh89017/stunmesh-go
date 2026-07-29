@@ -4,8 +4,10 @@
 // default" convention some full-tunnel configurations use)?
 //
 // Callers use this to decide whether a proxy outer socket needs to escape
-// the tunnel (e.g. via SO_MARK/IP_BOUND_IF/IP_UNICAST_IF/SO_SETFIB, added in
-// later work) instead of applying such options unconditionally.
+// the tunnel instead of applying such options unconditionally. The escape
+// mechanisms themselves (SO_MARK on Linux, IP_BOUND_IF/IPV6_BOUND_IF on
+// darwin, IP_UNICAST_IF/IPV6_UNICAST_IF on Windows, SO_SETFIB on freebsd)
+// live in internal/wgproxy's per-OS escape hooks; see wgproxy/escape.go.
 package routeprobe
 
 import "net/netip"

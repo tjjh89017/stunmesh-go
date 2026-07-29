@@ -13,6 +13,7 @@ import (
 
 	"time"
 
+	"github.com/tjjh89017/stunmesh-go/internal/plugin/builtin"
 	"github.com/tjjh89017/stunmesh-go/internal/plugin/dialer"
 
 	"github.com/rs/zerolog"
@@ -55,31 +56,9 @@ type cfError struct {
 	Message string `json:"message"`
 }
 
-// BuiltinConfig helper
-type BuiltinConfig struct {
-	config pluginapi.PluginConfig
-}
-
-func (c *BuiltinConfig) GetString(key string) (string, bool) {
-	val, ok := c.config[key]
-	if !ok {
-		return "", false
-	}
-	str, ok := val.(string)
-	return str, ok
-}
-
-func (c *BuiltinConfig) GetStringRequired(key string) (string, error) {
-	val, ok := c.GetString(key)
-	if !ok {
-		return "", fmt.Errorf("%s is required", key)
-	}
-	return val, nil
-}
-
 // NewCloudflarePlugin creates a new Cloudflare plugin instance
 func NewCloudflarePlugin(config pluginapi.PluginConfig) (pluginapi.Store, error) {
-	cfg := &BuiltinConfig{config: config}
+	cfg := builtin.NewConfig(config)
 
 	zoneName, err := cfg.GetStringRequired(configKeyZoneName)
 	if err != nil {
@@ -269,15 +248,28 @@ func (p *CloudflarePlugin) Set(ctx context.Context, key string, value string) er
 
 	if recordID != "" {
 		// Update existing record
-		body := fmt.Sprintf(`{"content":"%s"}`, value)
+		body, err := json.Marshal(struct {
+			Content string `json:"content"`
+		}{Content: value})
+		if err != nil {
+			return err
+		}
 		path := fmt.Sprintf("/zones/%s/dns_records/%s", p.zoneID, recordID)
-		_, err = p.doRequest(ctx, "PATCH", path, []byte(body))
+		_, err = p.doRequest(ctx, "PATCH", path, body)
 		return err
 	}
 
 	// Create new record
-	body := fmt.Sprintf(`{"type":"TXT","name":"%s","content":"%s","comment":"Stunmesh"}`, name, value)
+	body, err := json.Marshal(struct {
+		Type    string `json:"type"`
+		Name    string `json:"name"`
+		Content string `json:"content"`
+		Comment string `json:"comment"`
+	}{Type: "TXT", Name: name, Content: value, Comment: "Stunmesh"})
+	if err != nil {
+		return err
+	}
 	path := fmt.Sprintf("/zones/%s/dns_records", p.zoneID)
-	_, err = p.doRequest(ctx, "POST", path, []byte(body))
+	_, err = p.doRequest(ctx, "POST", path, body)
 	return err
 }

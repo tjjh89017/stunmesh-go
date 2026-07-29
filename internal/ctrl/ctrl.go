@@ -6,4 +6,5 @@ var DefaultSet = wire.NewSet(
 	NewBootstrapController,
 	NewPublishController,
 	NewEstablishController,
+	NewPingMonitorController,
 )

@@ -12,7 +12,7 @@ func TestNewPeer(t *testing.T) {
 	peerPubKey := [32]byte{2}
 	peerId := entity.NewPeerId(devicePrivKey[:], peerPubKey[:])
 
-	deviceName := "wg0"
+	deviceName := entity.DeviceId("wg0")
 	plugin := "cloudflare"
 	protocol := "ipv4"
 	pingConfig := entity.PeerPingConfig{
@@ -90,7 +90,7 @@ func TestPeer_RemoteId(t *testing.T) {
 func TestPeer_DeviceName(t *testing.T) {
 	tests := []struct {
 		name       string
-		deviceName string
+		deviceName entity.DeviceId
 	}{
 		{"simple name", "wg0"},
 		{"multiple digits", "wg10"},
