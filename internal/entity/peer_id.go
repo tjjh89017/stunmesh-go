@@ -6,8 +6,6 @@ import (
 	"encoding/hex"
 )
 
-var _ = isComparable[PeerId]
-
 const PeerKeyLength = 32
 
 type PeerKey [PeerKeyLength]byte
@@ -46,6 +44,11 @@ func (p *PeerId) RemoteEndpointKey() string {
 	return hex.EncodeToString(sum[:])
 }
 
-func (p PeerId) String() string {
+// PeerPublicKeyString returns only the peer-public-key half of the
+// composite (device public key, peer public key) identifier — it is not a
+// full String()/Stringer representation of PeerId, on purpose: the two
+// halves would otherwise silently look identical in logs when only one
+// half actually changes.
+func (p PeerId) PeerPublicKeyString() string {
 	return base64.StdEncoding.EncodeToString(p.peerPublicKey[:])
 }

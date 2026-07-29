@@ -9,8 +9,17 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
+// wgctrlBackend is the subset of *wgctrl.Client that ctrlClient uses,
+// extracted as a test seam so Device/UpdatePeerEndpoint can be exercised
+// with a fake instead of a real WireGuard device.
+type wgctrlBackend interface {
+	Device(name string) (*wgtypes.Device, error)
+	ConfigureDevice(name string, cfg wgtypes.Config) error
+	Close() error
+}
+
 type ctrlClient struct {
-	c *wgctrl.Client
+	c wgctrlBackend
 }
 
 func New() (Client, error) {

@@ -10,21 +10,8 @@ import (
 	"time"
 )
 
-// resetConfigGlobals saves ConfigFile/ConfigDir/Paths and restores them via t.Cleanup, then
-// clears ConfigFile/ConfigDir. These are shared globals: tests using it must not t.Parallel().
-func resetConfigGlobals(t *testing.T) {
-	t.Helper()
-	origFile, origDir, origPaths := ConfigFile, ConfigDir, Paths
-	t.Cleanup(func() {
-		ConfigFile, ConfigDir, Paths = origFile, origDir, origPaths
-	})
-	ConfigFile = ""
-	ConfigDir = ""
-}
-
 func TestLoad_Success(t *testing.T) {
-	resetConfigGlobals(t)
-
+	t.Parallel()
 	// Create temporary config file
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
@@ -51,9 +38,7 @@ refresh_interval: 5m
 		t.Fatal(err)
 	}
 
-	Paths = []string{tmpDir}
-
-	cfg, err := Load()
+	cfg, err := load("", "", []string{tmpDir})
 	if err != nil {
 		t.Fatalf("Load() error = %v, want nil", err)
 	}
@@ -78,14 +63,12 @@ refresh_interval: 5m
 }
 
 func TestLoad_FileNotFound(t *testing.T) {
-	resetConfigGlobals(t)
-
+	t.Parallel()
 	// Use a directory that doesn't contain config file
 	tmpDir := t.TempDir()
-	Paths = []string{tmpDir}
 
 	// Should still succeed but return config with defaults
-	cfg, err := Load()
+	cfg, err := load("", "", []string{tmpDir})
 	if err != nil {
 		t.Fatalf("Load() error = %v, want nil (file not found should not error)", err)
 	}
@@ -102,8 +85,7 @@ func TestLoad_FileNotFound(t *testing.T) {
 }
 
 func TestLoad_InvalidYAML(t *testing.T) {
-	resetConfigGlobals(t)
-
+	t.Parallel()
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
 
@@ -118,9 +100,7 @@ interfaces:
 		t.Fatal(err)
 	}
 
-	Paths = []string{tmpDir}
-
-	_, err := Load()
+	_, err := load("", "", []string{tmpDir})
 	if err == nil {
 		t.Fatal("Load() with invalid YAML should return error")
 	}
@@ -133,8 +113,7 @@ interfaces:
 }
 
 func TestLoad_InvalidProtocol(t *testing.T) {
-	resetConfigGlobals(t)
-
+	t.Parallel()
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
 
@@ -152,9 +131,7 @@ interfaces:
 		t.Fatal(err)
 	}
 
-	Paths = []string{tmpDir}
-
-	_, err := Load()
+	_, err := load("", "", []string{tmpDir})
 	if err == nil {
 		t.Error("Load() with invalid protocol should return error")
 	}
@@ -166,8 +143,7 @@ interfaces:
 }
 
 func TestLoad_InvalidPeerProtocol(t *testing.T) {
-	resetConfigGlobals(t)
-
+	t.Parallel()
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
 
@@ -186,17 +162,14 @@ interfaces:
 		t.Fatal(err)
 	}
 
-	Paths = []string{tmpDir}
-
-	_, err := Load()
+	_, err := load("", "", []string{tmpDir})
 	if err == nil {
 		t.Error("Load() with invalid peer protocol should return error")
 	}
 }
 
 func TestLoad_DefaultValues(t *testing.T) {
-	resetConfigGlobals(t)
-
+	t.Parallel()
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
 
@@ -214,9 +187,7 @@ interfaces:
 		t.Fatal(err)
 	}
 
-	Paths = []string{tmpDir}
-
-	cfg, err := Load()
+	cfg, err := load("", "", []string{tmpDir})
 	if err != nil {
 		t.Fatalf("Load() error = %v, want nil", err)
 	}
@@ -240,8 +211,7 @@ interfaces:
 }
 
 func TestLoad_PluginDefinitions(t *testing.T) {
-	resetConfigGlobals(t)
-
+	t.Parallel()
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
 
@@ -267,9 +237,7 @@ plugins:
 		t.Fatal(err)
 	}
 
-	Paths = []string{tmpDir}
-
-	cfg, err := Load()
+	cfg, err := load("", "", []string{tmpDir})
 	if err != nil {
 		t.Fatalf("Load() error = %v, want nil", err)
 	}
@@ -311,8 +279,7 @@ plugins:
 }
 
 func TestLoad_InterfaceConfig(t *testing.T) {
-	resetConfigGlobals(t)
-
+	t.Parallel()
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
 
@@ -341,9 +308,7 @@ interfaces:
 		t.Fatal(err)
 	}
 
-	Paths = []string{tmpDir}
-
-	cfg, err := Load()
+	cfg, err := load("", "", []string{tmpDir})
 	if err != nil {
 		t.Fatalf("Load() error = %v, want nil", err)
 	}
@@ -389,6 +354,7 @@ interfaces:
 }
 
 func TestValidateConfig_ValidProtocols(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name           string
 		interfaceProto string
@@ -432,8 +398,7 @@ func TestValidateConfig_ValidProtocols(t *testing.T) {
 // --- ConfigFile / ConfigDir / Paths resolution ---
 
 func TestLoad_File_Exists(t *testing.T) {
-	resetConfigGlobals(t)
-
+	t.Parallel()
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "custom-name.yaml")
 	if err := os.WriteFile(path, []byte("refresh_interval: 11m\n"), 0644); err != nil {
@@ -441,10 +406,8 @@ func TestLoad_File_Exists(t *testing.T) {
 	}
 
 	// ConfigFile must win even though Paths would never find this file.
-	Paths = []string{t.TempDir()}
-	ConfigFile = path
 
-	cfg, err := Load()
+	cfg, err := load(path, "", []string{t.TempDir()})
 	if err != nil {
 		t.Fatalf("Load() error = %v, want nil", err)
 	}
@@ -455,11 +418,9 @@ func TestLoad_File_Exists(t *testing.T) {
 }
 
 func TestLoad_File_NotExists_ErrorsWithoutFallback(t *testing.T) {
-	resetConfigGlobals(t)
+	t.Parallel()
 
-	ConfigFile = filepath.Join(t.TempDir(), "does-not-exist.yaml")
-
-	_, err := Load()
+	_, err := load(filepath.Join(t.TempDir(), "does-not-exist.yaml"), "", nil)
 	if err == nil {
 		t.Fatal("Load() with nonexistent ConfigFile should return an error, not fall back to defaults")
 	}
@@ -470,16 +431,13 @@ func TestLoad_File_NotExists_ErrorsWithoutFallback(t *testing.T) {
 }
 
 func TestLoad_Dir_WithConfig(t *testing.T) {
-	resetConfigGlobals(t)
-
+	t.Parallel()
 	tmpDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte("refresh_interval: 13m\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 
-	ConfigDir = tmpDir
-
-	cfg, err := Load()
+	cfg, err := load("", tmpDir, nil)
 	if err != nil {
 		t.Fatalf("Load() error = %v, want nil", err)
 	}
@@ -490,11 +448,9 @@ func TestLoad_Dir_WithConfig(t *testing.T) {
 }
 
 func TestLoad_Dir_WithoutConfig_ErrorsWithoutFallback(t *testing.T) {
-	resetConfigGlobals(t)
+	t.Parallel()
 
-	ConfigDir = t.TempDir()
-
-	_, err := Load()
+	_, err := load("", t.TempDir(), nil)
 	if err == nil {
 		t.Fatal("Load() with ConfigDir lacking config.yaml should return an error, not fall back to defaults")
 	}
@@ -505,8 +461,7 @@ func TestLoad_Dir_WithoutConfig_ErrorsWithoutFallback(t *testing.T) {
 }
 
 func TestLoad_File_TakesPriorityOverDir(t *testing.T) {
-	resetConfigGlobals(t)
-
+	t.Parallel()
 	fileDir := t.TempDir()
 	filePath := filepath.Join(fileDir, "explicit-file.yaml")
 	if err := os.WriteFile(filePath, []byte("refresh_interval: 21m\n"), 0644); err != nil {
@@ -518,10 +473,7 @@ func TestLoad_File_TakesPriorityOverDir(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ConfigFile = filePath
-	ConfigDir = dirWithConfig
-
-	cfg, err := Load()
+	cfg, err := load(filePath, dirWithConfig, nil)
 	if err != nil {
 		t.Fatalf("Load() error = %v, want nil", err)
 	}
@@ -532,16 +484,13 @@ func TestLoad_File_TakesPriorityOverDir(t *testing.T) {
 }
 
 func TestLoad_Paths_FindsConfigYaml(t *testing.T) {
-	resetConfigGlobals(t)
-
+	t.Parallel()
 	tmpDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte("refresh_interval: 9m\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 
-	Paths = []string{tmpDir}
-
-	cfg, err := Load()
+	cfg, err := load("", "", []string{tmpDir})
 	if err != nil {
 		t.Fatalf("Load() error = %v, want nil", err)
 	}
@@ -552,17 +501,14 @@ func TestLoad_Paths_FindsConfigYaml(t *testing.T) {
 }
 
 func TestLoad_Paths_FindsConfigYml(t *testing.T) {
-	resetConfigGlobals(t)
-
+	t.Parallel()
 	tmpDir := t.TempDir()
 	// Only the .yml variant is present.
 	if err := os.WriteFile(filepath.Join(tmpDir, "config.yml"), []byte("refresh_interval: 14m\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 
-	Paths = []string{tmpDir}
-
-	cfg, err := Load()
+	cfg, err := load("", "", []string{tmpDir})
 	if err != nil {
 		t.Fatalf("Load() error = %v, want nil", err)
 	}
@@ -573,8 +519,7 @@ func TestLoad_Paths_FindsConfigYml(t *testing.T) {
 }
 
 func TestLoad_Paths_SearchesInOrder(t *testing.T) {
-	resetConfigGlobals(t)
-
+	t.Parallel()
 	emptyDir := t.TempDir()
 	configuredDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(configuredDir, "config.yaml"), []byte("refresh_interval: 17m\n"), 0644); err != nil {
@@ -582,9 +527,8 @@ func TestLoad_Paths_SearchesInOrder(t *testing.T) {
 	}
 
 	// Search must fall through the empty first entry, not stop or error.
-	Paths = []string{emptyDir, configuredDir}
 
-	cfg, err := Load()
+	cfg, err := load("", "", []string{emptyDir, configuredDir})
 	if err != nil {
 		t.Fatalf("Load() error = %v, want nil", err)
 	}
@@ -595,17 +539,15 @@ func TestLoad_Paths_SearchesInOrder(t *testing.T) {
 }
 
 func TestLoad_Paths_EnvVarExpansion(t *testing.T) {
-	resetConfigGlobals(t)
-
+	// t.Setenv forbids t.Parallel: it mutates process-wide environment.
 	tmpDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte("refresh_interval: 7m\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 
 	t.Setenv("STUNMESH_CONFIG_DIR", tmpDir)
-	Paths = []string{"$STUNMESH_CONFIG_DIR"}
 
-	cfg, err := Load()
+	cfg, err := load("", "", []string{"$STUNMESH_CONFIG_DIR"})
 	if err != nil {
 		t.Fatalf("Load() error = %v, want nil", err)
 	}
@@ -616,8 +558,7 @@ func TestLoad_Paths_EnvVarExpansion(t *testing.T) {
 }
 
 func TestLoad_Paths_EmptyExpansionIsSkipped(t *testing.T) {
-	resetConfigGlobals(t)
-
+	t.Parallel()
 	tmpDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte("refresh_interval: 8m\n"), 0644); err != nil {
 		t.Fatal(err)
@@ -625,9 +566,8 @@ func TestLoad_Paths_EmptyExpansionIsSkipped(t *testing.T) {
 
 	// The unset env var expands to ""; findConfigFile must skip that entry
 	// (not treat it as the current directory) and continue.
-	Paths = []string{"$STUNMESH_CONFIG_DIR_UNSET_FOR_TEST", tmpDir}
 
-	cfg, err := Load()
+	cfg, err := load("", "", []string{"$STUNMESH_CONFIG_DIR_UNSET_FOR_TEST", tmpDir})
 	if err != nil {
 		t.Fatalf("Load() error = %v, want nil", err)
 	}
@@ -638,11 +578,9 @@ func TestLoad_Paths_EmptyExpansionIsSkipped(t *testing.T) {
 }
 
 func TestLoad_NoConfigFound_ReturnsAllDefaults(t *testing.T) {
-	resetConfigGlobals(t)
+	t.Parallel()
 
-	Paths = []string{t.TempDir()}
-
-	cfg, err := Load()
+	cfg, err := load("", "", []string{t.TempDir()})
 	if err != nil {
 		t.Fatalf("Load() error = %v, want nil (no config file must not error)", err)
 	}
@@ -673,16 +611,13 @@ func TestLoad_NoConfigFound_ReturnsAllDefaults(t *testing.T) {
 // TestLoad_PartialYAML_UnsetFieldsKeepDefaults verifies that yaml keys absent
 // from the file leave pre-Decode defaults untouched rather than zeroing them.
 func TestLoad_PartialYAML_UnsetFieldsKeepDefaults(t *testing.T) {
-	resetConfigGlobals(t)
-
+	t.Parallel()
 	tmpDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte("refresh_interval: 42m\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 
-	Paths = []string{tmpDir}
-
-	cfg, err := Load()
+	cfg, err := load("", "", []string{tmpDir})
 	if err != nil {
 		t.Fatalf("Load() error = %v, want nil", err)
 	}
@@ -702,8 +637,7 @@ func TestLoad_PartialYAML_UnsetFieldsKeepDefaults(t *testing.T) {
 }
 
 func TestLoad_DurationStringParsing(t *testing.T) {
-	resetConfigGlobals(t)
-
+	t.Parallel()
 	tmpDir := t.TempDir()
 	configContent := `
 ping_monitor:
@@ -715,9 +649,7 @@ ping_monitor:
 		t.Fatal(err)
 	}
 
-	Paths = []string{tmpDir}
-
-	cfg, err := Load()
+	cfg, err := load("", "", []string{tmpDir})
 	if err != nil {
 		t.Fatalf("Load() error = %v, want nil", err)
 	}
@@ -736,8 +668,7 @@ ping_monitor:
 // TestLoad_PluginDefinition_RemainCapturesExtraKeys pins mapstructure `,remain`:
 // keys other than "type" fall through into Config instead of being dropped.
 func TestLoad_PluginDefinition_RemainCapturesExtraKeys(t *testing.T) {
-	resetConfigGlobals(t)
-
+	t.Parallel()
 	tmpDir := t.TempDir()
 	configContent := `
 plugins:
@@ -753,9 +684,7 @@ plugins:
 		t.Fatal(err)
 	}
 
-	Paths = []string{tmpDir}
-
-	cfg, err := Load()
+	cfg, err := load("", "", []string{tmpDir})
 	if err != nil {
 		t.Fatalf("Load() error = %v, want nil", err)
 	}
@@ -794,17 +723,14 @@ plugins:
 }
 
 func TestLoad_MalformedYAML_WrapsErrReadConfig(t *testing.T) {
-	resetConfigGlobals(t)
-
+	t.Parallel()
 	tmpDir := t.TempDir()
 	// Unterminated flow sequence -- not valid YAML.
 	if err := os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte("plugins: [1, 2\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 
-	Paths = []string{tmpDir}
-
-	_, err := Load()
+	_, err := load("", "", []string{tmpDir})
 	if err == nil {
 		t.Fatal("Load() with malformed YAML should return an error")
 	}
@@ -816,17 +742,14 @@ func TestLoad_MalformedYAML_WrapsErrReadConfig(t *testing.T) {
 // TestLoad_TypeMismatch_WrapsErrUnmarshalConfig: valid YAML that fails
 // mapstructure decoding (a map where a time.Duration is expected).
 func TestLoad_TypeMismatch_WrapsErrUnmarshalConfig(t *testing.T) {
-	resetConfigGlobals(t)
-
+	t.Parallel()
 	tmpDir := t.TempDir()
 	configContent := "refresh_interval:\n  nested: not-a-duration\n"
 	if err := os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte(configContent), 0644); err != nil {
 		t.Fatal(err)
 	}
 
-	Paths = []string{tmpDir}
-
-	_, err := Load()
+	_, err := load("", "", []string{tmpDir})
 	if err == nil {
 		t.Fatal("Load() with a type-mismatched field should return an error")
 	}
@@ -842,22 +765,21 @@ func TestLoad_TypeMismatch_WrapsErrUnmarshalConfig(t *testing.T) {
 // rendered by templating tools (Ansible/Jinja) commonly quote scalars, so these
 // shapes must keep loading after the viper -> yaml+mapstructure migration.
 
-// writeWeakTypingConfig writes configContent into a temp dir and points Paths at it.
-func writeWeakTypingConfig(t *testing.T, configContent string) {
+// writeWeakTypingConfig writes configContent into a temp dir and returns the
+// search path load needs to find it.
+func writeWeakTypingConfig(t *testing.T, configContent string) []string {
 	t.Helper()
-	resetConfigGlobals(t)
 	tmpDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte(configContent), 0644); err != nil {
 		t.Fatal(err)
 	}
-	Paths = []string{tmpDir}
+	return []string{tmpDir}
 }
 
 // Quoted numeric scalar decodes into an int field.
 func TestLoad_WeaklyTypedInput_QuotedIntScalar(t *testing.T) {
-	writeWeakTypingConfig(t, "ping_monitor:\n  fixed_retries: \"7\"\n")
-
-	cfg, err := Load()
+	t.Parallel()
+	cfg, err := load("", "", writeWeakTypingConfig(t, "ping_monitor:\n  fixed_retries: \"7\"\n"))
 	if err != nil {
 		t.Fatalf("Load() error = %v, want nil", err)
 	}
@@ -868,9 +790,8 @@ func TestLoad_WeaklyTypedInput_QuotedIntScalar(t *testing.T) {
 
 // A plain string for a list field decodes into a single-element list.
 func TestLoad_WeaklyTypedInput_StringToSingleElementList(t *testing.T) {
-	writeWeakTypingConfig(t, "stun:\n  addresses: \"stun.example.com:3478\"\n")
-
-	cfg, err := Load()
+	t.Parallel()
+	cfg, err := load("", "", writeWeakTypingConfig(t, "stun:\n  addresses: \"stun.example.com:3478\"\n"))
 	if err != nil {
 		t.Fatalf("Load() error = %v, want nil", err)
 	}
@@ -882,9 +803,8 @@ func TestLoad_WeaklyTypedInput_StringToSingleElementList(t *testing.T) {
 
 // A comma-separated string for a list field splits into multiple elements.
 func TestLoad_WeaklyTypedInput_CommaSeparatedStringToList(t *testing.T) {
-	writeWeakTypingConfig(t, "stun:\n  addresses: \"stun1.example.com:3478,stun2.example.com:3478\"\n")
-
-	cfg, err := Load()
+	t.Parallel()
+	cfg, err := load("", "", writeWeakTypingConfig(t, "stun:\n  addresses: \"stun1.example.com:3478,stun2.example.com:3478\"\n"))
 	if err != nil {
 		t.Fatalf("Load() error = %v, want nil", err)
 	}
@@ -901,7 +821,8 @@ func TestLoad_WeaklyTypedInput_CommaSeparatedStringToList(t *testing.T) {
 
 // Quoted boolean scalar decodes into a bool field.
 func TestLoad_WeaklyTypedInput_QuotedBool(t *testing.T) {
-	writeWeakTypingConfig(t, `
+	t.Parallel()
+	paths := writeWeakTypingConfig(t, `
 interfaces:
   wg0:
     peers:
@@ -913,7 +834,7 @@ interfaces:
           target: "192.0.2.1"
 `)
 
-	cfg, err := Load()
+	cfg, err := load("", "", paths)
 	if err != nil {
 		t.Fatalf("Load() error = %v, want nil", err)
 	}
@@ -928,9 +849,8 @@ interfaces:
 
 // Numeric scalar decodes into a string field.
 func TestLoad_WeaklyTypedInput_NumberToString(t *testing.T) {
-	writeWeakTypingConfig(t, "log:\n  level: 5\n")
-
-	cfg, err := Load()
+	t.Parallel()
+	cfg, err := load("", "", writeWeakTypingConfig(t, "log:\n  level: 5\n"))
 	if err != nil {
 		t.Fatalf("Load() error = %v, want nil", err)
 	}
@@ -943,9 +863,8 @@ func TestLoad_WeaklyTypedInput_NumberToString(t *testing.T) {
 // becomes a non-nil empty list, which — with no stun.address — must hit the
 // "explicitly provided but unusable" error branch, never the silent default.
 func TestLoad_WeaklyTypedInput_EmptyStringAddresses(t *testing.T) {
-	writeWeakTypingConfig(t, "stun:\n  addresses: \"\"\n")
-
-	_, err := Load()
+	t.Parallel()
+	_, err := load("", "", writeWeakTypingConfig(t, "stun:\n  addresses: \"\"\n"))
 	if err == nil {
 		t.Fatal("Load() with addresses: \"\" should return an error")
 	}
@@ -972,10 +891,8 @@ interfaces:
 }
 
 func TestLoad_LogDefaults(t *testing.T) {
-	resetConfigGlobals(t)
-	ConfigFile = writeLogConfig(t, "")
-
-	cfg, err := Load()
+	t.Parallel()
+	cfg, err := load(writeLogConfig(t, ""), "", nil)
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
@@ -988,10 +905,8 @@ func TestLoad_LogDefaults(t *testing.T) {
 }
 
 func TestLoad_LogFromFile(t *testing.T) {
-	resetConfigGlobals(t)
-	ConfigFile = writeLogConfig(t, "log:\n  format: json\n  level: debug\n")
-
-	cfg, err := Load()
+	t.Parallel()
+	cfg, err := load(writeLogConfig(t, "log:\n  format: json\n  level: debug\n"), "", nil)
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
@@ -1005,10 +920,8 @@ func TestLoad_LogFromFile(t *testing.T) {
 
 // An explicit empty value means unset, not invalid.
 func TestLoad_EmptyLogValuesFallBackToDefaults(t *testing.T) {
-	resetConfigGlobals(t)
-	ConfigFile = writeLogConfig(t, "log:\n  format: \"\"\n  level: \"\"\n")
-
-	cfg, err := Load()
+	t.Parallel()
+	cfg, err := load(writeLogConfig(t, "log:\n  format: \"\"\n  level: \"\"\n"), "", nil)
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
@@ -1021,23 +934,22 @@ func TestLoad_EmptyLogValuesFallBackToDefaults(t *testing.T) {
 }
 
 func TestLoad_InvalidLogFormatRejected(t *testing.T) {
-	resetConfigGlobals(t)
-	ConfigFile = writeLogConfig(t, "log:\n  format: yaml\n")
-
-	if _, err := Load(); err == nil {
+	t.Parallel()
+	if _, err := load(writeLogConfig(t, "log:\n  format: yaml\n"), "", nil); err == nil {
 		t.Fatal("Load() error = nil, want an invalid log format error")
 	}
 }
 
 func TestLoad_LogLevels(t *testing.T) {
+	t.Parallel()
 	// Every level zerolog names must load, in any case; nothing else may.
 	for _, level := range LogLevels {
 		for _, spelling := range []string{level, strings.ToUpper(level)} {
 			t.Run(spelling, func(t *testing.T) {
-				resetConfigGlobals(t)
-				ConfigFile = writeLogConfig(t, "log:\n  level: "+spelling+"\n")
+				t.Parallel()
+				configFile := writeLogConfig(t, "log:\n  level: "+spelling+"\n")
 
-				if _, err := Load(); err != nil {
+				if _, err := load(configFile, "", nil); err != nil {
 					t.Errorf("Load() error = %v, want nil", err)
 				}
 			})
@@ -1046,10 +958,10 @@ func TestLoad_LogLevels(t *testing.T) {
 
 	for _, level := range []string{"banana", "verbose"} {
 		t.Run("invalid/"+level, func(t *testing.T) {
-			resetConfigGlobals(t)
-			ConfigFile = writeLogConfig(t, "log:\n  level: "+level+"\n")
+			t.Parallel()
+			configFile := writeLogConfig(t, "log:\n  level: "+level+"\n")
 
-			if _, err := Load(); err == nil {
+			if _, err := load(configFile, "", nil); err == nil {
 				t.Errorf("Load() error = nil, want an invalid log level error")
 			}
 		})
@@ -1059,6 +971,7 @@ func TestLoad_LogLevels(t *testing.T) {
 // LogLevels is derived from zerolog rather than hand-written, so pin the set
 // and its severity order.
 func TestLogLevels_FromZerolog(t *testing.T) {
+	t.Parallel()
 	want := []string{"trace", "debug", "info", "warn", "error", "fatal", "panic", "disabled"}
 	if !slices.Equal(LogLevels, want) {
 		t.Errorf("LogLevels = %v, want %v", LogLevels, want)

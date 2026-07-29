@@ -11,7 +11,7 @@ import (
 func Test_Queue_Dequeue(t *testing.T) {
 	t.Parallel()
 
-	q := queue.New[int]()
+	q := queue.NewBuffered[int](0) // unbuffered, same as New[T]() used to provide
 	done := make(chan bool)
 
 	go func() {
@@ -29,19 +29,6 @@ func Test_Queue_Dequeue(t *testing.T) {
 	}
 
 	<-done // Wait for enqueue goroutine to finish
-}
-
-func TestNew(t *testing.T) {
-	q := queue.New[int]()
-
-	if q == nil {
-		t.Fatal("Expected queue to be created")
-	}
-
-	// Verify it's unbuffered (Len should be 0)
-	if q.Len() != 0 {
-		t.Errorf("Expected initial length 0, got %d", q.Len())
-	}
 }
 
 func TestNewBuffered(t *testing.T) {

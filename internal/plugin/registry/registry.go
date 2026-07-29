@@ -43,15 +43,3 @@ func Get(name string) (Factory, bool) {
 	factory, exists := registry[name]
 	return factory, exists
 }
-
-// Names returns a list of registered built-in plugin names
-func Names() []string {
-	mu.RLock()
-	defer mu.RUnlock()
-
-	names := make([]string, 0, len(registry))
-	for name := range registry {
-		names = append(names, name)
-	}
-	return names
-}

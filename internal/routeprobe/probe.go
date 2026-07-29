@@ -22,13 +22,19 @@ func NewTunnelInterfaces(names ...string) TunnelInterfaces {
 	return t
 }
 
+// currentRoutesFn indirects to the per-OS currentRoutes implementation.
+// Probe and DefaultRouteInterface call through it rather than currentRoutes
+// directly so tests can fake the route table instead of needing real OS
+// route-table access; see probe_test.go.
+var currentRoutesFn = currentRoutes
+
 // Probe reports whether any interface in tunnelIfaces currently installs a
 // covering default route (see package doc) for family. Detection failure
 // (e.g. the route table could not be read) is returned as an error and is
 // distinct from "no covering default found"; callers should treat an error
 // the same as false (i.e. do not assume escape is needed) while logging it.
 func Probe(family Family, tunnelIfaces TunnelInterfaces) (bool, error) {
-	routes, err := currentRoutes(family)
+	routes, err := currentRoutesFn(family)
 	if err != nil {
 		return false, err
 	}
@@ -41,7 +47,7 @@ func Probe(family Family, tunnelIfaces TunnelInterfaces) (bool, error) {
 // selection rule. ok is false when no such route exists; err is non-nil only
 // when the route table itself could not be read (same distinction as Probe).
 func DefaultRouteInterface(family Family, tunnelIfaces TunnelInterfaces) (Route, bool, error) {
-	routes, err := currentRoutes(family)
+	routes, err := currentRoutesFn(family)
 	if err != nil {
 		return Route{}, false, err
 	}

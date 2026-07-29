@@ -8,6 +8,12 @@ import (
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
 )
 
+// deviceConfigLogger warns about peer entries GetConfigPeers has to drop.
+// DeviceConfig isn't wired with a logger of its own (see logger.NewLogger),
+// so this mirrors config.go's throwaway startup-warning logger; tests in
+// this package reassign it to capture output.
+var deviceConfigLogger = entity.NewStartupLogger()
+
 type PingConfig struct {
 	Enabled  bool          `mapstructure:"enabled"`
 	Target   string        `mapstructure:"target"`
@@ -100,8 +106,16 @@ func NewDeviceConfig(config *Config) *DeviceConfig {
 	}
 }
 
-func (c *DeviceConfig) GetInterfaceProtocol(deviceName string) string {
+// device looks up an interface by name; ok is false when deviceName is
+// unknown, which every accessor below treats as "use the zero-breaking
+// default" rather than an error.
+func (c *DeviceConfig) device(deviceName string) (Interface, bool) {
 	device, ok := c.interfaces[deviceName]
+	return device, ok
+}
+
+func (c *DeviceConfig) GetInterfaceProtocol(deviceName string) string {
+	device, ok := c.device(deviceName)
 	if !ok {
 		return "ipv4"
 	}
@@ -111,7 +125,7 @@ func (c *DeviceConfig) GetInterfaceProtocol(deviceName string) string {
 // GetListenConfig returns the interface's underlay-listen restriction for STUN
 // discovery; nil list + false means "listen on all" (darwin/bsd only).
 func (c *DeviceConfig) GetListenConfig(deviceName string) (interfaces []string, defaultRoute bool) {
-	device, ok := c.interfaces[deviceName]
+	device, ok := c.device(deviceName)
 	if !ok {
 		return nil, false
 	}
@@ -120,7 +134,7 @@ func (c *DeviceConfig) GetListenConfig(deviceName string) (interfaces []string, 
 
 // GetProxyListenPort returns the proxy.listen override; 0 means ephemeral.
 func (c *DeviceConfig) GetProxyListenPort(deviceName string) uint16 {
-	device, ok := c.interfaces[deviceName]
+	device, ok := c.device(deviceName)
 	if !ok {
 		return 0
 	}
@@ -130,7 +144,7 @@ func (c *DeviceConfig) GetProxyListenPort(deviceName string) uint16 {
 // GetProxyFib returns the proxy.fib override for deviceName; 0 means "not
 // configured" (escape disabled, or platform where fib is not applicable).
 func (c *DeviceConfig) GetProxyFib(deviceName string) int {
-	device, ok := c.interfaces[deviceName]
+	device, ok := c.device(deviceName)
 	if !ok {
 		return 0
 	}
@@ -141,7 +155,7 @@ func (c *DeviceConfig) GetProxyFib(deviceName string) int {
 // (pass runtime.GOOS at call sites); an unknown device resolves using the
 // platform default, same as a known device with proxy.enabled absent.
 func (c *DeviceConfig) GetProxyEnabled(deviceName string, goos string) bool {
-	device, ok := c.interfaces[deviceName]
+	device, ok := c.device(deviceName)
 	if !ok {
 		return goos == "windows"
 	}
@@ -160,15 +174,31 @@ func (c *DeviceConfig) TunnelInterfaceNames() []string {
 }
 
 func (c *DeviceConfig) GetConfigPeers(ctx context.Context, deviceName string, localPublicKey []byte) ([]*entity.Peer, error) {
-	device, ok := c.interfaces[deviceName]
+	device, ok := c.device(deviceName)
 	if !ok {
 		return []*entity.Peer{}, nil
 	}
 
 	peers := make([]*entity.Peer, 0, len(device.Peers))
-	for _, configPeer := range device.Peers {
+	for peerName, configPeer := range device.Peers {
 		peerPublicKey, err := base64.StdEncoding.DecodeString(configPeer.PublicKey)
 		if err != nil {
+			deviceConfigLogger.Warn().
+				Err(err).
+				Str("device", deviceName).
+				Str("peer", peerName).
+				Msg("skipping peer: public_key is not valid base64")
+			continue
+		}
+
+		// A wrong-length key would otherwise silently zero-pad/truncate into
+		// a different, wrong 32-byte identity via the unchecked copy below.
+		if len(peerPublicKey) != 32 {
+			deviceConfigLogger.Warn().
+				Str("device", deviceName).
+				Str("peer", peerName).
+				Int("length", len(peerPublicKey)).
+				Msg("skipping peer: decoded public_key is not 32 bytes")
 			continue
 		}
 
@@ -191,7 +221,7 @@ func (c *DeviceConfig) GetConfigPeers(ctx context.Context, deviceName string, lo
 			}
 		}
 
-		peer := entity.NewPeer(peerId, deviceName, publicKeyArray, configPeer.Plugin, configPeer.GetProtocol(), pingConfig)
+		peer := entity.NewPeer(peerId, entity.DeviceId(deviceName), publicKeyArray, configPeer.Plugin, configPeer.GetProtocol(), pingConfig)
 		peers = append(peers, peer)
 	}
 

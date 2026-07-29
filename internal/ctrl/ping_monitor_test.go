@@ -23,8 +23,8 @@ func TestNewPingMonitorController(t *testing.T) {
 	cfg := &config.Config{}
 	devices := mock.NewMockDeviceRepository(mockCtrl)
 	peers := mock.NewMockPeerRepository(mockCtrl)
-	publishCtrl := &ctrl.PublishController{}
-	establishCtrl := &ctrl.EstablishController{}
+	publishCtrl := mock.NewMockPublisher(mockCtrl)
+	establishCtrl := mock.NewMockEstablisher(mockCtrl)
 
 	controller := ctrl.NewPingMonitorController(cfg, devices, peers, publishCtrl, establishCtrl, &logger)
 
@@ -41,8 +41,8 @@ func TestNewDevicePingMonitor(t *testing.T) {
 
 	devices := mock.NewMockDeviceRepository(mockCtrl)
 	peers := mock.NewMockPeerRepository(mockCtrl)
-	publishCtrl := &ctrl.PublishController{}
-	establishCtrl := &ctrl.EstablishController{}
+	publishCtrl := mock.NewMockPublisher(mockCtrl)
+	establishCtrl := mock.NewMockEstablisher(mockCtrl)
 
 	pingCtrl := ctrl.NewPingMonitorController(cfg, devices, peers, publishCtrl, establishCtrl, &logger)
 	monitor := ctrl.NewDevicePingMonitor("wg0", pingCtrl, logger)
@@ -65,8 +65,8 @@ func TestAddPeer_Enabled(t *testing.T) {
 
 	devices := mock.NewMockDeviceRepository(mockCtrl)
 	peers := mock.NewMockPeerRepository(mockCtrl)
-	publishCtrl := &ctrl.PublishController{}
-	establishCtrl := &ctrl.EstablishController{}
+	publishCtrl := mock.NewMockPublisher(mockCtrl)
+	establishCtrl := mock.NewMockEstablisher(mockCtrl)
 
 	pingCtrl := ctrl.NewPingMonitorController(cfg, devices, peers, publishCtrl, establishCtrl, &logger)
 	monitor := ctrl.NewDevicePingMonitor("wg0", pingCtrl, logger)
@@ -109,8 +109,8 @@ func TestAddPeer_Disabled(t *testing.T) {
 
 	devices := mock.NewMockDeviceRepository(mockCtrl)
 	peers := mock.NewMockPeerRepository(mockCtrl)
-	publishCtrl := &ctrl.PublishController{}
-	establishCtrl := &ctrl.EstablishController{}
+	publishCtrl := mock.NewMockPublisher(mockCtrl)
+	establishCtrl := mock.NewMockEstablisher(mockCtrl)
 
 	pingCtrl := ctrl.NewPingMonitorController(cfg, devices, peers, publishCtrl, establishCtrl, &logger)
 	monitor := ctrl.NewDevicePingMonitor("wg0", pingCtrl, logger)
@@ -151,8 +151,8 @@ func TestAddPeer_UsesGlobalDefaults(t *testing.T) {
 
 	devices := mock.NewMockDeviceRepository(mockCtrl)
 	peers := mock.NewMockPeerRepository(mockCtrl)
-	publishCtrl := &ctrl.PublishController{}
-	establishCtrl := &ctrl.EstablishController{}
+	publishCtrl := mock.NewMockPublisher(mockCtrl)
+	establishCtrl := mock.NewMockEstablisher(mockCtrl)
 
 	pingCtrl := ctrl.NewPingMonitorController(cfg, devices, peers, publishCtrl, establishCtrl, &logger)
 	monitor := ctrl.NewDevicePingMonitor("wg0", pingCtrl, logger)
@@ -186,8 +186,8 @@ func TestGetPeerState_NotMonitored(t *testing.T) {
 
 	devices := mock.NewMockDeviceRepository(mockCtrl)
 	peers := mock.NewMockPeerRepository(mockCtrl)
-	publishCtrl := &ctrl.PublishController{}
-	establishCtrl := &ctrl.EstablishController{}
+	publishCtrl := mock.NewMockPublisher(mockCtrl)
+	establishCtrl := mock.NewMockEstablisher(mockCtrl)
 
 	pingCtrl := ctrl.NewPingMonitorController(cfg, devices, peers, publishCtrl, establishCtrl, &logger)
 
@@ -207,71 +207,11 @@ func TestGetPeerState_NotMonitored(t *testing.T) {
 	}
 }
 
-func TestValidateReply(t *testing.T) {
-	logger := zerolog.Nop()
-	cfg := &config.Config{
-		PingMonitor: config.PingMonitor{
-			Interval: 5 * time.Second,
-			Timeout:  2 * time.Second,
-		},
-	}
-	mockCtrl := gomock.NewController(t)
-	defer mockCtrl.Finish()
-
-	devices := mock.NewMockDeviceRepository(mockCtrl)
-	peers := mock.NewMockPeerRepository(mockCtrl)
-	publishCtrl := &ctrl.PublishController{}
-	establishCtrl := &ctrl.EstablishController{}
-
-	pingCtrl := ctrl.NewPingMonitorController(cfg, devices, peers, publishCtrl, establishCtrl, &logger)
-	monitor := ctrl.NewDevicePingMonitor("wg0", pingCtrl, logger)
-
-	// Create peer with target IP
-	privateKey := [32]byte{1}
-	publicKey := [32]byte{2}
-	peerId := entity.NewPeerId(privateKey[:], publicKey[:])
-
-	pingConfig := entity.PeerPingConfig{
-		Enabled: true,
-		Target:  "8.8.8.8",
-	}
-
-	monitor.AddPeer(peerId, pingConfig, cfg)
-
-	tests := []struct {
-		name      string
-		addr      net.Addr
-		icmpId    uint16
-		wantValid bool
-	}{
-		{
-			name:      "valid reply",
-			addr:      &net.IPAddr{IP: net.ParseIP("8.8.8.8")},
-			icmpId:    1, // Assuming the generated ID is 1 (this is random, but for this test we'll use reflection to get it)
-			wantValid: true,
-		},
-		{
-			name:      "wrong IP",
-			addr:      &net.IPAddr{IP: net.ParseIP("8.8.4.4")},
-			icmpId:    1,
-			wantValid: false,
-		},
-		{
-			name:      "invalid address type",
-			addr:      &net.UDPAddr{IP: net.ParseIP("8.8.8.8"), Port: 0},
-			icmpId:    1,
-			wantValid: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Note: This test requires access to internal state to get the actual ICMP ID
-			// For now, we'll skip the actual validation check since we can't easily mock internal state
-			t.Skip("Requires access to internal peer state to get ICMP ID")
-		})
-	}
-}
+// TestValidateReply's table-driven coverage (including the previously
+// unconditionally-skipped case that needs the real generated ICMP ID)
+// moved to TestValidateReply_Table in ping_monitor_internal_test.go,
+// which is in package ctrl and can read PeerPingState.icmpId directly
+// instead of guessing at a random value.
 
 func TestICMPConnection_Interface(t *testing.T) {
 	// Verify that ICMPConnection interface can be mocked
@@ -312,11 +252,13 @@ func TestPingMonitor_Execute_NoPeers(t *testing.T) {
 
 	devices := mock.NewMockDeviceRepository(mockCtrl)
 	peers := mock.NewMockPeerRepository(mockCtrl)
-	publishCtrl := &ctrl.PublishController{}
-	establishCtrl := &ctrl.EstablishController{}
+	publishCtrl := mock.NewMockPublisher(mockCtrl)
+	establishCtrl := mock.NewMockEstablisher(mockCtrl)
 
-	// Mock peers.List to return empty list
-	peers.EXPECT().List(gomock.Any()).Return([]*entity.Peer{}, nil)
+	// The 100ms context deadline fires well before PingMonitorStartupDelay,
+	// so Execute returns via ctx.Done() during the startup wait and never
+	// reaches peers.List; AnyTimes() keeps the test correct either way.
+	peers.EXPECT().List(gomock.Any()).Return([]*entity.Peer{}, nil).AnyTimes()
 
 	pingCtrl := ctrl.NewPingMonitorController(cfg, devices, peers, publishCtrl, establishCtrl, &logger)
 
@@ -324,7 +266,7 @@ func TestPingMonitor_Execute_NoPeers(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
-	// Execute should return quickly when no peers are configured
+	// Execute should return promptly once ctx is done, not after the full startup delay
 	done := make(chan struct{})
 	go func() {
 		pingCtrl.Execute(ctx)
@@ -334,7 +276,7 @@ func TestPingMonitor_Execute_NoPeers(t *testing.T) {
 	select {
 	case <-done:
 		// Success - Execute returned
-	case <-time.After(15 * time.Second):
+	case <-time.After(1 * time.Second):
 		t.Fatal("Execute did not return in time with no peers")
 	}
 }
@@ -352,11 +294,12 @@ func TestPingMonitor_Execute_ListError(t *testing.T) {
 
 	devices := mock.NewMockDeviceRepository(mockCtrl)
 	peers := mock.NewMockPeerRepository(mockCtrl)
-	publishCtrl := &ctrl.PublishController{}
-	establishCtrl := &ctrl.EstablishController{}
+	publishCtrl := mock.NewMockPublisher(mockCtrl)
+	establishCtrl := mock.NewMockEstablisher(mockCtrl)
 
-	// Mock peers.List to return error
-	peers.EXPECT().List(gomock.Any()).Return(nil, errors.New("list error"))
+	// See TestPingMonitor_Execute_NoPeers: ctx is done before the startup
+	// delay elapses, so List may never be called.
+	peers.EXPECT().List(gomock.Any()).Return(nil, errors.New("list error")).AnyTimes()
 
 	pingCtrl := ctrl.NewPingMonitorController(cfg, devices, peers, publishCtrl, establishCtrl, &logger)
 
@@ -374,7 +317,7 @@ func TestPingMonitor_Execute_ListError(t *testing.T) {
 	select {
 	case <-done:
 		// Success - Execute returned
-	case <-time.After(15 * time.Second):
+	case <-time.After(1 * time.Second):
 		t.Fatal("Execute did not return in time after error")
 	}
 }

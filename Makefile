@@ -171,6 +171,15 @@ lint:
 		echo "Linting GOOS=$$os..."; \
 		GOOS=$$os golangci-lint run || exit 1; \
 	done
+	$(MAKE) lint-mobile
+
+# mobile/ and internal/mobilebind sit behind the mobile tag (see MOBILE_TAGS
+# above), so the platform loop above never sees them; lint them separately
+# with the same tags mobile-test and the android target use. GOOS=linux
+# matches how the AAR is actually built (gomobile runs on a Linux CI host).
+.PHONY: lint-mobile
+lint-mobile:
+	GOOS=linux golangci-lint run --build-tags '$(MOBILE_TAGS)' ./mobile/... ./internal/mobilebind/...
 
 .PHONY: install
 install: build

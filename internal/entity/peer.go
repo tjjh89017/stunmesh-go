@@ -18,14 +18,14 @@ type PeerPingConfig struct {
 
 type Peer struct {
 	id         PeerId
-	deviceName string
-	publicKey  [32]byte
+	deviceName DeviceId
+	publicKey  PeerPublicKey
 	plugin     string
 	protocol   string
 	pingConfig PeerPingConfig
 }
 
-func NewPeer(id PeerId, deviceName string, publicKey [32]byte, plugin string, protocol string, pingConfig PeerPingConfig) *Peer {
+func NewPeer(id PeerId, deviceName DeviceId, publicKey PeerPublicKey, plugin string, protocol string, pingConfig PeerPingConfig) *Peer {
 	return &Peer{
 		id:         id,
 		deviceName: deviceName,
@@ -48,11 +48,11 @@ func (p *Peer) RemoteId() string {
 	return p.id.RemoteEndpointKey()
 }
 
-func (p *Peer) DeviceName() string {
+func (p *Peer) DeviceName() DeviceId {
 	return p.deviceName
 }
 
-func (p *Peer) PublicKey() [32]byte {
+func (p *Peer) PublicKey() PeerPublicKey {
 	return p.publicKey
 }
 

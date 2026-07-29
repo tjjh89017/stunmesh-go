@@ -4,12 +4,29 @@ package dialer
 
 import (
 	"context"
+	"errors"
 	"syscall"
 )
 
-// control does nothing here. Android cannot use SO_MARK -- it needs
-// CAP_NET_ADMIN, which an app does not have -- and escapes through
-// VpnService.protect, applied by the mobile core to the sockets it owns.
-func control(_ context.Context, _, _ string, _ syscall.RawConn) error {
+// control calls VpnService.protect on the socket via Escape.Protector, the
+// escape Android provides in place of SO_MARK -- an app has no CAP_NET_ADMIN,
+// so setsockopt is not an option. Only mobile/controller.go sets a Protector
+// (see mobile/transport.go); everything else leaves it nil, in which case this
+// is a no-op and plugin HTTP traffic stays in a covering tunnel's route. That
+// is still this platform's default for any caller that never sets one.
+func control(ctx context.Context, _, _ string, c syscall.RawConn) error {
+	protector := escapeFrom(ctx).Protector
+	if protector == nil {
+		return nil
+	}
+	var ok bool
+	if err := c.Control(func(fd uintptr) {
+		ok = protector.Protect(int32(fd))
+	}); err != nil {
+		return err
+	}
+	if !ok {
+		return errors.New("dialer: socket protect failed")
+	}
 	return nil
 }

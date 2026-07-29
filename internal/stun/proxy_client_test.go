@@ -183,45 +183,6 @@ func TestProxyBackedStopLeavesTransportUsable(t *testing.T) {
 	}
 }
 
-func TestProxyBackedFactory_WarnsOnceForIgnoredArgs(t *testing.T) {
-	ft := &fakeTransport{
-		respond: func(txnID [12]byte, _ []byte) ([]byte, error) {
-			return bindingSuccess(t, txnID, net.ParseIP("203.0.113.9"), 41414), nil
-		},
-	}
-	var buf bytes.Buffer
-	logger := zerolog.New(&buf)
-	factory := NewProxyBackedFactory(ft, &logger)
-
-	for i := 0; i < 3; i++ {
-		client, err := factory(context.Background(), "wg0", 51820, "ipv4", 0, []string{"eth0"}, true)
-		if err != nil {
-			t.Fatalf("factory cycle %d: %v", i, err)
-		}
-		if _, _, err := client.Connect(context.Background(), "192.0.2.1:3478"); err != nil {
-			t.Fatalf("Connect cycle %d: %v", i, err)
-		}
-	}
-
-	if got := strings.Count(buf.String(), "ignored"); got != 1 {
-		t.Fatalf("ignored-args warning logged %d times, want exactly 1; log: %s", got, buf.String())
-	}
-}
-
-func TestProxyBackedFactory_NoWarnWithoutIgnoredArgs(t *testing.T) {
-	ft := &fakeTransport{respond: func(_ [12]byte, _ []byte) ([]byte, error) { return nil, errors.New("unused") }}
-	var buf bytes.Buffer
-	logger := zerolog.New(&buf)
-	factory := NewProxyBackedFactory(ft, &logger)
-
-	if _, err := factory(context.Background(), "wg0", 0, "ipv6", 0, nil, false); err != nil {
-		t.Fatalf("factory: %v", err)
-	}
-	if strings.Contains(buf.String(), "ignored") {
-		t.Fatalf("unexpected ignored-args warning: %s", buf.String())
-	}
-}
-
 func TestProxyLookupFactory_ResolvesTransportPerDevice(t *testing.T) {
 	byDevice := map[string]*fakeTransport{
 		"wg0": {respond: func(txnID [12]byte, _ []byte) ([]byte, error) {
@@ -280,5 +241,19 @@ func TestProxyLookupFactory_WarnsOnceForIgnoredArgs(t *testing.T) {
 	}
 	if got := strings.Count(buf.String(), "ignored"); got != 1 {
 		t.Fatalf("ignored-args warning logged %d times, want exactly 1; log: %s", got, buf.String())
+	}
+}
+
+func TestProxyLookupFactory_NoWarnWithoutIgnoredArgs(t *testing.T) {
+	ft := &fakeTransport{respond: func(_ [12]byte, _ []byte) ([]byte, error) { return nil, errors.New("unused") }}
+	var buf bytes.Buffer
+	logger := zerolog.New(&buf)
+	factory := NewProxyLookupFactory(func(string) (StunTransport, error) { return ft, nil }, &logger)
+
+	if _, err := factory(context.Background(), "wg0", 0, "ipv6", 0, nil, false); err != nil {
+		t.Fatalf("factory: %v", err)
+	}
+	if strings.Contains(buf.String(), "ignored") {
+		t.Fatalf("unexpected ignored-args warning: %s", buf.String())
 	}
 }

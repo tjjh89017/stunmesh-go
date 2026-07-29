@@ -10,7 +10,6 @@ import (
 
 	"github.com/rs/zerolog"
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
-	"github.com/tjjh89017/stunmesh-go/internal/plugin"
 	"github.com/tjjh89017/stunmesh-go/internal/plugin/dialer"
 	"github.com/tjjh89017/stunmesh-go/internal/queue"
 	"github.com/tjjh89017/stunmesh-go/internal/wg"
@@ -20,7 +19,7 @@ type EstablishController struct {
 	wgCtrl        WireGuardClient
 	devices       DeviceRepository
 	peers         PeerRepository
-	pluginManager *plugin.Manager
+	pluginManager PluginProvider
 	decryptor     EndpointDecryptor
 	deviceConfig  DeviceConfigProvider
 	logger        zerolog.Logger
@@ -28,7 +27,7 @@ type EstablishController struct {
 	queue         *queue.Queue[entity.PeerId]
 }
 
-func NewEstablishController(ctrl WireGuardClient, devices DeviceRepository, peers PeerRepository, pluginManager *plugin.Manager, decryptor EndpointDecryptor, deviceConfig DeviceConfigProvider, logger *zerolog.Logger) *EstablishController {
+func NewEstablishController(ctrl WireGuardClient, devices DeviceRepository, peers PeerRepository, pluginManager PluginProvider, decryptor EndpointDecryptor, deviceConfig DeviceConfigProvider, logger *zerolog.Logger) *EstablishController {
 	return &EstablishController{
 		wgCtrl:        ctrl,
 		devices:       devices,
@@ -51,7 +50,7 @@ func (c *EstablishController) Execute(ctx context.Context, peerId entity.PeerId)
 		return
 	}
 
-	device, err := c.devices.Find(ctx, entity.DeviceId(peer.DeviceName()))
+	device, err := c.devices.Find(ctx, peer.DeviceName())
 	if err != nil {
 		c.logger.Error().Err(err).Msg("failed to find device")
 		return
@@ -94,57 +93,13 @@ func (c *EstablishController) Execute(ctx context.Context, peerId entity.PeerId)
 	logger.Trace().Str("json", res.Content).Msg("decrypted endpoint data")
 
 	// Select endpoint based on peer protocol
-	var selectedEndpoint string
 	peerProtocol := peer.Protocol()
-
-	switch peerProtocol {
-	case "ipv4":
-		selectedEndpoint = endpointData.IPv4
-		if selectedEndpoint == "" {
-			logger.Error().Msg("IPv4 endpoint not available")
-			return
-		}
-		logger.Debug().Str("endpoint", selectedEndpoint).Msg("using IPv4 endpoint")
-
-	case "ipv6":
-		selectedEndpoint = endpointData.IPv6
-		if selectedEndpoint == "" {
-			logger.Error().Msg("IPv6 endpoint not available")
-			return
-		}
-		logger.Debug().Str("endpoint", selectedEndpoint).Msg("using IPv6 endpoint")
-
-	case "prefer_ipv4":
-		// Prefer IPv4, fallback to IPv6
-		if endpointData.IPv4 != "" {
-			selectedEndpoint = endpointData.IPv4
-			logger.Debug().Str("endpoint", selectedEndpoint).Msg("using preferred IPv4 endpoint")
-		} else if endpointData.IPv6 != "" {
-			selectedEndpoint = endpointData.IPv6
-			logger.Warn().Str("endpoint", selectedEndpoint).Msg("IPv4 endpoint unavailable, falling back to IPv6")
-		} else {
-			logger.Error().Msg("no endpoint available (prefer_ipv4)")
-			return
-		}
-
-	case "prefer_ipv6":
-		// Prefer IPv6, fallback to IPv4
-		if endpointData.IPv6 != "" {
-			selectedEndpoint = endpointData.IPv6
-			logger.Debug().Str("endpoint", selectedEndpoint).Msg("using preferred IPv6 endpoint")
-		} else if endpointData.IPv4 != "" {
-			selectedEndpoint = endpointData.IPv4
-			logger.Warn().Str("endpoint", selectedEndpoint).Msg("IPv6 endpoint unavailable, falling back to IPv4")
-		} else {
-			logger.Error().Msg("no endpoint available (prefer_ipv6)")
-			return
-		}
-
-	default:
-		// Unknown protocol, log and return
-		logger.Error().Str("protocol", peerProtocol).Msg("unknown peer protocol")
+	selectedEndpoint, err := SelectEndpoint(endpointData, peerProtocol)
+	if err != nil {
+		logger.Error().Err(err).Str("protocol", peerProtocol).Msg("failed to select endpoint")
 		return
 	}
+	logger.Debug().Str("endpoint", selectedEndpoint).Str("protocol", peerProtocol).Msg("selected endpoint")
 
 	// Parse host:port
 	host, portStr, err := net.SplitHostPort(selectedEndpoint)
@@ -171,16 +126,16 @@ func (c *EstablishController) ConfigureDevice(ctx context.Context, peer *entity.
 	c.logger.Debug().Str("peer", peer.LocalId()).Str("remote", remoteEndpoint).Msg("configuring device for peer")
 
 	err := c.wgCtrl.UpdatePeerEndpoint(wg.PeerEndpointUpdate{
-		DeviceName: peer.DeviceName(),
+		DeviceName: string(peer.DeviceName()),
 		PublicKey:  peer.PublicKey(),
 		Host:       host,
 		Port:       port,
 	})
 	if err != nil {
-		c.logger.Error().Err(err).Str("peer", peer.LocalId()).Str("device", peer.DeviceName()).Msg("failed to configure device for peer")
+		c.logger.Error().Err(err).Str("peer", peer.LocalId()).Str("device", string(peer.DeviceName())).Msg("failed to configure device for peer")
 		return err
 	}
-	c.logger.Debug().Str("peer", peer.LocalId()).Str("device", peer.DeviceName()).Msg("device configured for peer")
+	c.logger.Debug().Str("peer", peer.LocalId()).Str("device", string(peer.DeviceName())).Msg("device configured for peer")
 	return nil
 }
 
@@ -211,7 +166,7 @@ func (c *EstablishController) Trigger(ctx context.Context) {
 		if c.queue.TryEnqueue(peer.Id()) {
 			enqueued++
 		} else {
-			c.logger.Warn().Str("peer", peer.Id().String()).Msg("queue full, peer dropped")
+			c.logger.Warn().Str("peer", peer.Id().PeerPublicKeyString()).Msg("queue full, peer dropped")
 		}
 	}
 
@@ -222,9 +177,9 @@ func (c *EstablishController) Trigger(ctx context.Context) {
 // TriggerForPeer enqueues a specific peer for establishment (non-blocking)
 func (c *EstablishController) TriggerForPeer(peerId entity.PeerId) {
 	if c.queue.TryEnqueue(peerId) {
-		c.logger.Debug().Str("peer", peerId.String()).Msg("establish triggered for peer")
+		c.logger.Debug().Str("peer", peerId.PeerPublicKeyString()).Msg("establish triggered for peer")
 	} else {
-		c.logger.Warn().Str("peer", peerId.String()).Msg("establish queue full, dropping trigger for peer")
+		c.logger.Warn().Str("peer", peerId.PeerPublicKeyString()).Msg("establish queue full, dropping trigger for peer")
 	}
 }
 

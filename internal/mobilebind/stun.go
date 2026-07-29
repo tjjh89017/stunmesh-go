@@ -15,9 +15,9 @@ import (
 
 // STUN message types and attributes (RFC 8489).
 const (
-	stunBindingRequest  = 0x0001
-	stunBindingSuccess  = 0x0101
-	attrMappedAddress   = 0x0001
+	stunBindingRequest   = 0x0001
+	stunBindingSuccess   = 0x0101
+	attrMappedAddress    = 0x0001
 	attrXorMappedAddress = 0x0020
 )
 

@@ -120,6 +120,17 @@ func TestNewLogger_Level(t *testing.T) {
 	}
 }
 
+// An unparseable, non-empty level string must not fall through to
+// zerolog's own New() default (TraceLevel) — that would silently run at
+// max verbosity. config.Load already rejects this before it reaches
+// NewLogger, but NewLogger must fail safe on its own too.
+func TestNewLogger_UnparseableLevelFallsBackToInfo(t *testing.T) {
+	l := NewLogger(&config.Config{Log: config.Logger{Level: "not-a-level"}})
+	if got := l.GetLevel(); got != zerolog.InfoLevel {
+		t.Errorf("GetLevel() = %v, want %v", got, zerolog.InfoLevel)
+	}
+}
+
 // Below the configured level nothing is written at all.
 func TestNewLogger_LevelFilters(t *testing.T) {
 	out := captureStdout(t, func() {

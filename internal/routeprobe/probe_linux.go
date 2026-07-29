@@ -77,7 +77,7 @@ func parseProcNetRouteV4(data []byte) ([]Route, error) {
 			return nil, fmt.Errorf("routeprobe: parse mask %q: %w", fields[7], err)
 		}
 
-		ones, _ := ipv4MaskOnes(maskAddr)
+		ones := ipv4MaskOnes(maskAddr)
 		prefix := netip.PrefixFrom(destAddr, ones)
 		routes = append(routes, Route{Prefix: prefix, Interface: iface})
 	}
@@ -144,9 +144,8 @@ func decodeLEHexIPv4(s string) (netip.Addr, error) {
 // ipv4MaskOnes returns the number of leading one bits in addr, treating
 // it as a subnet mask. It does not validate contiguity; /proc/net/route only
 // ever contains proper masks.
-func ipv4MaskOnes(addr netip.Addr) (ones, bits int) {
+func ipv4MaskOnes(addr netip.Addr) (ones int) {
 	b := addr.As4()
-	bits = 32
 	for _, octet := range b {
 		if octet == 0xff {
 			ones += 8
@@ -158,5 +157,5 @@ func ipv4MaskOnes(addr netip.Addr) (ones, bits int) {
 		}
 		break
 	}
-	return ones, bits
+	return ones
 }

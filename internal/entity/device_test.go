@@ -146,6 +146,31 @@ func TestDevice_GettersImmutability(t *testing.T) {
 	}
 }
 
+func TestNewDevice_PrivateKeyLengthMismatch_DoesNotPanic(t *testing.T) {
+	tests := []struct {
+		name       string
+		privateKey []byte
+	}{
+		{"too short", []byte{1, 2, 3}},
+		{"empty", []byte{}},
+		{"too long", make([]byte, 40)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			device := entity.NewDevice(entity.DeviceId("wg0"), 51820, tt.privateKey, "ipv4", 0)
+
+			if device == nil {
+				t.Fatal("Expected device to be created despite the mismatched key length")
+			}
+
+			// PrivateKey() copies into a fixed-size array regardless of the
+			// source length, so it must remain safe to call.
+			_ = device.PrivateKey()
+		})
+	}
+}
+
 func TestErrDeviceNotFound(t *testing.T) {
 	err := entity.ErrDeviceNotFound
 

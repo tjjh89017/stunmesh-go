@@ -6,30 +6,24 @@ const (
 )
 
 type Queue[T any] struct {
-	stack chan T
-}
-
-func New[T any]() *Queue[T] {
-	return &Queue[T]{
-		stack: make(chan T),
-	}
+	items chan T
 }
 
 func NewBuffered[T any](size int) *Queue[T] {
 	return &Queue[T]{
-		stack: make(chan T, size),
+		items: make(chan T, size),
 	}
 }
 
 func (q *Queue[T]) Enqueue(entity T) {
-	q.stack <- entity
+	q.items <- entity
 }
 
 // TryEnqueue attempts to enqueue an entity without blocking
 // Returns true if successful, false if queue is full
 func (q *Queue[T]) TryEnqueue(entity T) bool {
 	select {
-	case q.stack <- entity:
+	case q.items <- entity:
 		return true
 	default:
 		return false
@@ -37,13 +31,13 @@ func (q *Queue[T]) TryEnqueue(entity T) bool {
 }
 
 func (q *Queue[T]) Dequeue() <-chan T {
-	return q.stack
+	return q.items
 }
 
 func (q *Queue[T]) Len() int {
-	return len(q.stack)
+	return len(q.items)
 }
 
 func (q *Queue[T]) Close() {
-	close(q.stack)
+	close(q.items)
 }

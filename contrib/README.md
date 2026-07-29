@@ -125,6 +125,24 @@ Use this protocol for complex plugins.
 
 See the [exec plugin documentation](https://docs.stunmesh.dev/plugins/exec-protocol) for more details.
 
+**Exit code contract:** the `success` field in the JSON response is what
+`internal/plugin/exec.go` actually branches on — a `get`/`set` fails if
+either the process exits non-zero *or* the decoded response has
+`success: false`. Exiting non-zero also works: the caller wraps its own
+"command execution failed" error around `response.Error` when one is
+available. Both conventions are handled correctly today and neither is
+required:
+
+- `cloudflare/main.go` exits `1` on failure (idiomatic for a Go `main`).
+- `opendht/opendht.sh` always exits `0` and signals failure purely through
+  `success: false` in the body (simpler `set -e` shell control flow — a
+  non-zero `respond_error` would need to run after every `set -e` guard
+  ran, not before it).
+
+New plugins may pick either; just be consistent about it within the plugin
+and make sure `success` in the body always matches the real outcome, since
+that's the field guaranteed to be checked.
+
 ### Shell Plugin Protocol (Shell Variables)
 
 Use this protocol for simple shell scripts.
@@ -162,6 +180,26 @@ esac
 - Both `STUNMESH_KEY` and `STUNMESH_VALUE` are hex strings (SHA1 and encrypted data)
 - No special characters - safe to use without quoting or escaping
 - Can safely use `source /dev/stdin` or `eval`
+
+**Trust posture for reading stdin:** the two existing shell plugins parse
+`STUNMESH_*` differently, and both are correct given the hex-only guarantee
+above:
+
+- `cloudflare-shell/cloudflare-shell.sh` uses `source /dev/stdin` — short,
+  and safe here because stunmesh-go itself writes the input and it's
+  restricted to hex characters.
+- `opendht-shell/opendht-shell.sh` parses stdin line-by-line with an
+  explicit `case` (see the comment above that loop) rather than `source`
+  or `eval`, so a stdin line can never be executed as a command even if
+  the hex-only guarantee were ever violated upstream.
+
+**New plugins should prefer the explicit `case`-parsing style** (the
+`opendht-shell` shape): it costs a few extra lines and is defense-in-depth
+against a future change to the input format, whereas `source`/`eval`
+depends on that guarantee holding forever. `source /dev/stdin` remains
+supported and won't be removed from `cloudflare-shell`, since changing a
+published example is its own risk — this is guidance for what to write
+next, not a mandate to change what already works.
 
 See the [shell plugin documentation](https://docs.stunmesh.dev/plugins/shell-protocol) and [cloudflare-shell/](cloudflare-shell/) for complete examples.
 

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"runtime"
 
 	"github.com/rs/zerolog"
 	"github.com/tjjh89017/stunmesh-go/internal/routeprobe"
@@ -21,6 +22,11 @@ type ProxyConfig interface {
 	// TunnelInterfaceNames returns every configured WireGuard interface name,
 	// used to scope the tunnel-escape route probe to devices stunmesh manages.
 	TunnelInterfaceNames() []string
+	// GetProxyEnabled reports whether proxy mode is on for deviceName on goos
+	// (pass runtime.GOOS at call sites). Consulted per device so a mixed
+	// config (one interface opted in, another not) is honored per interface
+	// rather than collapsed into a single process-wide switch.
+	GetProxyEnabled(deviceName string, goos string) bool
 }
 
 // proxyClient decorates a Client so every device is fronted by a wgproxy
@@ -44,7 +50,15 @@ func NewProxyClient(inner Client, manager *wgproxy.Manager, config ProxyConfig, 
 
 // Device delegates, then feeds the proxy the WG-side target and registers
 // every peer. DeviceInfo is returned unchanged — ListenPort stays real.
+// Devices whose own proxy.enabled resolves false are passed straight through
+// to inner, even when proxy mode is on for the process as a whole — the
+// decorator being installed only means at least one interface opted in, not
+// that this one did.
 func (c *proxyClient) Device(name string) (*DeviceInfo, error) {
+	if !c.config.GetProxyEnabled(name, runtime.GOOS) {
+		return c.inner.Device(name)
+	}
+
 	info, err := c.inner.Device(name)
 	if err != nil {
 		return nil, err
@@ -64,8 +78,13 @@ func (c *proxyClient) Device(name string) (*DeviceInfo, error) {
 }
 
 // UpdatePeerEndpoint programs the proxy with the real remote, then delegates
-// with the endpoint replaced by the peer's loopback inner socket.
+// with the endpoint replaced by the peer's loopback inner socket. A device
+// that opted out of proxy mode delegates the endpoint unchanged.
 func (c *proxyClient) UpdatePeerEndpoint(u PeerEndpointUpdate) error {
+	if !c.config.GetProxyEnabled(u.DeviceName, runtime.GOOS) {
+		return c.inner.UpdatePeerEndpoint(u)
+	}
+
 	addr, err := netip.ParseAddr(u.Host)
 	if err != nil {
 		return fmt.Errorf("wg: parse peer endpoint host %q: %w", u.Host, err)

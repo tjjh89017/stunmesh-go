@@ -12,13 +12,13 @@ import (
 // Config mirrors the JSON produced by the Android app (TunnelConfig.toJson).
 // Field names follow the stunmesh-go YAML config where a counterpart exists.
 type tunnelConfig struct {
-	Name      string       `json:"name"`
-	Interface ifaceConfig    `json:"interface"`
-	Peers     []peerConfig       `json:"peers"`
-	Plugins   []pluginDef  `json:"plugins"`
-	Stun      stunConfig         `json:"stun"`
-	RefreshIntervalSeconds int `json:"refresh_interval_seconds"`
-	Log       logConfig    `json:"log"`
+	Name                   string       `json:"name"`
+	Interface              ifaceConfig  `json:"interface"`
+	Peers                  []peerConfig `json:"peers"`
+	Plugins                []pluginDef  `json:"plugins"`
+	Stun                   stunConfig   `json:"stun"`
+	RefreshIntervalSeconds int          `json:"refresh_interval_seconds"`
+	Log                    logConfig    `json:"log"`
 }
 
 type ifaceConfig struct {
@@ -32,15 +32,15 @@ type ifaceConfig struct {
 }
 
 type peerConfig struct {
-	Name               string   `json:"name"`
-	Description        string   `json:"description"`
-	PublicKey          string   `json:"public_key"`
-	PresharedKey       string   `json:"preshared_key"`
-	AllowedIPs         []string `json:"allowed_ips"`
-	Endpoint           string   `json:"endpoint"`
-	Plugin             string   `json:"plugin"`
-	Protocol           string   `json:"protocol"`
-	PersistentKeepalive int     `json:"persistent_keepalive"`
+	Name                string   `json:"name"`
+	Description         string   `json:"description"`
+	PublicKey           string   `json:"public_key"`
+	PresharedKey        string   `json:"preshared_key"`
+	AllowedIPs          []string `json:"allowed_ips"`
+	Endpoint            string   `json:"endpoint"`
+	Plugin              string   `json:"plugin"`
+	Protocol            string   `json:"protocol"`
+	PersistentKeepalive int      `json:"persistent_keepalive"`
 }
 
 type pluginDef struct {
@@ -82,6 +82,22 @@ func parseConfig(configJSON string) (*tunnelConfig, error) {
 		if p.PresharedKey != "" {
 			if _, err := keyToHex(p.PresharedKey); err != nil {
 				return nil, fmt.Errorf("peer %d preshared_key: %w", i, err)
+			}
+		}
+	}
+	if cfg.Interface.Protocol != "" {
+		switch cfg.Interface.Protocol {
+		case "ipv4", "ipv6", "dualstack":
+		default:
+			return nil, fmt.Errorf("invalid interface protocol %q, must be one of: ipv4, ipv6, dualstack", cfg.Interface.Protocol)
+		}
+	}
+	for i, p := range cfg.Peers {
+		if p.Protocol != "" {
+			switch p.Protocol {
+			case "ipv4", "ipv6", "prefer_ipv4", "prefer_ipv6":
+			default:
+				return nil, fmt.Errorf("invalid protocol %q for peer %d, must be one of: ipv4, ipv6, prefer_ipv4, prefer_ipv6", p.Protocol, i)
 			}
 		}
 	}

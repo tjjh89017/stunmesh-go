@@ -3,6 +3,7 @@ package stun
 import (
 	"context"
 	"errors"
+	"time"
 
 	stun "github.com/pion/stun/v3"
 	"github.com/rs/zerolog"
@@ -19,9 +20,7 @@ var (
 
 const BindingPacketHeaderSize = 8
 
-var (
-	StunTimeout = 5
-)
+const StunTimeout time.Duration = 5 * time.Second
 
 func Parse(ctx context.Context, msg *stun.Message) *stun.XORMappedAddress {
 	logger := zerolog.Ctx(ctx)

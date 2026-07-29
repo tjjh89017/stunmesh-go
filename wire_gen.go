@@ -20,14 +20,10 @@ import (
 
 // Injectors from wire.go:
 
-func setup() (*daemon.Daemon, func(), error) {
-	configConfig, err := config.Load()
-	if err != nil {
-		return nil, nil, err
-	}
-	deviceConfig := config.NewDeviceConfig(configConfig)
-	zerologLogger := logger.NewLogger(configConfig)
-	mainProxyStack, cleanup, err := newProxyStack(configConfig, deviceConfig, zerologLogger)
+func setup(cfg *config.Config) (*daemon.Daemon, func(), error) {
+	deviceConfig := config.NewDeviceConfig(cfg)
+	zerologLogger := logger.NewLogger(cfg)
+	mainProxyStack, cleanup, err := newProxyStack(cfg, deviceConfig, zerologLogger)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -35,8 +31,8 @@ func setup() (*daemon.Daemon, func(), error) {
 	devices := repo.NewDevices()
 	peers := repo.NewPeers(client)
 	filterPeerService := entity.NewFilterPeerService(peers, deviceConfig)
-	bootstrapController := ctrl.NewBootstrapController(client, configConfig, deviceConfig, devices, peers, zerologLogger, filterPeerService)
-	manager, err := providePluginManager(configConfig)
+	bootstrapController := ctrl.NewBootstrapController(client, cfg, deviceConfig, devices, peers, zerologLogger, filterPeerService)
+	manager, err := providePluginManager(cfg)
 	if err != nil {
 		cleanup()
 		return nil, nil, err
@@ -45,8 +41,8 @@ func setup() (*daemon.Daemon, func(), error) {
 	endpoint := crypto.NewEndpoint()
 	publishController := ctrl.NewPublishController(devices, peers, manager, resolver, endpoint, deviceConfig, zerologLogger)
 	establishController := ctrl.NewEstablishController(client, devices, peers, manager, endpoint, deviceConfig, zerologLogger)
-	pingMonitorController := ctrl.NewPingMonitorController(configConfig, devices, peers, publishController, establishController, zerologLogger)
-	daemonDaemon := daemon.New(configConfig, bootstrapController, publishController, establishController, pingMonitorController, zerologLogger)
+	pingMonitorController := ctrl.NewPingMonitorController(cfg, devices, peers, publishController, establishController, zerologLogger)
+	daemonDaemon := daemon.New(cfg, bootstrapController, publishController, establishController, pingMonitorController, zerologLogger)
 	return daemonDaemon, func() {
 		cleanup()
 	}, nil

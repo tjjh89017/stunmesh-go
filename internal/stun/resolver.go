@@ -36,6 +36,13 @@ func NewResolver(config *config.Config, deviceConfig *config.DeviceConfig, logge
 	return NewResolverWithFactory(config, deviceConfig, logger, defaultClientFactory)
 }
 
+// NewDefaultFactory exposes the platform's default (non-proxy) client
+// factory, for callers composing a per-device factory that must fall back to
+// it (e.g. a mixed proxy.enabled config).
+func NewDefaultFactory() ClientFactory {
+	return defaultClientFactory
+}
+
 // NewResolverWithFactory builds a Resolver with an explicit client factory.
 func NewResolverWithFactory(config *config.Config, deviceConfig *config.DeviceConfig, logger *zerolog.Logger, factory ClientFactory) *Resolver {
 	return &Resolver{
