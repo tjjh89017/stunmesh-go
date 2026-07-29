@@ -43,9 +43,9 @@ make lint                        # Lint for linux, darwin, freebsd and windows, 
 make lint LINT_PLATFORMS=linux   # Just the host, for a faster loop
 ```
 
-`.golangci.yaml` sets `build-tags: [builtin_all]`, so a bare `golangci-lint run`
-and CI check the same files — the built-ins included, and no list to update when
-one is added. `GOOS` can't come from the config, so `make lint` loops over the
+`.golangci.yaml` sets `build-tags: [builtin_all, embedca]`, so a bare
+`golangci-lint run` and CI check the same files — the built-ins and the
+embedded-CA path included, and no list to update when a built-in is added. `GOOS` can't come from the config, so `make lint` loops over the
 four platforms and CI runs them as a matrix. `mobile/` and `internal/mobilebind`
 sit behind the `mobile` build tag, so the platform loop never sees them; a
 separate `lint-mobile` target (always run as part of `make lint`) covers them
@@ -57,7 +57,7 @@ mobile lint step passes the same two tags.
 ```bash
 go mod tidy                      # Clean up dependencies
 go generate ./internal/entity    # Regenerate mocks (requires mockgen)
-go generate wire.go              # Regenerate wire dependency injection
+go generate .                    # Regenerate wire dependency injection (directive lives in wire_gen.go)
 ```
 
 ### Installing Dependencies for Development
@@ -111,12 +111,12 @@ update it when making structural changes.
 The application uses Google Wire for dependency injection. The main setup is in `wire.go`:
 - `wire.go`: Defines dependency graph (build tag: `wireinject`)
 - `wire_gen.go`: Generated dependency injection code (do not edit manually)
-- Run `go generate wire.go` after changing dependencies
+- Run `go generate .` after changing dependencies (the generate directive lives in `wire_gen.go`)
 
 ### Plugin System Architecture
 The plugin system supports multiple named storage backend instances:
 
-**Plugin Manager** (`plugin/manager.go`):
+**Plugin Manager** (`internal/plugin/manager.go`):
 - Factory pattern for creating plugin instances by type
 - Manages multiple named instances (e.g., `exec1`, `exec2`)
 - Each peer can reference a different plugin instance
@@ -200,7 +200,7 @@ of its own.
    - Sends periodic ICMP pings to peers with `ping` enabled in their config
    - On failure, triggers `PublishController`/`EstablishController` for the
      affected peer with retry backoff, handing over to the daemon-level
-     refresh ticker once backoff exceeds `RefreshInterval`
+     refresh ticker once backoff reaches `RefreshInterval`
 
 ### FilterPeerService Pattern
 Key architectural pattern in `internal/entity/filter_peer.go`:
@@ -231,14 +231,14 @@ The protocol configuration operates at two distinct levels:
 - Controls which STUN discovery protocols are performed
 - Values: `ipv4`, `ipv6`, `dualstack`
 - Default: `ipv4` (for backward compatibility)
-- Validation in `config.DeviceConfig.GetInterfaceProtocol()`
+- Default applied in `config.Interface.GetProtocol()` (via `DeviceConfig.GetInterfaceProtocol()`); validation happens during config validation in `internal/config/config.go`
 - Stored in `entity.Device.protocol` field
 
 **Peer Protocol** (Peer Level):
 - Controls which endpoint to use when establishing connections
 - Values: `ipv4`, `ipv6`, `prefer_ipv4`, `prefer_ipv6`
 - Default: `ipv4` (for backward compatibility)
-- Validation in `config.Peer.GetProtocol()`
+- Default applied in `config.Peer.GetProtocol()`; validation happens during config validation in `internal/config/config.go`
 - Stored in `entity.Peer.protocol` field
 
 **Data Flow**:
@@ -251,6 +251,8 @@ The protocol configuration operates at two distinct levels:
 **Platform-Specific Implementations**:
 - **Linux** (`internal/stun/stun_linux.go`): Raw IP sockets with BPF filters
 - **Darwin/BSD** (`internal/stun/stun_darwinbsd.go`): pcap with BPF filters
+- **Windows** (`internal/stun/stun_windows.go`): stub only — `New` always returns `ErrProxyTransportRequired`; the real Windows client is the proxy-backed one (`proxy_client.go`, selected by `factory_windows.go`)
+- Pieces shared between the Linux and Darwin/BSD clients (STUN packet build/parse, `Connect`) live in `internal/stun/helper_socket.go` (`!windows`)
 
 **IPv6 Support**:
 - Uses `golang.org/x/net/ipv6.PacketConn` for IPv6 raw sockets
@@ -274,11 +276,11 @@ The protocol configuration operates at two distinct levels:
 - IPv6 BPF filter checks EtherType (0x86DD) for Ethernet frames
 
 **Key Methods**:
-- `stun.New(ctx, deviceName, port, protocol)`: Creates STUN client with specified protocol
-- `resolver.Resolve(ctx, deviceName, port, protocol)`: Performs STUN discovery and returns endpoint
+- `stun.New(ctx, excludeInterface, port, protocol, firewallMark, listenInterfaces, listenDefaultRoute)`: Creates STUN client with specified protocol
+- `resolver.Resolve(ctx, deviceName, port, protocol, firewallMark)`: Performs STUN discovery and returns endpoint
   - Returns error if port == 0 or host == "" (validates endpoint before returning)
-- `stun.Connect(ctx, stunAddr)`: Sends STUN request and receives response
-  - Converts `net.UDPAddr` to `net.IPAddr` for raw socket transmission
+- `stun.Connect(ctx, stunAddr)` (shared, `helper_socket.go`): Sends STUN request and receives response, returning `(host, port, err)`
+  - The platform `writeTo` converts `net.UDPAddr` to `net.IPAddr` for raw-socket transmission on Linux
 
 ### Encryption and Storage Format
 
@@ -340,7 +342,7 @@ log:
 ## Key Implementation Details
 
 ### Wire Interface Bindings
-Critical interface bindings in `wire.go`:
+Examples of interface bindings in `wire.go` (see the file for the full set — there are around a dozen, including the daemon runner and ctrl publisher/establisher bindings):
 ```go
 wire.Bind(new(entity.ConfigPeerProvider), new(*config.DeviceConfig))
 wire.Bind(new(entity.DevicePeerChecker), new(*repo.Peers))
@@ -350,23 +352,24 @@ wire.Bind(new(entity.DevicePeerChecker), new(*repo.Peers))
 
 **Device Entity**:
 ```go
-entity.NewDevice(name DeviceId, listenPort int, privateKey []byte, protocol string) *Device
+entity.NewDevice(name DeviceId, listenPort int, privateKey []byte, protocol string, firewallMark int) *Device
 ```
 - `protocol`: Must be "ipv4", "ipv6", or "dualstack"
 
 **Peer Entity**:
 ```go
-entity.NewPeer(id PeerId, deviceName string, publicKey [32]byte, plugin string, protocol string, pingConfig PeerPingConfig) *Peer
+entity.NewPeer(id PeerId, deviceName DeviceId, publicKey PeerPublicKey, plugin string, protocol string, pingConfig PeerPingConfig) *Peer
 ```
+- `PeerPublicKey` and `PrivateKey` are named `[32]byte` types defined in `internal/entity/keys.go`
 - `plugin`: Required - references the plugin instance name from config
 - `protocol`: Must be "ipv4", "ipv6", "prefer_ipv4", or "prefer_ipv6"
 
 When adding new entity creation code, ensure all required parameters are provided with correct values.
 
 ### Mock Generation
-Mocks are generated using `go.uber.org/mock/mockgen`. Interface changes require regenerating mocks:
+Mocks are generated using `go.uber.org/mock/mockgen`. `go:generate mockgen` directives live in `internal/entity` (filter_peer.go), across `internal/ctrl` (most interface files), and `internal/repo` (api.go) — regenerate the package whose interface changed:
 ```bash
-go generate ./internal/entity  # Regenerates peer-related mocks
+go generate ./internal/entity ./internal/ctrl ./internal/repo
 ```
 
 ### Exec Plugin Protocol
@@ -422,11 +425,11 @@ Tests extensively use mocks for external dependencies:
 When `entity.NewPeer()` or `entity.NewDevice()` signatures change, update all affected files:
 - Test files in `internal/repo/*_test.go`
 - Test files in `internal/ctrl/*_test.go`
-- Test files in `internal/crypto/*_test.go`
+- Test files in `internal/entity/*_test.go`
 - Controller implementations in `internal/ctrl/bootstrap.go`
 
 Common parameters to remember:
-- Both Device and Peer require `protocol` parameter
+- Both Device and Peer require `protocol` parameter; Device also requires `firewallMark`
 - Peer requires `plugin` parameter (references config plugin name)
 - Use "ipv4" as default protocol value in tests for backward compatibility
 
@@ -438,7 +441,7 @@ Common parameters to remember:
    - Use `PLUGIN ?= stunmesh-<name>` variable (not `APP`)
    - Implement `build`, `clean`, `install`, `uninstall` targets
    - Set `CGO_ENABLED ?= 0` for static binaries (recommended)
-3. Implement the exec plugin protocol (JSON stdin/stdout)
+3. Implement the exec plugin protocol (JSON stdin/stdout) or the shell protocol (see `contrib/README.md` for both)
 4. GitHub Actions will automatically build and release the plugin for all supported platforms
 5. See `contrib/README.md` for detailed plugin development guide
 
@@ -457,20 +460,20 @@ Common parameters to remember:
 Verify every tag combination, since a built-in must compile alone, under
 `builtin_all`, and alongside the others:
 ```bash
-for t in "" builtin_all builtin_cloudflare builtin_<name> "builtin_cloudflare builtin_<name>"; do
+for t in "" builtin_all builtin_cloudflare builtin_opendht builtin_<name> "builtin_cloudflare builtin_opendht builtin_<name>"; do
   go build -tags "$t" -o /dev/null . || echo "FAILED: '$t'"
 done
 ```
+(Include every existing `builtin_*` tag plus yours, individually and together.)
 
 ### Adding New Plugin Types to Core
-1. Add new `PluginType` constant in `plugin/manager.go`
-2. Implement `Store` interface in new plugin file
-3. Add case in `createPlugin()` method
+1. Implement `Store` interface in new plugin file
+2. Add a new type-string case in `createPlugin()` in `internal/plugin/manager.go` (it switches on `def.Type` string literals `"exec"`/`"shell"`/`"builtin"`; there is no PluginType constant)
 4. Update documentation in the docs site ([tjjh89017/stunmesh-docs](https://github.com/tjjh89017/stunmesh-docs), published at docs.stunmesh.dev)
 
 ### Modifying Wire Dependencies
 1. Update `wire.go` with new bindings
-2. Run `go generate wire.go` to regenerate `wire_gen.go`
+2. Run `go generate .` to regenerate `wire_gen.go` (the directive lives in wire_gen.go)
 3. Build to verify dependency resolution
 
 ### Interface Changes
@@ -485,7 +488,7 @@ done
 - **main.yml**: Build and test on PR/push to main
   - `build` job: Builds main binary for all OS/arch combinations
   - `build-plugins` job: Builds all contrib plugins (runs in parallel with `build`)
-  - Both depend on `lint` and `test` jobs
+  - Both depend on the `lint-required` and `test-required` aggregate gates
   - Three e2e layers behind the build gates, aggregated by `e2e-required`
     (the only e2e check branch protection needs):
     - `e2e`: same-host two-interface test per OS/arch (`test/e2e/`), runs the
@@ -503,8 +506,8 @@ done
 
 - **release.yml**: Release binaries on tag push
   - `release` job: Releases main binary
-  - `release-plugins` job: Releases plugin archives (runs in parallel with `release`)
-  - Plugin binaries are packaged per OS/arch (e.g., `stunmesh-plugins-linux-amd64.zip`)
+  - `release-plugins` job: Releases plugin archives (runs in parallel with `release`; both gate on `create-release`)
+  - Plugin binaries are packaged per OS/arch with the tag in the name, as both `.zip` and `.tar.gz` (e.g., `stunmesh-plugins-linux-amd64-v1.2.3.zip`)
 
 ### Plugin Build System
 - Uses `.github/actions/build-all-plugins/` to build all plugins
