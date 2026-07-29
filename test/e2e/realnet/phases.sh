@@ -136,12 +136,9 @@ full_tunnel_subject() {
 	# The storage backend is deliberately NOT excluded: its socket carries
 	# the device fwmark and leaves through the escape rule installed below,
 	# which is what makes the refresh loop survive a covering route. An
-	# exclusion route here would hide a regression in that escape.
-	#
-	# DNS still needs one. The escape is applied to the socket that carries
-	# the connection, and the name lookup happens on a separate socket that
-	# never sees it -- see issue #248.
-	_excl_ips="8.8.8.8 1.1.1.1"
+	# exclusion route here would hide a regression in that escape. DNS
+	# lookups go through the same escaped socket via the plugin dialer's
+	# PreferGo resolver (#248), so they need no exclusion either.
 
 	stop_daemon
 	ns_exec wg set "$WG_IF" fwmark "$FWMARK"
@@ -155,10 +152,6 @@ full_tunnel_subject() {
 	# would in production.
 	ns_exec ip route add default via "$HOST_IP" dev "$VETH_NS" table "$ESCAPE_TABLE"
 	ns_exec ip rule add fwmark "$FWMARK" lookup "$ESCAPE_TABLE" pref 100
-	# The remaining exclusion is DNS only; see the note above.
-	for _ip in $_excl_ips; do
-		ns_exec ip route add "$_ip/32" via "$HOST_IP" dev "$VETH_NS" 2>/dev/null || true
-	done
 	start_daemon
 	log "full tunnel (subject): routes installed, daemon restarted"
 
