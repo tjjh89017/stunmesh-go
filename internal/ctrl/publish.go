@@ -179,9 +179,7 @@ func (c *PublishController) Execute(ctx context.Context) {
 		for _, peer := range peers {
 			logger := logger.With().Str("peer", peer.LocalId()).Logger()
 
-			if err := c.publishToPeer(ctx, logger.WithContext(ctx), device, peer, ipv4Endpoint, ipv6Endpoint, logger); err != nil {
-				continue
-			}
+			_ = c.publishToPeer(ctx, logger.WithContext(ctx), device, peer, ipv4Endpoint, ipv6Endpoint, logger)
 		}
 	}
 }
