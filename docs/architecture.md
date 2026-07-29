@@ -162,7 +162,8 @@ duplication. All three were resolved before this document was written —
 desktop and mobile now share `ctrl.DiscoverEndpoints` (`internal/ctrl/discover.go`)
 and `ctrl.SelectEndpoint` (`internal/ctrl/endpoint_select.go`); mobile
 plugin HTTP traffic is protected from full-tunnel routing (commit
-`baf40a8`, corrected in `38b9a7f`); and the Linux/Darwin-BSD STUN client
+`baf40a8`, corrected in `38b9a7f`; the DNS resolution half of that same
+escape was closed later, in `ebb467e`); and the Linux/Darwin-BSD STUN client
 duplication was collapsed into `internal/stun/helper_socket.go` (commit
 `ed4ae03`). Nothing is presently tracked as known, unresolved duplication;
 this section is left in place as a marker for where such a register would
