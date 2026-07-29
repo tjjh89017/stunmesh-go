@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 
 	"github.com/tjjh89017/stunmesh-go/internal/routeprobe"
@@ -109,5 +110,28 @@ func TestTransportDialsWithRequestContext(t *testing.T) {
 
 	if got := <-dialed; got.FirewallMark != 0x2a {
 		t.Errorf("dial saw mark %#x, want 0x2a", got.FirewallMark)
+	}
+}
+
+// DNS lookups must not fall through to net.DefaultResolver: on android that
+// resolves via Bionic getaddrinfo/netd, which cannot be protected, so a DNS
+// query would fail outright whenever the covering tunnel it should escape is
+// down. Routing the resolver's own dial through DialContext puts DNS on the
+// same protected path as the TCP connect. http.Transport has no Resolver
+// field of its own -- the wiring belongs on the net.Dialer DialContext uses.
+func TestDialerResolverDialsThroughProtectedPath(t *testing.T) {
+	d := newDialer()
+
+	if d.Resolver == nil {
+		t.Fatal("newDialer().Resolver is nil, want a resolver wired to the protected dial path")
+	}
+	if !d.Resolver.PreferGo {
+		t.Error("newDialer().Resolver.PreferGo = false, want true so DNS queries use the Go resolver's Dial hook instead of the platform resolver")
+	}
+
+	got := reflect.ValueOf(d.Resolver.Dial).Pointer()
+	want := reflect.ValueOf(DialContext).Pointer()
+	if got != want {
+		t.Error("newDialer().Resolver.Dial is not DialContext, want DNS lookups to share the protected dial path with TCP connects")
 	}
 }

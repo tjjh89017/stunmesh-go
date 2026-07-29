@@ -91,13 +91,29 @@ func Transport() *http.Transport {
 
 // DialContext dials with the escape the platform provides.
 func DialContext(ctx context.Context, network, address string) (net.Conn, error) {
-	d := &net.Dialer{
+	return newDialer().DialContext(ctx, network, address)
+}
+
+// newDialer builds the Dialer DialContext uses. Its Resolver.Dial points back
+// at DialContext so hostname lookups reuse the same protected socket path as
+// the eventual TCP connect, instead of falling through to net.DefaultResolver
+// -- on android that resolves via Bionic getaddrinfo/netd, which cannot be
+// protected, so a DNS query would fail outright whenever the covering tunnel
+// it must escape is down. PreferGo forces the Go resolver so Dial is actually
+// consulted (the cgo resolver ignores it). Dial only opens a connection to
+// the resolver's already-known address, so this does not recurse into
+// hostname resolution.
+func newDialer() *net.Dialer {
+	return &net.Dialer{
 		Timeout:   10 * time.Second,
 		KeepAlive: 30 * time.Second,
 		// ControlContext, not Control: the escape rides in the context.
 		ControlContext: control,
+		Resolver: &net.Resolver{
+			PreferGo: true,
+			Dial:     DialContext,
+		},
 	}
-	return d.DialContext(ctx, network, address)
 }
 
 // boundInterface resolves the physical default-route interface for platforms
