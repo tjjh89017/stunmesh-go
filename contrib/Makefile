@@ -40,6 +40,13 @@ uninstall:
 		$(MAKE) -C $$plugin uninstall PREFIX=$(PREFIX) BINDIR=$(BINDIR) || exit 1; \
 	done
 
+.PHONY: test
+test:
+	@for plugin in $(PLUGINS); do \
+		echo "Testing $$plugin..."; \
+		$(MAKE) -C $$plugin test || exit 1; \
+	done
+
 .PHONY: list
 list:
 	@echo "Available plugins:"

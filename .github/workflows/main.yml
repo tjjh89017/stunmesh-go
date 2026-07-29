@@ -184,6 +184,24 @@ jobs:
       - name: All plugin build cells passed
         run: '[ "${{ needs.build-plugins.result }}" = "success" ]'
 
+  # Shell-protocol smoke tests for the contrib plugins (cloudflare-shell,
+  # opendht, opendht-shell) plus `go test` for the separate cloudflare Go
+  # module. Not a matrix, so this job's own name is already a stable check --
+  # no paired -required gate needed. It exercises contrib/ scripts, not the
+  # core build, so it isn't in e2e's needs.
+  contrib-test:
+    name: Contrib Smoke Tests
+    runs-on: ubuntu-latest
+    needs:
+      - lint-required
+      - test-required
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - run: make contrib-test
+
   android-aar:
     name: Build Android AAR
     runs-on: ubuntu-latest

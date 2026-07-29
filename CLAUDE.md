@@ -34,8 +34,8 @@ go test ./internal/repo -v       # Run repository tests
 The contrib plugins have script-level smoke tests
 (`contrib/*/smoke_test.sh`, run manually from the repo root; the
 `contrib/cloudflare` Go module also has `go test`) exercising the real
-exec/shell protocols against fake backends. They are not yet wired into
-`make` or CI.
+exec/shell protocols against fake backends. Run them via `make contrib-test`
+from the repo root, or use the `contrib-test` job in CI.
 
 ### Linting
 ```bash

@@ -217,3 +217,10 @@ plugin-uninstall:
 
 .PHONY: contrib-uninstall
 contrib-uninstall: plugin-uninstall
+
+.PHONY: plugin-test
+plugin-test:
+	$(MAKE) -C contrib test
+
+.PHONY: contrib-test
+contrib-test: plugin-test
