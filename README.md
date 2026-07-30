@@ -41,7 +41,7 @@ For best results, ensure at least one peer is behind a cone NAT type.
 Download a binary from the [releases page](https://github.com/tjjh89017/stunmesh-go/releases), or use the container image:
 
 ```bash
-docker pull tjjh89017/stunmesh
+docker pull ghcr.io/tjjh89017/stunmesh
 ```
 
 On Linux, macOS, and FreeBSD, stunmesh-go needs raw socket access, so run it as root next to an already-configured WireGuard interface (Windows differs — see [Windows](#windows) below):
