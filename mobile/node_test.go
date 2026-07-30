@@ -19,6 +19,7 @@ func TestSetDNSServersParsing(t *testing.T) {
 		{"plain", "192.0.2.1,192.0.2.2", []string{"192.0.2.1", "192.0.2.2"}},
 		{"spaces and trailing comma", " 192.0.2.1 , 2001:db8::1 ,", []string{"192.0.2.1", "2001:db8::1"}},
 		{"with ports", "192.0.2.1:53,[2001:db8::1]:53", []string{"192.0.2.1:53", "[2001:db8::1]:53"}},
+		{"hostnames dropped", "dns.example,192.0.2.1", []string{"192.0.2.1"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -43,5 +44,10 @@ func TestPluginDNSServersFallback(t *testing.T) {
 	n.SetDNSServers("  ,, ")
 	if got := n.pluginDNSServers(); !reflect.DeepEqual(got, defaultPluginDNSServers) {
 		t.Errorf("after clearing: pluginDNSServers() = %v, want fallback %v", got, defaultPluginDNSServers)
+	}
+
+	n.SetDNSServers("dns.example,other.example")
+	if got := n.pluginDNSServers(); !reflect.DeepEqual(got, defaultPluginDNSServers) {
+		t.Errorf("all-invalid list: pluginDNSServers() = %v, want fallback %v", got, defaultPluginDNSServers)
 	}
 }

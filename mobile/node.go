@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/tjjh89017/stunmesh-go/internal/mobilebind"
+	"github.com/tjjh89017/stunmesh-go/internal/plugin/dialer"
 	"golang.zx2c4.com/wireguard/device"
 	"golang.zx2c4.com/wireguard/tun"
 )
@@ -155,12 +156,14 @@ func (n *Node) Stop() {
 // and call again from its network callback whenever that network changes.
 // The tunnel's dns_servers are deliberately not used: plugin sockets are
 // protected out of the tunnel, so a tunnel-internal resolver would be
-// unreachable from them. An empty string reverts to built-in public
-// resolvers. Callable at any time, including before Start.
+// unreachable from them. Entries must be IP literals; anything else is
+// dropped (a hostname would itself need resolving). An empty or all-invalid
+// string reverts to built-in public resolvers. Callable at any time,
+// including before Start.
 func (n *Node) SetDNSServers(servers string) {
 	var list []string
 	for _, s := range strings.Split(servers, ",") {
-		if s = strings.TrimSpace(s); s != "" {
+		if s = strings.TrimSpace(s); s != "" && dialer.ValidNameserver(s) {
 			list = append(list, s)
 		}
 	}

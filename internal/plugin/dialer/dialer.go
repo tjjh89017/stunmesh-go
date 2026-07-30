@@ -15,6 +15,7 @@ import (
 	"context"
 	"net"
 	"net/http"
+	"net/netip"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -109,8 +110,9 @@ func DialContext(ctx context.Context, network, address string) (net.Conn, error)
 // netd, which cannot be protected, so a DNS query would fail outright
 // whenever the covering tunnel it must escape is down. PreferGo forces the
 // Go resolver so Dial is actually consulted (the cgo resolver ignores it).
-// Dial only opens a connection to the resolver's already-known address, so
-// this does not recurse into hostname resolution.
+// Dial only ever connects to an address that is already an IP literal --
+// resolv.conf-derived, or an Escape.DNSServers entry pickDNSServer vetted --
+// so it does not recurse into hostname resolution.
 func newDialer() *net.Dialer {
 	return &net.Dialer{
 		Timeout:   10 * time.Second,
@@ -130,26 +132,62 @@ func newDialer() *net.Dialer {
 var dnsRotation atomic.Uint32
 
 // dialDNS is the Resolver.Dial hook. address is the nameserver Go derived
-// from /etc/resolv.conf; when the Escape carries explicit DNSServers -- the
+// from /etc/resolv.conf; when the Escape carries usable DNSServers -- the
 // android case, where no resolv.conf exists and Go's fallback is a localhost
 // address nothing answers -- the target is swapped for one of those instead.
 // The ctx is the lookup's own, so the Escape rides in the same way it does
 // for the connection the lookup is for.
 func dialDNS(ctx context.Context, network, address string) (net.Conn, error) {
-	if servers := escapeFrom(ctx).DNSServers; len(servers) > 0 {
-		address = normalizeDNSAddr(servers[int(dnsRotation.Add(1)-1)%len(servers)])
+	if server, ok := pickDNSServer(escapeFrom(ctx).DNSServers); ok {
+		address = server
 	}
 	return DialContext(ctx, network, address)
 }
 
-// normalizeDNSAddr accepts "host", "[host]" or "host:port" and returns
-// "host:port" with the port defaulting to 53, so Escape.DNSServers can carry
-// addresses the way platforms report them (bare IPs, IPv6 included).
-func normalizeDNSAddr(s string) string {
-	if _, _, err := net.SplitHostPort(s); err == nil {
-		return s
+// pickDNSServer rotates across servers, skipping entries that are not IP
+// literals: dialing a hostname would recurse into this very hook to resolve
+// it, with the same list in the Escape, and never terminate. ok=false means
+// no usable entry, leaving the resolv.conf-derived address in place.
+func pickDNSServer(servers []string) (string, bool) {
+	if len(servers) == 0 {
+		return "", false
 	}
-	return net.JoinHostPort(strings.Trim(s, "[]"), "53")
+	start := int(dnsRotation.Add(1) - 1)
+	for i := range servers {
+		if addr, ok := normalizeDNSAddr(servers[(start+i)%len(servers)]); ok {
+			return addr, true
+		}
+	}
+	return "", false
+}
+
+// normalizeDNSAddr accepts an IP literal as "host", "[host]" or "host:port"
+// and returns "host:port" with the port defaulting to 53, so
+// Escape.DNSServers can carry addresses the way platforms report them (bare
+// IPs, IPv6 included). ok=false rejects anything whose host is not an IP
+// literal -- see pickDNSServer for why hostnames cannot serve here.
+func normalizeDNSAddr(s string) (string, bool) {
+	host, port, err := net.SplitHostPort(s)
+	if err != nil {
+		host, port = strings.Trim(s, "[]"), ""
+	}
+	if port == "" {
+		port = "53"
+	}
+	if _, err := netip.ParseAddr(host); err != nil {
+		return "", false
+	}
+	return net.JoinHostPort(host, port), true
+}
+
+// ValidNameserver reports whether s is usable as an Escape.DNSServers entry:
+// an IP literal, optionally bracketed or carrying a port. Callers building a
+// list from platform-reported strings filter with this so a stray hostname
+// is dropped (a hostname needs resolving, which needs a nameserver) rather
+// than silently poisoning the list.
+func ValidNameserver(s string) bool {
+	_, ok := normalizeDNSAddr(s)
+	return ok
 }
 
 // boundInterface resolves the physical default-route interface for platforms
