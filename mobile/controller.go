@@ -6,7 +6,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/netip"
+	"strconv"
 	"time"
 
 	"github.com/tjjh89017/stunmesh-go/internal/crypto"
@@ -14,6 +16,7 @@ import (
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
 	"github.com/tjjh89017/stunmesh-go/internal/mobilebind"
 	"github.com/tjjh89017/stunmesh-go/internal/plugin"
+	"github.com/tjjh89017/stunmesh-go/internal/plugin/dialer"
 	pluginapi "github.com/tjjh89017/stunmesh-go/pluginapi"
 	"golang.org/x/crypto/curve25519"
 )
@@ -23,8 +26,16 @@ import (
 // socket; tests substitute a fake to exercise discover/discoverFamily
 // without a real network.
 type stunDiscoverer interface {
-	Discover(ctx context.Context, network, server string) (netip.AddrPort, error)
+	Discover(ctx context.Context, dst netip.AddrPort) (netip.AddrPort, error)
 }
+
+// How long one STUN server gets: first to resolve its name, then to answer
+// the binding request. Separate budgets so a slow lookup cannot eat the
+// probe's retransmit schedule (RFC 8489 RTO doubling, ~7.5s worst case).
+const (
+	stunResolveTimeout = 5 * time.Second
+	stunProbeTimeout   = 10 * time.Second
+)
 
 // controller runs the STUNMESH publish/establish cycle on top of the running
 // device: discover the reflexive address through the shared socket, encrypt
@@ -179,15 +190,76 @@ func (c *controller) discover(ctx context.Context) (ctrl.EndpointData, error) {
 func (c *controller) discoverFamily(ctx context.Context, network string) (string, error) {
 	var lastErr error
 	for _, server := range c.cfg.Stun.Addresses {
-		attemptCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		addr, err := c.bind.Discover(attemptCtx, network, server)
-		cancel()
-		if err == nil {
-			return addr.String(), nil
+		addr, err := c.probeServer(ctx, network, server)
+		if err != nil {
+			lastErr = err
+			continue
 		}
-		lastErr = err
+		return addr.String(), nil
 	}
 	return "", fmt.Errorf("all stun servers failed: %w", lastErr)
+}
+
+// probeServer resolves one configured STUN server for the family and sends it
+// a binding request from the shared socket. A server configured for the other
+// family resolves to nothing here and is reported as a failure, which is how
+// discoverFamily walks a mixed-family list down to the entries that apply.
+func (c *controller) probeServer(ctx context.Context, network, server string) (netip.AddrPort, error) {
+	resolveCtx, cancel := context.WithTimeout(ctx, stunResolveTimeout)
+	dst, err := c.resolveSTUN(resolveCtx, network, server)
+	cancel()
+	if err != nil {
+		return netip.AddrPort{}, err
+	}
+
+	probeCtx, cancel := context.WithTimeout(ctx, stunProbeTimeout)
+	defer cancel()
+	return c.bind.Discover(probeCtx, dst)
+}
+
+// resolveSTUN turns a configured STUN server ("host:port", host a name or an
+// IP literal) into the address to probe for network ("udp4" or "udp6").
+//
+// The lookup takes the plugin dialer's escaped path -- a protected socket
+// aimed at the underlay's resolvers (Node.SetDNSServers) -- rather than the
+// platform's. On android the platform resolver goes through Bionic's
+// getaddrinfo, which resolves over the default network; once the tunnel is up
+// that is the tunnel, so discovery's own lookup gets routed into the very
+// tunnel it is trying to establish. That fails until something else happens
+// to bring the tunnel up, which is exactly the ordering that left a
+// dualstack node with no IPv6 endpoint on its first cycle: IPv4 discovery ran
+// while the tunnel was still down and answered, IPv6 discovery ran after and
+// could not resolve.
+//
+// An IP literal short-circuits inside net.Resolver, so a config that lists
+// addresses instead of names needs no working DNS at all.
+func (c *controller) resolveSTUN(ctx context.Context, network, server string) (netip.AddrPort, error) {
+	host, portStr, err := net.SplitHostPort(server)
+	if err != nil {
+		return netip.AddrPort{}, fmt.Errorf("stun server %q: %w", server, err)
+	}
+	port, err := strconv.ParseUint(portStr, 10, 16)
+	if err != nil {
+		return netip.AddrPort{}, fmt.Errorf("stun server %q: port: %w", server, err)
+	}
+
+	escaped := protectedContext(ctx, c.node.protector, c.node.pluginDNSServers())
+	ips, err := dialer.Resolver().LookupNetIP(escaped, ipNetwork(network), host)
+	if err != nil {
+		return netip.AddrPort{}, fmt.Errorf("resolve %s: %w", server, err)
+	}
+	// LookupNetIP reports IPv4 results in 4-in-6 form; unmapping keeps the
+	// endpoint string and the bind's socket choice in the right family.
+	return netip.AddrPortFrom(ips[0].Unmap(), uint16(port)), nil
+}
+
+// ipNetwork maps the UDP network discovery works in to the resolver's, so a
+// lookup only returns addresses of the family being discovered.
+func ipNetwork(network string) string {
+	if network == "udp6" {
+		return "ip6"
+	}
+	return "ip4"
 }
 
 func (c *controller) publish(ctx context.Context, data ctrl.EndpointData) {
