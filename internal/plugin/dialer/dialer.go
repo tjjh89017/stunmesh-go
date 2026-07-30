@@ -16,6 +16,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -152,7 +153,9 @@ func pickDNSServer(servers []string) (string, bool) {
 	if len(servers) == 0 {
 		return "", false
 	}
-	start := int(dnsRotation.Add(1) - 1)
+	// Modulo in uint32 space: a plain int conversion goes negative on 32-bit
+	// targets once the counter wraps, and a negative index panics.
+	start := int((dnsRotation.Add(1) - 1) % uint32(len(servers)))
 	for i := range servers {
 		if addr, ok := normalizeDNSAddr(servers[(start+i)%len(servers)]); ok {
 			return addr, true
@@ -173,6 +176,11 @@ func normalizeDNSAddr(s string) (string, bool) {
 	}
 	if port == "" {
 		port = "53"
+	} else if p, err := strconv.Atoi(port); err != nil || p < 1 || p > 65535 {
+		// SplitHostPort does not validate the port; an unusable one must not
+		// count as a usable entry, or it would keep a caller's list non-empty
+		// and defeat their all-invalid fallback.
+		return "", false
 	}
 	if _, err := netip.ParseAddr(host); err != nil {
 		return "", false
