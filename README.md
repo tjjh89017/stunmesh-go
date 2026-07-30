@@ -27,6 +27,7 @@ For best results, ensure at least one peer is behind a cone NAT type.
 - **macOS** (amd64, arm64)
 - **FreeBSD** (amd64, arm64) - requires `wireguard-tools`
 - **Windows** (amd64, arm64) - shipped as `stunmesh-windows-<arch>-<tag>.zip`, requires the official WireGuard for Windows client
+- **Android** - separate app, see [stunmesh-android](https://github.com/tjjh89017/stunmesh-android)
 
 > [!IMPORTANT]
 > FreeBSD binaries use the `wgcli` backend, which invokes `wg(8)`. The base system ships the
@@ -116,6 +117,15 @@ Linux, macOS, and FreeBSD can opt into the same UDP proxy Windows always uses by
 full-tunnel setups on macOS and FreeBSD, and optional on Linux for restricted environments that lack
 `CAP_NET_RAW`. See [docs.stunmesh.dev](https://docs.stunmesh.dev/configuration/proxy) for the full-tunnel
 guide per platform.
+
+### Android
+
+Android is covered by a separate app, [stunmesh-android](https://github.com/tjjh89017/stunmesh-android),
+which embeds this project's STUN core alongside a userspace WireGuard implementation and runs as a
+VPN service — no root required. It is in early development: install by sideloading the universal APK
+from its [releases page](https://github.com/tjjh89017/stunmesh-android/releases). Only the built-in
+storage plugins are available there, and exempting the app from battery optimization is recommended
+for long-lived tunnels.
 
 ## Documentation
 
