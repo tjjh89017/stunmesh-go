@@ -129,7 +129,7 @@ func (c *controller) cycle(ctx context.Context) {
 	// boundary -- factory ctors aren't ctx-threaded, so Store.Get/Set (via
 	// publish/establish's storeCtx) remain the real protected network path.
 	if !c.pluginsReady {
-		loadCtx := protectedContext(ctx, c.node.protector)
+		loadCtx := protectedContext(ctx, c.node.protector, c.node.pluginDNSServers())
 		if err := c.manager.LoadPlugins(loadCtx, c.pluginDefs); err != nil {
 			listener.OnLog("warn", "plugin init: "+err.Error())
 			return
@@ -223,7 +223,7 @@ func (c *controller) publish(ctx context.Context, data ctrl.EndpointData) {
 			listener.OnLog("error", "encrypt for "+peer.Name+": "+err.Error())
 			continue
 		}
-		storeCtx := protectedContext(ctx, c.node.protector)
+		storeCtx := protectedContext(ctx, c.node.protector, c.node.pluginDNSServers())
 		if err := store.Set(storeCtx, localId, res.Data); err != nil {
 			listener.OnLog("warn", "publish for "+peer.Name+": "+err.Error())
 			continue
@@ -246,7 +246,7 @@ func (c *controller) establish(ctx context.Context) {
 		if err != nil {
 			continue
 		}
-		storeCtx := protectedContext(ctx, c.node.protector)
+		storeCtx := protectedContext(ctx, c.node.protector, c.node.pluginDNSServers())
 		encrypted, err := store.Get(storeCtx, peerId.RemoteEndpointKey())
 		if err != nil {
 			listener.OnLog("debug", "no record for "+peer.Name+": "+err.Error())

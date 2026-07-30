@@ -16,6 +16,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/tjjh89017/stunmesh-go/internal/routeprobe"
@@ -39,6 +40,13 @@ type Escape struct {
 	// VpnService.protect, for platforms with no mark/fib/interface primitive.
 	// Nil means nothing to call, which is every caller except mobile.
 	Protector Protector
+	// DNSServers lists the nameservers ("host" or "host:port", port
+	// defaulting to 53) hostname lookups dial instead of the ones Go reads
+	// from /etc/resolv.conf. Android has no resolv.conf, so the pure-Go
+	// resolver otherwise falls back to localhost and every lookup dies with
+	// a connection refused; mobile fills this in. Empty trusts resolv.conf,
+	// which is every other platform.
+	DNSServers []string
 }
 
 // Protector is the fd-level escape Android provides in place of a
@@ -94,15 +102,15 @@ func DialContext(ctx context.Context, network, address string) (net.Conn, error)
 	return newDialer().DialContext(ctx, network, address)
 }
 
-// newDialer builds the Dialer DialContext uses. Its Resolver.Dial points back
-// at DialContext so hostname lookups reuse the same protected socket path as
-// the eventual TCP connect, instead of falling through to net.DefaultResolver
-// -- on android that resolves via Bionic getaddrinfo/netd, which cannot be
-// protected, so a DNS query would fail outright whenever the covering tunnel
-// it must escape is down. PreferGo forces the Go resolver so Dial is actually
-// consulted (the cgo resolver ignores it). Dial only opens a connection to
-// the resolver's already-known address, so this does not recurse into
-// hostname resolution.
+// newDialer builds the Dialer DialContext uses. Its Resolver.Dial routes
+// back through DialContext so hostname lookups reuse the same protected
+// socket path as the eventual TCP connect, instead of falling through to
+// net.DefaultResolver -- on android that resolves via Bionic getaddrinfo/
+// netd, which cannot be protected, so a DNS query would fail outright
+// whenever the covering tunnel it must escape is down. PreferGo forces the
+// Go resolver so Dial is actually consulted (the cgo resolver ignores it).
+// Dial only opens a connection to the resolver's already-known address, so
+// this does not recurse into hostname resolution.
 func newDialer() *net.Dialer {
 	return &net.Dialer{
 		Timeout:   10 * time.Second,
@@ -111,9 +119,37 @@ func newDialer() *net.Dialer {
 		ControlContext: control,
 		Resolver: &net.Resolver{
 			PreferGo: true,
-			Dial:     DialContext,
+			Dial:     dialDNS,
 		},
 	}
+}
+
+// dnsRotation spreads successive lookups across Escape.DNSServers, so the
+// resolver's retries for one lookup (each of which lands here as a fresh
+// Dial call) move on to the next server instead of hammering the first.
+var dnsRotation atomic.Uint32
+
+// dialDNS is the Resolver.Dial hook. address is the nameserver Go derived
+// from /etc/resolv.conf; when the Escape carries explicit DNSServers -- the
+// android case, where no resolv.conf exists and Go's fallback is a localhost
+// address nothing answers -- the target is swapped for one of those instead.
+// The ctx is the lookup's own, so the Escape rides in the same way it does
+// for the connection the lookup is for.
+func dialDNS(ctx context.Context, network, address string) (net.Conn, error) {
+	if servers := escapeFrom(ctx).DNSServers; len(servers) > 0 {
+		address = normalizeDNSAddr(servers[int(dnsRotation.Add(1)-1)%len(servers)])
+	}
+	return DialContext(ctx, network, address)
+}
+
+// normalizeDNSAddr accepts "host", "[host]" or "host:port" and returns
+// "host:port" with the port defaulting to 53, so Escape.DNSServers can carry
+// addresses the way platforms report them (bare IPs, IPv6 included).
+func normalizeDNSAddr(s string) string {
+	if _, _, err := net.SplitHostPort(s); err == nil {
+		return s
+	}
+	return net.JoinHostPort(strings.Trim(s, "[]"), "53")
 }
 
 // boundInterface resolves the physical default-route interface for platforms
