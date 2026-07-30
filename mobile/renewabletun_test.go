@@ -240,6 +240,23 @@ func TestSwappableTun_EventsForwardedFromCurrentDevice(t *testing.T) {
 	}
 }
 
+// TestSwappableTun_SwapEventRacingClose drives the interleaving where a
+// freshly swapped-in device's forwarder goroutine delivers its pending event
+// while Close concurrently closes the events channel. Before the
+// check-and-send in forwardEvents was made atomic with Close, this
+// occasionally panicked with a send on a closed channel.
+func TestSwappableTun_SwapEventRacingClose(t *testing.T) {
+	for i := 0; i < 2000; i++ {
+		s := newSwappableTun(newFakeTun("first", false))
+		replacement := newFakeTun("second", false)
+		replacement.events <- tun.EventUp
+		s.swap(replacement)
+		if err := s.Close(); err != nil {
+			t.Fatalf("Close returned error: %v", err)
+		}
+	}
+}
+
 func TestSwappableTun_CloseIsIdempotent(t *testing.T) {
 	s := newSwappableTun(newFakeTun("first", false))
 

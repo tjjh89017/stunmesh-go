@@ -38,13 +38,17 @@ func newSwappableTun(inner tun.Device) *swappableTun {
 // (which happens when that inner device is closed, e.g. on swap).
 func (s *swappableTun) forwardEvents(d tun.Device) {
 	for ev := range d.Events() {
-		if s.closed.Load() {
-			return
+		// The lock makes the closed check and the send atomic with respect
+		// to Close: a select default does not protect against the channel
+		// being closed between the check and the send.
+		s.mu.RLock()
+		if !s.closed.Load() {
+			select {
+			case s.events <- ev:
+			default:
+			}
 		}
-		select {
-		case s.events <- ev:
-		default:
-		}
+		s.mu.RUnlock()
 	}
 }
 
@@ -113,6 +117,11 @@ func (s *swappableTun) Close() error {
 	}
 	d, _ := s.current()
 	err := d.Close()
+	// Closing under the write lock excludes forwardEvents' check-and-send.
+	// The channel must be closed (not abandoned) so the WG device's event
+	// reader goroutine, which Device.Close does not join, can exit.
+	s.mu.Lock()
 	close(s.events)
+	s.mu.Unlock()
 	return err
 }
