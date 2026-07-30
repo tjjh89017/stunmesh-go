@@ -257,6 +257,9 @@ jobs:
     if: github.event_name == 'push'
     name: Build Docker container
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     # e2e-required transitively covers lint/test/build/build-plugins and the
     # realnet report.
     needs: e2e-required
@@ -267,6 +270,7 @@ jobs:
         with:
           app-name: ${{ env.APP }}
           docker-token: ${{ secrets.DOCKER_TOKEN }}
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
           repository-owner: ${{ github.repository_owner }}
 
   # Runtime test of the real publish -> opendht -> establish pipeline with two

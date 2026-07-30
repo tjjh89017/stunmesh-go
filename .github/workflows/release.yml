@@ -191,6 +191,9 @@ jobs:
   docker:
     name: Build Docker container
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     needs:
       - create-release
     steps:
@@ -200,4 +203,5 @@ jobs:
         with:
           app-name: ${{ env.APP }}
           docker-token: ${{ secrets.DOCKER_TOKEN }}
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
           repository-owner: ${{ github.repository_owner }}
