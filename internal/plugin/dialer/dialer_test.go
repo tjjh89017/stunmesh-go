@@ -158,7 +158,10 @@ func TestNormalizeDNSAddr(t *testing.T) {
 			t.Errorf("normalizeDNSAddr(%q) = (%q, %v), want (%q, true)", in, got, ok, want)
 		}
 	}
-	for _, in := range []string{"dns.example", "dns.example:5353", "", ":53", "not an address"} {
+	for _, in := range []string{
+		"dns.example", "dns.example:5353", "", ":53", "not an address",
+		"8.8.8.8:0", "8.8.8.8:99999", "8.8.8.8:-1", "8.8.8.8:notaport",
+	} {
 		if got, ok := normalizeDNSAddr(in); ok {
 			t.Errorf("normalizeDNSAddr(%q) = (%q, true), want rejection", in, got)
 		}
@@ -186,6 +189,19 @@ func TestPickDNSServerSkipsHostnames(t *testing.T) {
 	}
 	if addr, ok := pickDNSServer(nil); ok {
 		t.Errorf("empty list picked %q, want ok=false", addr)
+	}
+}
+
+// The rotation counter lives as long as the process; past 2^31 dials a plain
+// int conversion of it goes negative on 32-bit targets (armeabi-v7a is a
+// shipping mobile ABI) and a negative modulo would index out of range.
+func TestPickDNSServerCounterWrap(t *testing.T) {
+	old := dnsRotation.Load()
+	defer dnsRotation.Store(old)
+
+	dnsRotation.Store(1<<31 + 1)
+	if addr, ok := pickDNSServer([]string{"192.0.2.1", "192.0.2.2"}); !ok || addr == "" {
+		t.Errorf("pickDNSServer after counter wrap = (%q, %v), want a server", addr, ok)
 	}
 }
 
