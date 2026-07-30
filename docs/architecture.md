@@ -130,9 +130,11 @@ there's a stated reason not to.
 ### One escape hatch for every outbound path
 
 - **Where**: `internal/plugin/dialer` (`Escape`, `WithEscape`, `DialContext`,
-  `Resolver`), consumed by the built-in plugins' HTTP transport, by their
-  hostname lookups, and by mobile STUN discovery's server lookups
-  (`mobile/controller.go`'s `resolveSTUN`).
+  `Resolver`, `ResolveAddrPort`), consumed by the built-in plugins' HTTP
+  transport, by their hostname lookups, and by STUN discovery's server
+  lookups on every platform — mobile's `controller.resolveSTUN`, and desktop's
+  `stun.Connect` (socket-owning and proxy-backed alike), which read the escape
+  `ctrl.PublishController.discoverEndpoints` puts in the discovery context.
 - **Rule**: anything that opens a socket while stunmesh may be managing a
   covering tunnel goes through the dialer's escape — including name
   resolution, which is a socket too. The escape travels in the `context`
@@ -144,12 +146,17 @@ there's a stated reason not to.
   `net.DefaultResolver` reach the platform resolver, which on android is
   Bionic's `getaddrinfo` routing over whatever network is default — the
   tunnel itself, once up. A lookup needed to establish the tunnel then gets
-  routed into it. `dialer.Resolver` forces the pure-Go resolver so its `Dial`
-  hook is consulted, and points that hook at `Escape.DNSServers` over a
-  protected socket.
+  routed into it. On desktop the socket is unmarked and unbound instead, so a
+  covering allowed-IPs route sends it the same way. `dialer.Resolver` forces
+  the pure-Go resolver so its `Dial` hook is consulted; the hook applies the
+  platform's escape and, where `Escape.DNSServers` is set (mobile only —
+  desktop keeps its resolv.conf nameservers), aims at those servers.
 - **Consequence**: low-level components do not resolve names. `mobilebind`'s
   `Discover` takes an already-resolved `netip.AddrPort` so it has nothing to
   resolve with, and the caller — which holds the escape — does the lookup.
+  Desktop's `stun.Connect` still takes a `host:port` string (it is the
+  `StunClient` contract, shared with the proxy-backed client), but resolves it
+  through `dialer.ResolveAddrPort` rather than `net.ResolveUDPAddr`.
 - **Revisit if**: a platform gains a resolver that can be pinned to a
   specific underlay network, which would make the forced pure-Go resolver
   and the explicit nameserver list unnecessary there.

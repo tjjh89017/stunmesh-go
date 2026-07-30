@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"reflect"
 	"slices"
 	"testing"
@@ -312,4 +313,57 @@ func fakeDNSServer(t *testing.T) string {
 		}
 	}()
 	return pc.LocalAddr().String()
+}
+
+// The regression test for the desktop half of the STUN-lookup escape: the name
+// resolved here exists in no real zone, and only the nameserver this test puts
+// in the Escape can answer it -- reachable solely through the escaped resolver's
+// Dial hook. A regression to net.ResolveUDPAddr/net.DefaultResolver fails here.
+func TestResolveAddrPortUsesEscapedResolver(t *testing.T) {
+	server := fakeDNSServer(t)
+
+	ctx, cancel := context.WithTimeout(
+		WithEscape(context.Background(), Escape{DNSServers: []string{server}}),
+		5*time.Second)
+	defer cancel()
+
+	got, err := ResolveAddrPort(ctx, "udp4", "stun.escape-test.invalid:19302")
+	if err != nil {
+		t.Fatalf("ResolveAddrPort: %v", err)
+	}
+	if want := netip.MustParseAddrPort("127.0.0.99:19302"); got != want {
+		t.Errorf("ResolveAddrPort = %v, want the fake server's answer %v", got, want)
+	}
+	// LookupNetIP reports IPv4 in 4-in-6 form; unmapped, or the address
+	// formats as "[::ffff:127.0.0.99]:19302" and picks the wrong socket.
+	if !got.Addr().Is4() {
+		t.Errorf("ResolveAddrPort = %q, want an unmapped IPv4 address", got)
+	}
+}
+
+// An IP literal is answered inside net.Resolver, so a config listing addresses
+// needs no working DNS at all -- including for a bracketed IPv6 literal.
+func TestResolveAddrPortIPLiterals(t *testing.T) {
+	for _, tt := range []struct{ network, in, want string }{
+		{"udp4", "192.0.2.1:3478", "192.0.2.1:3478"},
+		{"udp6", "[2001:db8::1]:3478", "[2001:db8::1]:3478"},
+	} {
+		got, err := ResolveAddrPort(context.Background(), tt.network, tt.in)
+		if err != nil {
+			t.Fatalf("ResolveAddrPort(%s, %s): %v", tt.network, tt.in, err)
+		}
+		if want := netip.MustParseAddrPort(tt.want); got != want {
+			t.Errorf("ResolveAddrPort(%s, %s) = %v, want %v", tt.network, tt.in, got, want)
+		}
+	}
+}
+
+// A malformed server string is a config error, and must be reported as one
+// rather than reaching the resolver.
+func TestResolveAddrPortRejectsMalformed(t *testing.T) {
+	for _, in := range []string{"192.0.2.1", "192.0.2.1:stun", "192.0.2.1:70000"} {
+		if _, err := ResolveAddrPort(context.Background(), "udp4", in); err == nil {
+			t.Errorf("ResolveAddrPort(%q) succeeded, want an error", in)
+		}
+	}
 }

@@ -62,6 +62,11 @@ func NewPublishController(devices DeviceRepository, peers PeerRepository, plugin
 // DiscoverEndpoints (internal/ctrl/discover.go); this wraps it with the
 // raw-socket StunResolver and this controller's logging.
 func (c *PublishController) discoverEndpoints(ctx context.Context, device *entity.Device, logger zerolog.Logger) (ipv4Endpoint, ipv6Endpoint string, err error) {
+	// The escape rides into discovery for the STUN server's name lookup: the
+	// probe socket escapes by itself (fwmark/pcap), but the lookup is a socket
+	// too, and the only one in the discovery path nothing else covers.
+	ctx = dialer.WithEscape(ctx, escapeFor(c.deviceConfig, device))
+
 	resolveFamily := func(family string) FamilyResolver {
 		return func(ctx context.Context) (string, error) {
 			host, port, err := c.resolver.Resolve(ctx, string(device.Name()), uint16(device.ListenPort()), family, device.FirewallMark())

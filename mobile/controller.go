@@ -6,9 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net"
 	"net/netip"
-	"strconv"
 	"time"
 
 	"github.com/tjjh89017/stunmesh-go/internal/crypto"
@@ -230,36 +228,9 @@ func (c *controller) probeServer(ctx context.Context, network, server string) (n
 // dualstack node with no IPv6 endpoint on its first cycle: IPv4 discovery ran
 // while the tunnel was still down and answered, IPv6 discovery ran after and
 // could not resolve.
-//
-// An IP literal short-circuits inside net.Resolver, so a config that lists
-// addresses instead of names needs no working DNS at all.
 func (c *controller) resolveSTUN(ctx context.Context, network, server string) (netip.AddrPort, error) {
-	host, portStr, err := net.SplitHostPort(server)
-	if err != nil {
-		return netip.AddrPort{}, fmt.Errorf("stun server %q: %w", server, err)
-	}
-	port, err := strconv.ParseUint(portStr, 10, 16)
-	if err != nil {
-		return netip.AddrPort{}, fmt.Errorf("stun server %q: port: %w", server, err)
-	}
-
 	escaped := protectedContext(ctx, c.node.protector, c.node.pluginDNSServers())
-	ips, err := dialer.Resolver().LookupNetIP(escaped, ipNetwork(network), host)
-	if err != nil {
-		return netip.AddrPort{}, fmt.Errorf("resolve %s: %w", server, err)
-	}
-	// LookupNetIP reports IPv4 results in 4-in-6 form; unmapping keeps the
-	// endpoint string and the bind's socket choice in the right family.
-	return netip.AddrPortFrom(ips[0].Unmap(), uint16(port)), nil
-}
-
-// ipNetwork maps the UDP network discovery works in to the resolver's, so a
-// lookup only returns addresses of the family being discovered.
-func ipNetwork(network string) string {
-	if network == "udp6" {
-		return "ip6"
-	}
-	return "ip4"
+	return dialer.ResolveAddrPort(escaped, network, server)
 }
 
 func (c *controller) publish(ctx context.Context, data ctrl.EndpointData) {
