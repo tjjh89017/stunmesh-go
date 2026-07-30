@@ -127,6 +127,33 @@ there's a stated reason not to.
   self-registration assumes registration has no inputs beyond the build
   tags baked into the binary.
 
+### One escape hatch for every outbound path
+
+- **Where**: `internal/plugin/dialer` (`Escape`, `WithEscape`, `DialContext`,
+  `Resolver`), consumed by the built-in plugins' HTTP transport, by their
+  hostname lookups, and by mobile STUN discovery's server lookups
+  (`mobile/controller.go`'s `resolveSTUN`).
+- **Rule**: anything that opens a socket while stunmesh may be managing a
+  covering tunnel goes through the dialer's escape — including name
+  resolution, which is a socket too. The escape travels in the `context`
+  rather than being fixed at construction, so one instance can serve peers on
+  different interfaces.
+- **Why**: a covering allowed-IPs route swallows the very call that would
+  bring the tunnel up. Name resolution is the half that is easy to miss,
+  because the standard library hides the socket: `net.Resolve*` and
+  `net.DefaultResolver` reach the platform resolver, which on android is
+  Bionic's `getaddrinfo` routing over whatever network is default — the
+  tunnel itself, once up. A lookup needed to establish the tunnel then gets
+  routed into it. `dialer.Resolver` forces the pure-Go resolver so its `Dial`
+  hook is consulted, and points that hook at `Escape.DNSServers` over a
+  protected socket.
+- **Consequence**: low-level components do not resolve names. `mobilebind`'s
+  `Discover` takes an already-resolved `netip.AddrPort` so it has nothing to
+  resolve with, and the caller — which holds the escape — does the lookup.
+- **Revisit if**: a platform gains a resolver that can be pinned to a
+  specific underlay network, which would make the forced pure-Go resolver
+  and the explicit nameserver list unnecessary there.
+
 ## CI/e2e coverage narrowing
 
 `.github/workflows/main.yml` runs three e2e layers gated behind `build`,

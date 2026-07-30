@@ -120,10 +120,24 @@ func newDialer() *net.Dialer {
 		KeepAlive: 30 * time.Second,
 		// ControlContext, not Control: the escape rides in the context.
 		ControlContext: control,
-		Resolver: &net.Resolver{
-			PreferGo: true,
-			Dial:     dialDNS,
-		},
+		Resolver:       Resolver(),
+	}
+}
+
+// Resolver exposes the escaped resolver newDialer wires in, for callers that
+// need a hostname turned into an address without dialing it themselves --
+// mobile STUN discovery, which must send from the shared WireGuard socket
+// rather than a socket of the resolver's making. The ctx passed to a lookup
+// carries the Escape, exactly as it does for DialContext.
+//
+// Reaching for net.DefaultResolver instead is the trap this avoids: on
+// android that lands in Bionic's getaddrinfo, which resolves over whatever
+// network is default. Once the tunnel is up that is the tunnel, so a lookup
+// needed to bring the tunnel up is routed into it and fails.
+func Resolver() *net.Resolver {
+	return &net.Resolver{
+		PreferGo: true,
+		Dial:     dialDNS,
 	}
 }
 
