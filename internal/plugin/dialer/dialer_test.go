@@ -6,7 +6,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"slices"
 	"testing"
+	"time"
+
+	"golang.org/x/net/dns/dnsmessage"
 
 	"github.com/tjjh89017/stunmesh-go/internal/routeprobe"
 )
@@ -130,8 +134,135 @@ func TestDialerResolverDialsThroughProtectedPath(t *testing.T) {
 	}
 
 	got := reflect.ValueOf(d.Resolver.Dial).Pointer()
-	want := reflect.ValueOf(DialContext).Pointer()
+	want := reflect.ValueOf(dialDNS).Pointer()
 	if got != want {
-		t.Error("newDialer().Resolver.Dial is not DialContext, want DNS lookups to share the protected dial path with TCP connects")
+		t.Error("newDialer().Resolver.Dial is not dialDNS, want DNS lookups to share the protected dial path with TCP connects")
 	}
+}
+
+// Escape.DNSServers entries arrive the way platforms report them; the dial
+// needs "host:port".
+func TestNormalizeDNSAddr(t *testing.T) {
+	for in, want := range map[string]string{
+		"8.8.8.8":            "8.8.8.8:53",
+		"8.8.8.8:5353":       "8.8.8.8:5353",
+		"2001:db8::1":        "[2001:db8::1]:53",
+		"[2001:db8::1]":      "[2001:db8::1]:53",
+		"[2001:db8::1]:5353": "[2001:db8::1]:5353",
+		"dns.example":        "dns.example:53",
+		"dns.example:5353":   "dns.example:5353",
+	} {
+		if got := normalizeDNSAddr(in); got != want {
+			t.Errorf("normalizeDNSAddr(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// With DNSServers in the Escape, dialDNS must ignore the address Go derived
+// from /etc/resolv.conf -- on android that is a localhost fallback nothing
+// answers -- and rotate across the configured servers so a lookup's retries
+// reach a second server instead of re-dialing a dead first one. A UDP dial
+// sends nothing, so RemoteAddr shows where a query would have gone.
+func TestDialDNSUsesEscapeServers(t *testing.T) {
+	ctx := WithEscape(context.Background(), Escape{
+		DNSServers: []string{"192.0.2.1", "192.0.2.2:5353"},
+	})
+
+	seen := make(map[string]bool)
+	for range 2 {
+		conn, err := dialDNS(ctx, "udp", "127.0.0.1:53")
+		if err != nil {
+			t.Fatal(err)
+		}
+		seen[conn.RemoteAddr().String()] = true
+		_ = conn.Close()
+	}
+	if !seen["192.0.2.1:53"] || !seen["192.0.2.2:5353"] {
+		t.Errorf("two dials reached %v, want both 192.0.2.1:53 and 192.0.2.2:5353", seen)
+	}
+}
+
+// Without DNSServers the resolv.conf-derived address is dialed unchanged --
+// the desktop path, where resolv.conf is trustworthy.
+func TestDialDNSWithoutEscapeServers(t *testing.T) {
+	conn, err := dialDNS(context.Background(), "udp", "127.0.0.1:5353")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	if got := conn.RemoteAddr().String(); got != "127.0.0.1:5353" {
+		t.Errorf("dial went to %s, want 127.0.0.1:5353", got)
+	}
+}
+
+// End to end through the real Go resolver: a lookup with Escape.DNSServers
+// pointing at a local fake must query that server, not whatever
+// /etc/resolv.conf says. This is the android scenario in miniature -- the
+// configured list is the only thing standing between the resolver and a
+// dead localhost fallback.
+func TestResolverUsesEscapeDNSServer(t *testing.T) {
+	server := fakeDNSServer(t)
+
+	ctx, cancel := context.WithTimeout(
+		WithEscape(context.Background(), Escape{DNSServers: []string{server}}),
+		5*time.Second)
+	defer cancel()
+
+	addrs, err := newDialer().Resolver.LookupHost(ctx, "escape-test.invalid")
+	if err != nil {
+		t.Fatalf("LookupHost: %v", err)
+	}
+	if !slices.Contains(addrs, "127.0.0.99") {
+		t.Errorf("LookupHost = %v, want to contain the fake server's answer 127.0.0.99", addrs)
+	}
+}
+
+// fakeDNSServer answers every A question with 127.0.0.99 and everything else
+// with an empty success, and returns its "host:port".
+func fakeDNSServer(t *testing.T) string {
+	t.Helper()
+	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = pc.Close() })
+
+	go func() {
+		buf := make([]byte, 1500)
+		for {
+			n, addr, err := pc.ReadFrom(buf)
+			if err != nil {
+				return
+			}
+			var query dnsmessage.Message
+			if err := query.Unpack(buf[:n]); err != nil {
+				continue
+			}
+			resp := dnsmessage.Message{
+				Header: dnsmessage.Header{
+					ID:            query.ID,
+					Response:      true,
+					Authoritative: true,
+				},
+				Questions: query.Questions,
+			}
+			if len(query.Questions) == 1 && query.Questions[0].Type == dnsmessage.TypeA {
+				resp.Answers = []dnsmessage.Resource{{
+					Header: dnsmessage.ResourceHeader{
+						Name:  query.Questions[0].Name,
+						Type:  dnsmessage.TypeA,
+						Class: dnsmessage.ClassINET,
+						TTL:   60,
+					},
+					Body: &dnsmessage.AResource{A: [4]byte{127, 0, 0, 99}},
+				}}
+			}
+			packed, err := resp.Pack()
+			if err != nil {
+				continue
+			}
+			_, _ = pc.WriteTo(packed, addr)
+		}
+	}()
+	return pc.LocalAddr().String()
 }

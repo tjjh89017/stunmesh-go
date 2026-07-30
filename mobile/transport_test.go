@@ -29,7 +29,7 @@ func (p *fakeProtector) Protect(fd int32) bool {
 func TestProtectedContextCarriesProtector(t *testing.T) {
 	protector := &fakeProtector{ok: true}
 
-	ctx := protectedContext(context.Background(), protector)
+	ctx := protectedContext(context.Background(), protector, nil)
 
 	got := dialer.EscapeFrom(ctx).Protector
 	if got == nil {
@@ -52,8 +52,25 @@ func TestProtectedContextCarriesProtector(t *testing.T) {
 // as nil, matching dialer/control_default.go's documented no-op fallback --
 // this is the pre-fix gap for any caller that skips protectedContext.
 func TestProtectedContextNilProtector(t *testing.T) {
-	ctx := protectedContext(context.Background(), nil)
+	ctx := protectedContext(context.Background(), nil, nil)
 	if got := dialer.EscapeFrom(ctx).Protector; got != nil {
 		t.Errorf("Escape.Protector = %v, want nil", got)
+	}
+}
+
+// The DNS list must reach Escape.DNSServers -- that is what dialer's
+// Resolver.Dial reads to know where lookups go on a platform with no
+// /etc/resolv.conf.
+func TestProtectedContextCarriesDNSServers(t *testing.T) {
+	want := []string{"192.0.2.1:53", "192.0.2.2:53"}
+	ctx := protectedContext(context.Background(), &fakeProtector{ok: true}, want)
+	got := dialer.EscapeFrom(ctx).DNSServers
+	if len(got) != len(want) {
+		t.Fatalf("Escape.DNSServers = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("Escape.DNSServers[%d] = %q, want %q", i, got[i], want[i])
+		}
 	}
 }

@@ -5,6 +5,7 @@ package mobile
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/tjjh89017/stunmesh-go/internal/mobilebind"
@@ -12,15 +13,23 @@ import (
 	"golang.zx2c4.com/wireguard/tun"
 )
 
+// defaultPluginDNSServers backs plugin hostname lookups until the app calls
+// SetDNSServers: public resolvers reachable from most underlay networks.
+// Without them, the pure-Go resolver the plugin dialer forces (see
+// internal/plugin/dialer) has no /etc/resolv.conf to read on android and
+// falls back to localhost, where nothing answers.
+var defaultPluginDNSServers = []string{"8.8.8.8:53", "1.1.1.1:53", "[2001:4860:4860::8888]:53"}
+
 // Node is one running STUNMESH instance: an embedded wireguard-go device on
 // a demuxing bind, plus (later) the STUNMESH controllers for discovery,
 // publish and establish.
 type Node struct {
-	mu        sync.Mutex
-	cfg       *tunnelConfig
-	tunP      TunProvider
-	protector SocketProtector
-	listener  EventListener
+	mu         sync.Mutex
+	cfg        *tunnelConfig
+	tunP       TunProvider
+	protector  SocketProtector
+	listener   EventListener
+	dnsServers []string
 
 	dev     *device.Device
 	bind    *mobilebind.Bind
@@ -137,6 +146,40 @@ func (n *Node) Stop() {
 	n.running = false
 	n.mu.Unlock()
 	n.listener.OnStateChanged(StateDown)
+}
+
+// SetDNSServers sets the nameservers plugin hostname lookups use, as a
+// comma-separated list of "host" or "host:port" entries (port defaults to
+// 53; bare IPv6 is fine). The app should pass the underlay network's own
+// resolvers -- LinkProperties.dnsServers of the network the VPN runs over --
+// and call again from its network callback whenever that network changes.
+// The tunnel's dns_servers are deliberately not used: plugin sockets are
+// protected out of the tunnel, so a tunnel-internal resolver would be
+// unreachable from them. An empty string reverts to built-in public
+// resolvers. Callable at any time, including before Start.
+func (n *Node) SetDNSServers(servers string) {
+	var list []string
+	for _, s := range strings.Split(servers, ",") {
+		if s = strings.TrimSpace(s); s != "" {
+			list = append(list, s)
+		}
+	}
+	n.mu.Lock()
+	n.dnsServers = list
+	n.mu.Unlock()
+}
+
+// pluginDNSServers is what the controller hands the plugin dialer: the
+// app-provided list, or the public fallback so lookups work before the app
+// provides one. The slice is replaced wholesale by SetDNSServers, never
+// mutated, so returning it unlocked is safe.
+func (n *Node) pluginDNSServers() []string {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if len(n.dnsServers) > 0 {
+		return n.dnsServers
+	}
+	return defaultPluginDNSServers
 }
 
 // RenewTun swaps in a fresh tun fd after a platform network change without

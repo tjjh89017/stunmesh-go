@@ -22,6 +22,11 @@ import (
 // not happen once a Node is running) carries a nil Escape.Protector, which
 // dialer/control_default.go already treats as a no-op -- the known,
 // documented gap for a caller that never wires one up.
-func protectedContext(ctx context.Context, protector SocketProtector) context.Context {
-	return dialer.WithEscape(ctx, dialer.Escape{Protector: protector})
+//
+// dnsServers rides along as Escape.DNSServers: android has no
+// /etc/resolv.conf for the forced pure-Go resolver to read, so without an
+// explicit list every plugin hostname lookup would dial Go's localhost
+// fallback and fail. See Node.SetDNSServers for where the list comes from.
+func protectedContext(ctx context.Context, protector SocketProtector, dnsServers []string) context.Context {
+	return dialer.WithEscape(ctx, dialer.Escape{Protector: protector, DNSServers: dnsServers})
 }
