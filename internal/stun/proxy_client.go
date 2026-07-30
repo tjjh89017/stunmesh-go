@@ -7,12 +7,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"net/netip"
 	"sync"
 
 	stun "github.com/pion/stun/v3"
 	"github.com/rs/zerolog"
+	"github.com/tjjh89017/stunmesh-go/internal/plugin/dialer"
 )
 
 // ErrTxnIDMismatch means the response echoed a different transaction ID.
@@ -77,12 +77,14 @@ func (c *ProxyBacked) Connect(ctx context.Context, stunAddr string) (string, int
 	if c.protocol == "ipv6" {
 		network = "udp6"
 	}
-	addr, err := net.ResolveUDPAddr(network, stunAddr)
+	// Escaped resolver rather than net.ResolveUDPAddr, for the same reason as
+	// the socket-owning client: the exchange rides the proxy's escaped outer
+	// socket, but a stdlib lookup would not, and a covering allowed-IPs route
+	// would send it into the tunnel discovery is establishing.
+	server, err := dialer.ResolveAddrPort(ctx, network, stunAddr)
 	if err != nil {
 		return "", 0, err
 	}
-	server := addr.AddrPort()
-	server = netip.AddrPortFrom(server.Addr().Unmap(), server.Port())
 
 	req, err := stun.Build(stun.TransactionID, stun.BindingRequest)
 	if err != nil {

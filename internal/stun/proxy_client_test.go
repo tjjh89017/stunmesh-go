@@ -11,7 +11,9 @@ import (
 
 	stunmsg "github.com/pion/stun/v3"
 	"github.com/rs/zerolog"
+	"github.com/tjjh89017/stunmesh-go/internal/plugin/dialer"
 	"github.com/tjjh89017/stunmesh-go/internal/wgproxy"
+	"golang.org/x/net/dns/dnsmessage"
 )
 
 // Compile-time guard: *wgproxy.Proxy satisfies StunTransport structurally.
@@ -256,4 +258,76 @@ func TestProxyLookupFactory_NoWarnWithoutIgnoredArgs(t *testing.T) {
 	if strings.Contains(buf.String(), "ignored") {
 		t.Fatalf("unexpected ignored-args warning: %s", buf.String())
 	}
+}
+
+// The proxy carries the exchange out through its escaped outer socket, but the
+// server name's lookup is a socket of its own. This pins that it goes through
+// the dialer's escaped resolver: the name exists in no real zone and only the
+// nameserver in the Escape answers it, so a regression to net.ResolveUDPAddr
+// fails here instead of silently resolving over the default route.
+func TestProxyBackedConnect_ResolvesThroughEscapedPath(t *testing.T) {
+	ft := &fakeTransport{
+		respond: func(txnID [12]byte, _ []byte) ([]byte, error) {
+			return bindingSuccess(t, txnID, net.ParseIP("203.0.113.9"), 41414), nil
+		},
+	}
+	logger := zerolog.Nop()
+	client := NewProxyBacked(ft, "ipv4", &logger)
+
+	ctx := dialer.WithEscape(context.Background(), dialer.Escape{
+		DNSServers: []string{fakeDNSServer(t)},
+	})
+	if _, _, err := client.Connect(ctx, "stun.escape-test.invalid:3478"); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	want := netip.MustParseAddrPort("127.0.0.99:3478")
+	if ft.lastAddr != want {
+		t.Fatalf("server addr = %v, want the fake nameserver's answer %v", ft.lastAddr, want)
+	}
+}
+
+// fakeDNSServer answers every A question with 127.0.0.99 and everything else
+// with an empty success, and returns its "host:port".
+func fakeDNSServer(t *testing.T) string {
+	t.Helper()
+	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = pc.Close() })
+
+	go func() {
+		buf := make([]byte, 1500)
+		for {
+			n, addr, err := pc.ReadFrom(buf)
+			if err != nil {
+				return
+			}
+			var query dnsmessage.Message
+			if err := query.Unpack(buf[:n]); err != nil {
+				continue
+			}
+			resp := dnsmessage.Message{
+				Header:    dnsmessage.Header{ID: query.ID, Response: true, Authoritative: true},
+				Questions: query.Questions,
+			}
+			if len(query.Questions) == 1 && query.Questions[0].Type == dnsmessage.TypeA {
+				resp.Answers = []dnsmessage.Resource{{
+					Header: dnsmessage.ResourceHeader{
+						Name:  query.Questions[0].Name,
+						Type:  dnsmessage.TypeA,
+						Class: dnsmessage.ClassINET,
+						TTL:   60,
+					},
+					Body: &dnsmessage.AResource{A: [4]byte{127, 0, 0, 99}},
+				}}
+			}
+			packed, err := resp.Pack()
+			if err != nil {
+				continue
+			}
+			_, _ = pc.WriteTo(packed, addr)
+		}
+	}()
+	return pc.LocalAddr().String()
 }

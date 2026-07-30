@@ -13,6 +13,7 @@ package dialer
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/http"
 	"net/netip"
@@ -138,6 +139,47 @@ func Resolver() *net.Resolver {
 	return &net.Resolver{
 		PreferGo: true,
 		Dial:     dialDNS,
+	}
+}
+
+// ResolveAddrPort turns "host:port" -- host a name or an IP literal -- into
+// the address to send to, looked up through Resolver for network's family
+// ("udp4"/"udp6", or the "ip4"/"ip6" the resolver itself speaks). It is for
+// callers that must resolve a name but then send from a socket of their own
+// making rather than one DialContext opened: STUN discovery, whose probe
+// leaves through a raw socket (desktop) or the shared WireGuard socket
+// (mobile). The ctx carries the Escape, exactly as it does for DialContext.
+//
+// An IP literal short-circuits inside net.Resolver, so a config that lists
+// addresses instead of names needs no working DNS at all.
+func ResolveAddrPort(ctx context.Context, network, hostport string) (netip.AddrPort, error) {
+	host, portStr, err := net.SplitHostPort(hostport)
+	if err != nil {
+		return netip.AddrPort{}, fmt.Errorf("resolve %q: %w", hostport, err)
+	}
+	port, err := strconv.ParseUint(portStr, 10, 16)
+	if err != nil {
+		return netip.AddrPort{}, fmt.Errorf("resolve %q: port: %w", hostport, err)
+	}
+
+	ips, err := Resolver().LookupNetIP(ctx, ipNetwork(network), host)
+	if err != nil {
+		return netip.AddrPort{}, fmt.Errorf("resolve %s: %w", hostport, err)
+	}
+	// LookupNetIP reports IPv4 results in 4-in-6 form; unmapping keeps the
+	// address in the family the caller asked for, which is what picks the
+	// socket the probe leaves by.
+	return netip.AddrPortFrom(ips[0].Unmap(), uint16(port)), nil
+}
+
+// ipNetwork maps the UDP network a caller works in to the resolver's, so a
+// lookup only returns addresses of the family being asked for.
+func ipNetwork(network string) string {
+	switch network {
+	case "udp6", "ip6":
+		return "ip6"
+	default:
+		return "ip4"
 	}
 }
 

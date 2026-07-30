@@ -9,6 +9,7 @@ import (
 
 	stun "github.com/pion/stun/v3"
 	"github.com/rs/zerolog"
+	"github.com/tjjh89017/stunmesh-go/internal/plugin/dialer"
 )
 
 // getUDPAddressFamily, Connect and createStunBindingPacket were identical
@@ -30,12 +31,19 @@ func (s *Stun) Connect(ctx context.Context, stunAddr string) (string, int, error
 
 	logger.Info().Msgf("connecting to STUN server: %s", stunAddr)
 
-	addr, err := net.ResolveUDPAddr(s.getUDPAddressFamily(), stunAddr)
+	// Resolved through the dialer's escaped resolver, not net.ResolveUDPAddr:
+	// the probe itself already escapes a covering tunnel (raw socket carrying
+	// the device's fwmark, or pcap), but a stdlib lookup opens an unmarked UDP
+	// socket that a covering allowed-IPs route sends into the very tunnel
+	// discovery is trying to establish. ctx carries the escape; see
+	// ctrl.PublishController.discoverEndpoints.
+	dst, err := dialer.ResolveAddrPort(ctx, s.getUDPAddressFamily(), stunAddr)
 	if err != nil {
 		return "", 0, err
 	}
+	addr := net.UDPAddrFromAddrPort(dst)
 
-	packet, err := createStunBindingPacket(s.port, uint16(addr.Port))
+	packet, err := createStunBindingPacket(s.port, dst.Port())
 	if err != nil {
 		return "", 0, err
 	}
