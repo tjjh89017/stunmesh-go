@@ -141,20 +141,51 @@ func TestDialerResolverDialsThroughProtectedPath(t *testing.T) {
 }
 
 // Escape.DNSServers entries arrive the way platforms report them; the dial
-// needs "host:port".
+// needs "host:port", and anything that is not an IP literal must be refused
+// -- a hostname here would send the dial back through the resolver whose
+// nameserver it was supposed to be, recursing without end.
 func TestNormalizeDNSAddr(t *testing.T) {
 	for in, want := range map[string]string{
 		"8.8.8.8":            "8.8.8.8:53",
+		"8.8.8.8:":           "8.8.8.8:53",
 		"8.8.8.8:5353":       "8.8.8.8:5353",
 		"2001:db8::1":        "[2001:db8::1]:53",
 		"[2001:db8::1]":      "[2001:db8::1]:53",
 		"[2001:db8::1]:5353": "[2001:db8::1]:5353",
-		"dns.example":        "dns.example:53",
-		"dns.example:5353":   "dns.example:5353",
 	} {
-		if got := normalizeDNSAddr(in); got != want {
-			t.Errorf("normalizeDNSAddr(%q) = %q, want %q", in, got, want)
+		got, ok := normalizeDNSAddr(in)
+		if !ok || got != want {
+			t.Errorf("normalizeDNSAddr(%q) = (%q, %v), want (%q, true)", in, got, ok, want)
 		}
+	}
+	for _, in := range []string{"dns.example", "dns.example:5353", "", ":53", "not an address"} {
+		if got, ok := normalizeDNSAddr(in); ok {
+			t.Errorf("normalizeDNSAddr(%q) = (%q, true), want rejection", in, got)
+		}
+	}
+}
+
+// ValidNameserver is the exported face of the same rule, for callers
+// (mobile's SetDNSServers) filtering platform-reported strings.
+func TestValidNameserver(t *testing.T) {
+	if !ValidNameserver("8.8.8.8") || ValidNameserver("dns.example") {
+		t.Error("ValidNameserver should accept IP literals and reject hostnames")
+	}
+}
+
+// Hostname entries that slip into the list anyway (only mobile filters
+// today) are skipped, not dialed: recursion protection lives here, at the
+// point of use, not only in the callers.
+func TestPickDNSServerSkipsHostnames(t *testing.T) {
+	addr, ok := pickDNSServer([]string{"dns.example", "192.0.2.7"})
+	if !ok || addr != "192.0.2.7:53" {
+		t.Errorf("pickDNSServer = (%q, %v), want (\"192.0.2.7:53\", true)", addr, ok)
+	}
+	if addr, ok := pickDNSServer([]string{"dns.example", "other.example"}); ok {
+		t.Errorf("all-hostname list picked %q, want ok=false so the resolv.conf address stands", addr)
+	}
+	if addr, ok := pickDNSServer(nil); ok {
+		t.Errorf("empty list picked %q, want ok=false", addr)
 	}
 }
 
