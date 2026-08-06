@@ -45,7 +45,7 @@ jobs:
     strategy:
       matrix:
         os: [linux, darwin, freebsd, windows]
-        arch: [amd64, arm64, arm, mipsle]
+        arch: [amd64, arm64, arm, mipsle, mips]
         embedca: [0, 1]
         exclude:
           - os: darwin
@@ -53,17 +53,23 @@ jobs:
           - os: darwin
             arch: mipsle
           - os: darwin
+            arch: mips
+          - os: darwin
             embedca: 1
           - os: freebsd
             arch: arm
           - os: freebsd
             arch: mipsle
           - os: freebsd
+            arch: mips
+          - os: freebsd
             embedca: 1
           - os: windows
             arch: arm
           - os: windows
             arch: mipsle
+          - os: windows
+            arch: mips
           - os: windows
             embedca: 1
     steps:
@@ -113,16 +119,20 @@ jobs:
     strategy:
       matrix:
         os: [linux, darwin, freebsd]
-        arch: [amd64, arm64, arm, mipsle]
+        arch: [amd64, arm64, arm, mipsle, mips]
         exclude:
           - os: darwin
             arch: arm
           - os: darwin
             arch: mipsle
+          - os: darwin
+            arch: mips
           - os: freebsd
             arch: arm
           - os: freebsd
             arch: mipsle
+          - os: freebsd
+            arch: mips
     steps:
       - uses: actions/checkout@v7
       - name: tag
