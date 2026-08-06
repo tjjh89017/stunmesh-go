@@ -4,6 +4,11 @@ APP ?= stunmesh-go
 GO_FLAGS ?=
 GOOS ?= $(shell go env GOOS)
 GOARCH ?= $(shell go env GOARCH)
+# 32-bit MIPS routers commonly lack an FPU, so default both endians to
+# soft-float. Set GOMIPS=hardfloat to override.
+ifneq ($(filter mips mipsle,$(GOARCH)),)
+GOMIPS ?= softfloat
+endif
 STRIP ?= 1
 TRIMPATH ?= 1
 UPX ?= 0
@@ -99,7 +104,7 @@ all: clean build $(UPX_TARGET)
 
 .PHONY: build
 build:
-	CGO_ENABLED=${CGO_ENABLED} GOOS=${GOOS} GOARCH=${GOARCH} go build ${GO_FLAGS} -v -o ${APP}
+	CGO_ENABLED=${CGO_ENABLED} GOOS=${GOOS} GOARCH=${GOARCH} GOMIPS=${GOMIPS} go build ${GO_FLAGS} -v -o ${APP}
 
 .PHONY: upx
 upx:
