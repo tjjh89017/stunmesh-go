@@ -51,6 +51,12 @@ On Linux, macOS, and FreeBSD, stunmesh-go needs raw socket access, so run it as 
 sudo ./stunmesh-go
 ```
 
+On Linux, instead of running as root you can grant just the two capabilities it needs:
+
+```bash
+setcap cap_net_admin,cap_net_raw+ep ./stunmesh-go
+```
+
 It runs as a daemon by default; pass `-oneshot` to publish and establish 3 times and then exit.
 
 Configuration is read from `/etc/stunmesh/config.yaml`, `~/.stunmesh/config.yaml`, or `./config.yaml` (`.yml` also works), or pass a file directly with `-c <file>`. A minimal two-node setup with the built-in Cloudflare plugin:
