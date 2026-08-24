@@ -45,6 +45,10 @@ Download a binary from the [releases page](https://github.com/tjjh89017/stunmesh
 docker pull ghcr.io/tjjh89017/stunmesh
 ```
 
+> [!WARNING]
+> The Docker Hub image (`tjjh89017/stunmesh`) is deprecated and will stop
+> receiving updates in a future release. Pull from `ghcr.io` instead.
+
 On Linux, macOS, and FreeBSD, stunmesh-go needs raw socket access, so run it as root next to an already-configured WireGuard interface (Windows differs — see [Windows](#windows) below):
 
 ```bash
