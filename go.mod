@@ -6,7 +6,7 @@ require (
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/google/wire v0.7.0
 	github.com/packetcap/go-pcap v0.0.0-20251215121130-f2cf9f991e7c
-	github.com/pion/stun/v3 v3.1.6
+	github.com/pion/stun/v3 v3.1.7
 	github.com/rs/zerolog v1.35.1
 	go.uber.org/mock v0.6.0
 	go.yaml.in/yaml/v3 v3.0.5
@@ -27,9 +27,9 @@ require (
 	github.com/mdlayher/genetlink v1.3.2 // indirect
 	github.com/mdlayher/netlink v1.8.0 // indirect
 	github.com/mdlayher/socket v0.5.1 // indirect
-	github.com/pion/dtls/v3 v3.1.4 // indirect
+	github.com/pion/dtls/v3 v3.1.5 // indirect
 	github.com/pion/logging v0.2.4 // indirect
-	github.com/pion/transport/v4 v4.0.2 // indirect
+	github.com/pion/transport/v4 v4.1.0 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
 	golang.org/x/mod v0.38.0 // indirect
