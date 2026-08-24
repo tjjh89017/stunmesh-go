@@ -44,3 +44,9 @@ contrib/*/stunmesh-*
 # Temporary files
 *.tmp
 *.log
+
+# AI tooling / local workspace
+.claude/
+.powerloop/
+.plan
+tmp/
