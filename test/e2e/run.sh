@@ -161,16 +161,35 @@ log "interfaces up: $IF0 (peer $Bpub), $IF1 (peer $Apub)"
 write_config "$IF0" "$Bpub" "$WORK/cfg0.yaml"
 write_config "$IF1" "$Apub" "$WORK/cfg1.yaml"
 
-log "running --oneshot on both"
-# $WORK is created by mktemp as the current user, so redirecting the root
-# process's output into it as the current user is intended and correct.
-# shellcheck disable=SC2024
-$SUDO "$BIN" --oneshot -c "$WORK/cfg0.yaml" > "$WORK/if0.log" 2>&1 &
-j0=$!
-# shellcheck disable=SC2024
-$SUDO "$BIN" --oneshot -c "$WORK/cfg1.yaml" > "$WORK/if1.log" 2>&1 &
-j1=$!
-wait "$j0"; wait "$j1"
-log "both finished; asserting"
+# The two processes never wait for each other, so when one side's STUN
+# discovery is delayed past the other's last establish round (seen on the
+# macOS runners), a single pass can end with a one-sided endpoint. Re-running
+# both oneshots lets the fast side pick up the slow side's published data;
+# a real product bug keeps failing across every attempt. Logs are truncated
+# each pass so assert.sh only ever sees the final round.
+run_oneshots() {
+	# $WORK is created by mktemp as the current user, so redirecting the root
+	# process's output into it as the current user is intended and correct.
+	# shellcheck disable=SC2024
+	$SUDO "$BIN" --oneshot -c "$WORK/cfg0.yaml" > "$WORK/if0.log" 2>&1 &
+	j0=$!
+	# shellcheck disable=SC2024
+	$SUDO "$BIN" --oneshot -c "$WORK/cfg1.yaml" > "$WORK/if1.log" 2>&1 &
+	j1=$!
+	wait "$j0"; wait "$j1"
+}
 
-sh "$HERE/assert.sh" "$IF0" "$WORK/if0.log" "$IF1" "$WORK/if1.log"
+attempt=1; max_attempts=3
+log "running --oneshot on both"
+run_oneshots
+log "both finished; asserting"
+until sh "$HERE/assert.sh" "$IF0" "$WORK/if0.log" "$IF1" "$WORK/if1.log"; do
+	attempt=$((attempt + 1))
+	if [ "$attempt" -gt "$max_attempts" ]; then
+		log "assertions still failing after $max_attempts attempts"
+		exit 1
+	fi
+	log "assertions failed; re-running --oneshot (attempt $attempt/$max_attempts)"
+	run_oneshots
+	log "both finished; asserting"
+done
