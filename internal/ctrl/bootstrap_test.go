@@ -51,7 +51,7 @@ func TestBootstrap_WithError(t *testing.T) {
 		peerFilterService,
 	)
 
-	bootstrap.Execute(context.TODO())
+	_ = bootstrap.Execute(context.TODO())
 }
 
 func TestBootstrap_WithElevationRequired_ReturnsError(t *testing.T) {
@@ -170,5 +170,5 @@ func TestBootstrap_WithMultipleInterfaces(t *testing.T) {
 		peerFilterService,
 	)
 
-	bootstrap.Execute(context.TODO())
+	_ = bootstrap.Execute(context.TODO())
 }

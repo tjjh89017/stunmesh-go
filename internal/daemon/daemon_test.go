@@ -171,7 +171,7 @@ func TestRun_ShouldTriggerPublishAndEstablishOnTick(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
-		d.Run(ctx)
+		_ = d.Run(ctx)
 		close(done)
 	}()
 
@@ -202,7 +202,7 @@ func TestRun_ShouldExecuteBootstrapOnStart(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
-		d.Run(ctx)
+		_ = d.Run(ctx)
 		close(done)
 	}()
 
@@ -237,7 +237,7 @@ func TestRun_ShouldWaitForWorkerToFinishBeforeReturning(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
-		d.Run(ctx)
+		_ = d.Run(ctx)
 		close(done)
 	}()
 
@@ -276,7 +276,7 @@ func TestRunOneshot_ShouldWaitForEstablishWorkerToFinishBeforeReturning(t *testi
 	d := New(cfg, boot, publish, establish, pingMonitor, &logger)
 	d.sleep = func(time.Duration) {} // skip RunOneshot's real multi-second pacing
 
-	d.RunOneshot(context.Background())
+	_ = d.RunOneshot(context.Background())
 
 	select {
 	case <-establish.finished:
@@ -289,7 +289,7 @@ func TestRunOneshot_ShouldRunExactlyThreeIterationsAndWaitForCompletion(t *testi
 	d, boot, publish, establish := newTestDaemon(t, time.Hour)
 	d.sleep = func(time.Duration) {} // skip RunOneshot's real multi-second pacing
 
-	d.RunOneshot(context.Background())
+	_ = d.RunOneshot(context.Background())
 
 	if got := boot.Calls(); got != 1 {
 		t.Errorf("bootCtrl.Execute calls = %d, want 1", got)
