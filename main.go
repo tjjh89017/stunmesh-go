@@ -47,20 +47,20 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	a, err := app.New(app.Options{ConfigFile: configFile, ConfigDir: configDir})
+	daemon, err := app.New(app.Options{ConfigFile: configFile, ConfigDir: configDir})
 	if err != nil {
 		panic(err)
 	}
-	defer a.Close()
+	defer daemon.Close()
 
 	if oneshot {
-		if err := a.RunOneshot(ctx); err != nil {
+		if err := daemon.RunOneshot(ctx); err != nil {
 			panic(err)
 		}
 		return
 	}
 
-	if err := a.Run(ctx); err != nil {
+	if err := daemon.Run(ctx); err != nil {
 		panic(err)
 	}
 }
