@@ -16,10 +16,11 @@ type fakeBootstrap struct {
 	calls int
 }
 
-func (f *fakeBootstrap) Execute(ctx context.Context) {
+func (f *fakeBootstrap) Execute(ctx context.Context) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls++
+	return nil
 }
 
 func (f *fakeBootstrap) Calls() int {

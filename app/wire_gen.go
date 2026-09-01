@@ -4,7 +4,7 @@
 //go:build !wireinject
 // +build !wireinject
 
-package main
+package app
 
 import (
 	"context"
@@ -23,11 +23,11 @@ import (
 func setup(cfg *config.Config) (*daemon.Daemon, func(), error) {
 	deviceConfig := config.NewDeviceConfig(cfg)
 	zerologLogger := logger.NewLogger(cfg)
-	mainProxyStack, cleanup, err := newProxyStack(cfg, deviceConfig, zerologLogger)
+	appProxyStack, cleanup, err := newProxyStack(cfg, deviceConfig, zerologLogger)
 	if err != nil {
 		return nil, nil, err
 	}
-	client := mainProxyStack.Client
+	client := appProxyStack.Client
 	devices := repo.NewDevices()
 	peers := repo.NewPeers(client)
 	filterPeerService := entity.NewFilterPeerService(peers, deviceConfig)
@@ -37,7 +37,7 @@ func setup(cfg *config.Config) (*daemon.Daemon, func(), error) {
 		cleanup()
 		return nil, nil, err
 	}
-	resolver := mainProxyStack.Resolver
+	resolver := appProxyStack.Resolver
 	endpoint := crypto.NewEndpoint()
 	publishController := ctrl.NewPublishController(devices, peers, manager, resolver, endpoint, deviceConfig, zerologLogger)
 	establishController := ctrl.NewEstablishController(client, devices, peers, manager, endpoint, deviceConfig, zerologLogger)

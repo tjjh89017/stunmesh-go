@@ -2,10 +2,7 @@ package daemon
 
 import (
 	"context"
-	"os"
-	"os/signal"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -14,7 +11,7 @@ import (
 
 // BootstrapExecutor is the subset of ctrl.BootstrapController that Daemon calls.
 type BootstrapExecutor interface {
-	Execute(ctx context.Context)
+	Execute(ctx context.Context) error
 }
 
 // PublishRunner is the subset of ctrl.PublishController that Daemon calls.
@@ -46,10 +43,6 @@ type Daemon struct {
 	wg            sync.WaitGroup
 	// sleep is overridden in tests to avoid RunOneshot's real multi-second pacing.
 	sleep func(time.Duration)
-	// signalReady, when non-nil, is closed by Run right after signal.Notify
-	// registers the handler. It exists solely so tests can wait for
-	// registration instead of sleeping before sending a real OS signal.
-	signalReady chan struct{}
 }
 
 func New(
@@ -70,26 +63,22 @@ func New(
 	}
 }
 
-func (d *Daemon) Run(ctx context.Context) {
+// Run runs the daemon until ctx is cancelled. Shutdown (including OS signal
+// handling) is the caller's responsibility; Run itself is purely ctx-driven.
+func (d *Daemon) Run(ctx context.Context) error {
 	daemonCtx, cancel := context.WithCancel(ctx)
-
-	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
-	if d.signalReady != nil {
-		close(d.signalReady)
-	}
 
 	defer func() {
 		d.logger.Info().Msg("shutting down")
-		signal.Stop(signalChan)
-		close(signalChan)
 		cancel()
 		// Wait for workers to stop before the caller's cleanup() (e.g. closing
 		// the WireGuard client) runs, so they cannot use it after it's closed.
 		d.wg.Wait()
 	}()
 
-	d.bootCtrl.Execute(daemonCtx)
+	if err := d.bootCtrl.Execute(daemonCtx); err != nil {
+		return err
+	}
 
 	// Start controller workers
 	d.wg.Add(1)
@@ -123,9 +112,7 @@ func (d *Daemon) Run(ctx context.Context) {
 	for {
 		select {
 		case <-daemonCtx.Done():
-			return
-		case <-signalChan:
-			return
+			return nil
 		case <-ticker.C:
 			d.logger.Info().Msg("refreshing peers")
 			d.publishCtrl.Trigger()
@@ -134,7 +121,7 @@ func (d *Daemon) Run(ctx context.Context) {
 	}
 }
 
-func (d *Daemon) RunOneshot(ctx context.Context) {
+func (d *Daemon) RunOneshot(ctx context.Context) error {
 	d.logger.Info().Msg("running in oneshot mode")
 
 	// Own cancellation scope so the establishCtrl.Run worker below is
@@ -144,7 +131,9 @@ func (d *Daemon) RunOneshot(ctx context.Context) {
 	defer cancel()
 
 	// Bootstrap first
-	d.bootCtrl.Execute(oneshotCtx)
+	if err := d.bootCtrl.Execute(oneshotCtx); err != nil {
+		return err
+	}
 
 	// Start establish controller worker
 	d.wg.Add(1)
@@ -186,4 +175,5 @@ func (d *Daemon) RunOneshot(ctx context.Context) {
 	d.wg.Wait()
 
 	d.logger.Info().Msg("oneshot mode completed")
+	return nil
 }
