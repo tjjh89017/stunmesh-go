@@ -72,12 +72,12 @@ there's a stated reason not to.
   — a plain alias can't carry that, and the pattern would need to become a
   real named type with an explicit conversion at the package boundary.
 
-### Proxy-mode wiring lives in root `package main`
+### Proxy-mode wiring lives in the `app` composition root
 
 - **When to apply**: n/a as a pattern to reuse — this entry documents why
-  `proxy_stack.go` is where it is, so it isn't "fixed" into an internal
+  `app/proxy_stack.go` is where it is, so it isn't "fixed" into an internal
   package by a future cleanup pass.
-- **Shape**: `proxyStack` (in `proxy_stack.go`, root `package main`) bundles
+- **Shape**: `proxyStack` (in `app/proxy_stack.go`, package `app`) bundles
   the `wg.Client` and `*stun.Resolver` whose construction depends on
   whether proxy mode is on, and `newProxyStack` builds one or the other
   unconditionally so `wire_gen.go` stays a single code path with no
@@ -85,16 +85,19 @@ there's a stated reason not to.
 - **Forces it resolves**: the choice of which concrete `wg.Client`/
   `stun.Resolver` to construct depends on `config.Config`,
   `config.DeviceConfig`, and `runtime.GOOS` (proxy mode is always on for
-  Windows) — inputs that only exist once wiring is assembled in `main`.
+  Windows) — inputs that only exist once wiring is assembled in `app`.
   Moving this into an `internal/` package would mean that package importing
   both `internal/wg` and `internal/stun` purely to make a construction-time
   choice that `wire_gen.go` already needs to call into anyway; keeping it
-  in `main` keeps that choice next to the rest of the composition root
+  in `app` keeps that choice next to the rest of the composition root
   instead of adding a package whose only job is picking between two
-  already-existing constructors.
+  already-existing constructors. `app` sits outside `internal/` because it
+  is itself the importable embedding surface (`app.New`/`App.Run`/
+  `App.Close`) — an external program embeds the daemon by importing `app`,
+  which `internal/` visibility rules would forbid.
 - **Revisit if**: proxy-mode selection logic grows beyond picking a
   constructor (e.g. needs its own tests that don't want to run against the
-  full `main` build, or a second caller outside `main` needs the same
+  full `app` build, or a caller outside `app` needs the same
   decision) — at that point extracting `proxyModeEnabledForGOOS` and
   friends into an internal package pays for itself.
 

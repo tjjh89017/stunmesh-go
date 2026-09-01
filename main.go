@@ -4,9 +4,11 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"os/signal"
 	"runtime/debug"
+	"syscall"
 
-	"github.com/tjjh89017/stunmesh-go/internal/config"
+	"github.com/tjjh89017/stunmesh-go/app"
 )
 
 // version comes from the VCS build info the Go toolchain stamps into the
@@ -19,8 +21,6 @@ func version() string {
 }
 
 func main() {
-	ctx := context.Background()
-
 	var (
 		oneshot     bool
 		showVersion bool
@@ -44,21 +44,23 @@ func main() {
 		return
 	}
 
-	cfg, err := config.Load(configFile, configDir)
-	if err != nil {
-		panic(err)
-	}
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
-	daemon, cleanup, err := setup(cfg)
+	a, err := app.New(app.Options{ConfigFile: configFile, ConfigDir: configDir})
 	if err != nil {
 		panic(err)
 	}
-	defer cleanup()
+	defer a.Close()
 
 	if oneshot {
-		daemon.RunOneshot(ctx)
+		if err := a.RunOneshot(ctx); err != nil {
+			panic(err)
+		}
 		return
 	}
 
-	daemon.Run(ctx)
+	if err := a.Run(ctx); err != nil {
+		panic(err)
+	}
 }

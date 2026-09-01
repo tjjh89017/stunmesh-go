@@ -54,6 +54,41 @@ func TestBootstrap_WithError(t *testing.T) {
 	bootstrap.Execute(context.TODO())
 }
 
+func TestBootstrap_WithElevationRequired_ReturnsError(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+
+	mockWgClient := mock.NewMockWireGuardClient(mockCtrl)
+	mockDevices := mock.NewMockDeviceRepository(mockCtrl)
+	mockPeers := mock.NewMockPeerRepository(mockCtrl)
+	logger := zerolog.Nop()
+	cfg := &config.Config{
+		Interfaces: map[string]config.Interface{
+			"wg0": {},
+		},
+	}
+	deviceConfig := config.NewDeviceConfig(cfg)
+	mockDevicePeerChecker := mockEntity.NewMockDevicePeerChecker(mockCtrl)
+	peerFilterService := entity.NewFilterPeerService(mockDevicePeerChecker, deviceConfig)
+
+	mockWgClient.EXPECT().Device("wg0").Return(nil, wg.ErrElevationRequired)
+
+	bootstrap := ctrl.NewBootstrapController(
+		mockWgClient,
+		cfg,
+		deviceConfig,
+		mockDevices,
+		mockPeers,
+		&logger,
+		peerFilterService,
+	)
+
+	err := bootstrap.Execute(context.TODO())
+	if !errors.Is(err, wg.ErrElevationRequired) {
+		t.Fatalf("Execute() error = %v, want wrapping wg.ErrElevationRequired", err)
+	}
+}
+
 func TestBootstrap_WithMultipleInterfaces(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
