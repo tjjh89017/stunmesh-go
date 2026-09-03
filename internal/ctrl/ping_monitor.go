@@ -33,6 +33,16 @@ const (
 	PingMonitorStartupDelay = 10 * time.Second
 )
 
+// pingMonitorStartupDelay and newICMPConn are package-level vars (rather than
+// the const and platform func used directly) so tests in this package can
+// shorten the startup wait and inject a fake ICMPConnection.
+var (
+	pingMonitorStartupDelay = PingMonitorStartupDelay
+	newICMPConn             = func(deviceName string) (ICMPConnection, error) {
+		return NewICMPConn(deviceName)
+	}
+)
+
 type PeerPingState struct {
 	peerId       entity.PeerId
 	target       string
@@ -111,11 +121,11 @@ func NewDevicePingMonitor(deviceName string, controller *PingMonitorController, 
 func (c *PingMonitorController) Execute(ctx context.Context) {
 	// Wait for system initialization before starting ping monitoring, but
 	// return immediately on shutdown instead of blocking the full delay.
-	c.logger.Info().Dur("delay", PingMonitorStartupDelay).Msg("waiting before starting ping monitor")
+	c.logger.Info().Dur("delay", pingMonitorStartupDelay).Msg("waiting before starting ping monitor")
 	select {
 	case <-ctx.Done():
 		return
-	case <-time.After(PingMonitorStartupDelay):
+	case <-time.After(pingMonitorStartupDelay):
 	}
 
 	// Get all configured peers from all interfaces
@@ -152,7 +162,7 @@ func (c *PingMonitorController) Execute(ctx context.Context) {
 		monitor := NewDevicePingMonitor(deviceName, c, c.logger)
 
 		// Create device-bound ICMP connection using platform-specific implementation
-		conn, err := NewICMPConn(deviceName)
+		conn, err := newICMPConn(deviceName)
 		if err != nil {
 			c.logger.Error().
 				Err(err).
@@ -178,10 +188,11 @@ func (c *PingMonitorController) Execute(ctx context.Context) {
 	c.mu.Unlock()
 
 	// Start monitoring loops for each device
+	var wg sync.WaitGroup
 	for deviceName, monitor := range c.deviceMonitors {
-		go monitor.deviceSenderLoop(ctx, c.config.PingMonitor.Interval)
-		go monitor.deviceReaderLoop(ctx)
-		go monitor.deviceTimeoutChecker(ctx, c.config.PingMonitor.Timeout)
+		wg.Go(func() { monitor.deviceSenderLoop(ctx, c.config.PingMonitor.Interval) })
+		wg.Go(func() { monitor.deviceReaderLoop(ctx) })
+		wg.Go(func() { monitor.deviceTimeoutChecker(ctx, c.config.PingMonitor.Timeout) })
 
 		c.logger.Info().
 			Str("device", deviceName).
@@ -191,7 +202,8 @@ func (c *PingMonitorController) Execute(ctx context.Context) {
 	// Wait for context cancellation
 	<-ctx.Done()
 
-	// Close all device connections
+	// Close all device connections first so a deviceReaderLoop blocked in
+	// Recv returns instead of waiting out its read deadline.
 	c.mu.Lock()
 	for _, monitor := range c.deviceMonitors {
 		if monitor.conn != nil {
@@ -200,6 +212,16 @@ func (c *PingMonitorController) Execute(ctx context.Context) {
 			}
 		}
 	}
+	c.mu.Unlock()
+
+	// Wait for every loop to exit before returning, so callers (daemon.Run,
+	// App.Close) never observe Execute as done while a loop is still running.
+	wg.Wait()
+
+	// Clear so a later Execute call never starts fresh goroutines against a
+	// stale entry that still holds a closed connection.
+	c.mu.Lock()
+	clear(c.deviceMonitors)
 	c.mu.Unlock()
 }
 
