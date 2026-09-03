@@ -52,6 +52,46 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+# win_install_tunnel NAME CONF: runs installtunnelservice (output captured to
+# $WORK for win_tunnel_diag) and polls `wg show` for up to 60s. Returns
+# non-zero on install failure or timeout; never lets set -e abort mid-poll.
+win_install_tunnel() {
+	name=$1; conf=$2
+	# MSYS_NO_PATHCONV stops Git Bash rewriting /installtunnelservice as
+	# a POSIX path; the conf path is pre-converted with cygpath instead.
+	if ! MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' \
+		wireguard.exe /installtunnelservice "$(cygpath -w "$conf")" \
+		>"$WORK/install-$name.log" 2>&1; then
+		return 1
+	fi
+	for _ in $(seq 1 60); do
+		wg show "$name" >/dev/null 2>&1 && return 0
+		sleep 1
+	done
+	return 1
+}
+
+# win_tunnel_diag NAME: dumps everything useful for telling a runner-side
+# WireGuardNT failure apart from a slow driver load. Every command is
+# tolerant (|| true) so a missing tool never masks the real failure.
+win_tunnel_diag() {
+	name=$1
+	echo "[e2e] diag: installtunnelservice output for $name:" >&2
+	cat "$WORK/install-$name.log" >&2 2>/dev/null || true
+	echo "[e2e] diag: sc query WireGuardTunnel\$$name:" >&2
+	sc query "WireGuardTunnel\$$name" >&2 || true
+	echo "[e2e] diag: sc query WireGuardManager:" >&2
+	sc query WireGuardManager >&2 || true
+	echo "[e2e] diag: recent WireGuard Application event log entries:" >&2
+	powershell -NoProfile -Command \
+		"Get-WinEvent -FilterHashtable @{LogName='Application'; ProviderName='WireGuard*'} -MaxEvents 20 -ErrorAction SilentlyContinue | Format-List TimeCreated,Id,LevelDisplayName,Message" \
+		>&2 || true
+	echo "[e2e] diag: recent Service Control Manager System event log entries:" >&2
+	powershell -NoProfile -Command \
+		"Get-WinEvent -FilterHashtable @{LogName='System'; ProviderName='Service Control Manager'} -MaxEvents 20 -ErrorAction SilentlyContinue | Format-List TimeCreated,Id,LevelDisplayName,Message" \
+		>&2 || true
+}
+
 # create_iface SLOT PRIVKEY_FILE PORT PEER_PUB PEER_ALLOWED
 # Sets IF$SLOT (and, on Darwin, PID$SLOT) to the resolved interface. No tunnel
 # address is assigned: stunmesh only needs the device's key, listen port and
@@ -102,16 +142,18 @@ create_iface() {
 			echo "PublicKey = $peer"
 			echo "AllowedIPs = $allowed"
 		} > "$conf"
-		# MSYS_NO_PATHCONV stops Git Bash rewriting /installtunnelservice as
-		# a POSIX path; the conf path is pre-converted with cygpath instead.
-		MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' \
-			wireguard.exe /installtunnelservice "$(cygpath -w "$conf")"
-		up=""
-		for _ in $(seq 1 60); do
-			if wg show "$name" >/dev/null 2>&1; then up=1; break; fi
-			sleep 1
-		done
-		[ -n "$up" ] || { echo "tunnel $name never came up" >&2; exit 1; }
+		if ! win_install_tunnel "$name" "$conf"; then
+			win_tunnel_diag "$name"
+			log "retrying: uninstalling and reinstalling $name"
+			MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' \
+				wireguard.exe /uninstalltunnelservice "$name" >/dev/null 2>&1 || true
+			sleep 5
+			if ! win_install_tunnel "$name" "$conf"; then
+				win_tunnel_diag "$name"
+				echo "tunnel $name never came up" >&2
+				exit 1
+			fi
+		fi
 		;;
 	*) echo "unsupported OS: $OS" >&2; exit 1 ;;
 	esac
