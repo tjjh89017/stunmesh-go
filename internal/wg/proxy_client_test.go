@@ -1,6 +1,7 @@
 package wg
 
 import (
+	"context"
 	"errors"
 	"net"
 	"testing"
@@ -20,7 +21,7 @@ type fakeClient struct {
 	closeErr    error
 }
 
-func (f *fakeClient) Device(name string) (*DeviceInfo, error) {
+func (f *fakeClient) Device(ctx context.Context, name string) (*DeviceInfo, error) {
 	f.deviceCalls++
 	if f.deviceErr != nil {
 		return nil, f.deviceErr
@@ -28,7 +29,7 @@ func (f *fakeClient) Device(name string) (*DeviceInfo, error) {
 	return f.device, nil
 }
 
-func (f *fakeClient) UpdatePeerEndpoint(u PeerEndpointUpdate) error {
+func (f *fakeClient) UpdatePeerEndpoint(ctx context.Context, u PeerEndpointUpdate) error {
 	f.updates = append(f.updates, u)
 	return f.updateErr
 }
@@ -89,7 +90,7 @@ func TestProxyClient_Device_ReturnsInfoUnchangedAndRegistersPeers(t *testing.T) 
 	inner := &fakeClient{device: info}
 	pc, manager := newTestProxyClient(t, inner, &fakeProxyConfig{protocol: "ipv4"})
 
-	got, err := pc.Device("wg0")
+	got, err := pc.Device(context.Background(), "wg0")
 	if err != nil {
 		t.Fatalf("Device: unexpected error: %v", err)
 	}
@@ -108,7 +109,7 @@ func TestProxyClient_Device_ReturnsInfoUnchangedAndRegistersPeers(t *testing.T) 
 	defer func() { _ = remote.Close() }()
 	remotePort := remote.LocalAddr().(*net.UDPAddr).Port
 
-	if err := pc.UpdatePeerEndpoint(PeerEndpointUpdate{
+	if err := pc.UpdatePeerEndpoint(context.Background(), PeerEndpointUpdate{
 		DeviceName: "wg0",
 		PublicKey:  peer,
 		Host:       "127.0.0.1",
@@ -149,10 +150,10 @@ func TestProxyClient_UpdatePeerEndpoint_SubstitutesLoopbackEndpoint(t *testing.T
 	inner := &fakeClient{device: &DeviceInfo{Name: "wg0", ListenPort: 51820, PeerKeys: []Key{peer}}}
 	pc, manager := newTestProxyClient(t, inner, &fakeProxyConfig{protocol: "ipv4"})
 
-	if _, err := pc.Device("wg0"); err != nil {
+	if _, err := pc.Device(context.Background(), "wg0"); err != nil {
 		t.Fatalf("Device: %v", err)
 	}
-	if err := pc.UpdatePeerEndpoint(PeerEndpointUpdate{
+	if err := pc.UpdatePeerEndpoint(context.Background(), PeerEndpointUpdate{
 		DeviceName: "wg0",
 		PublicKey:  peer,
 		Host:       "203.0.113.9",
@@ -189,7 +190,7 @@ func TestProxyClient_UpdatePeerEndpoint_InvalidHost(t *testing.T) {
 	inner := &fakeClient{}
 	pc, _ := newTestProxyClient(t, inner, &fakeProxyConfig{protocol: "ipv4"})
 
-	err := pc.UpdatePeerEndpoint(PeerEndpointUpdate{
+	err := pc.UpdatePeerEndpoint(context.Background(), PeerEndpointUpdate{
 		DeviceName: "wg0",
 		PublicKey:  testKey(0x04),
 		Host:       "not-an-ip",
@@ -208,7 +209,7 @@ func TestProxyClient_Device_Idempotent(t *testing.T) {
 	inner := &fakeClient{device: &DeviceInfo{Name: "wg0", ListenPort: 51820, PeerKeys: []Key{peer}}}
 	pc, manager := newTestProxyClient(t, inner, &fakeProxyConfig{protocol: "ipv4"})
 
-	if _, err := pc.Device("wg0"); err != nil {
+	if _, err := pc.Device(context.Background(), "wg0"); err != nil {
 		t.Fatalf("first Device: %v", err)
 	}
 	proxy, err := manager.For("wg0", nil)
@@ -221,7 +222,7 @@ func TestProxyClient_Device_Idempotent(t *testing.T) {
 		t.Fatalf("AddPeer: %v", err)
 	}
 
-	if _, err := pc.Device("wg0"); err != nil {
+	if _, err := pc.Device(context.Background(), "wg0"); err != nil {
 		t.Fatalf("second Device: %v", err)
 	}
 	proxy2, err := manager.For("wg0", nil)
@@ -254,7 +255,7 @@ func TestProxyClient_Device_WithTunnelInterfaceNames(t *testing.T) {
 	inner := &fakeClient{device: &DeviceInfo{Name: "wg0", ListenPort: 51820, PeerKeys: []Key{peer}}}
 	pc, manager := newTestProxyClient(t, inner, &fakeProxyConfig{protocol: "ipv4", tunnelIfaces: []string{"wg0", "wg1"}})
 
-	got, err := pc.Device("wg0")
+	got, err := pc.Device(context.Background(), "wg0")
 	if err != nil {
 		t.Fatalf("Device: unexpected error: %v", err)
 	}
@@ -276,7 +277,7 @@ func TestProxyClient_Device_InnerError(t *testing.T) {
 	inner := &fakeClient{deviceErr: wantErr}
 	pc, _ := newTestProxyClient(t, inner, &fakeProxyConfig{protocol: "ipv4"})
 
-	if _, err := pc.Device("wg0"); !errors.Is(err, wantErr) {
+	if _, err := pc.Device(context.Background(), "wg0"); !errors.Is(err, wantErr) {
 		t.Fatalf("Device error = %v, want %v", err, wantErr)
 	}
 }
@@ -296,7 +297,7 @@ func TestProxyClient_FamilyDerivation(t *testing.T) {
 			inner := &fakeClient{device: &DeviceInfo{Name: "wg0", ListenPort: 51820}}
 			pc, manager := newTestProxyClient(t, inner, &fakeProxyConfig{protocol: tc.protocol})
 
-			if _, err := pc.Device("wg0"); err != nil {
+			if _, err := pc.Device(context.Background(), "wg0"); err != nil {
 				t.Fatalf("Device: %v", err)
 			}
 			proxy, err := manager.For("wg0", nil)
@@ -326,7 +327,7 @@ func TestProxyClient_ListenOverride(t *testing.T) {
 	inner := &fakeClient{device: &DeviceInfo{Name: "wg0", ListenPort: 51820}}
 	pc, manager := newTestProxyClient(t, inner, &fakeProxyConfig{protocol: "ipv4", listen: port})
 
-	if _, err := pc.Device("wg0"); err != nil {
+	if _, err := pc.Device(context.Background(), "wg0"); err != nil {
 		t.Fatalf("Device: %v", err)
 	}
 	proxy, err := manager.For("wg0", nil)
@@ -347,7 +348,7 @@ func TestProxyClient_Device_Disabled_PassesThroughToInner(t *testing.T) {
 	inner := &fakeClient{device: info}
 	pc, manager := newTestProxyClient(t, inner, &fakeProxyConfig{protocol: "ipv4", disabled: true})
 
-	got, err := pc.Device("wg1")
+	got, err := pc.Device(context.Background(), "wg1")
 	if err != nil {
 		t.Fatalf("Device: %v", err)
 	}
@@ -370,7 +371,7 @@ func TestProxyClient_UpdatePeerEndpoint_Disabled_PassesThroughUnchanged(t *testi
 		Host:       "203.0.113.9",
 		Port:       4242,
 	}
-	if err := pc.UpdatePeerEndpoint(update); err != nil {
+	if err := pc.UpdatePeerEndpoint(context.Background(), update); err != nil {
 		t.Fatalf("UpdatePeerEndpoint: %v", err)
 	}
 
@@ -392,10 +393,10 @@ func TestProxyClient_SingleInterfaceEnabled_UnaffectedByPerDeviceCheck(t *testin
 	inner := &fakeClient{device: &DeviceInfo{Name: "wg0", ListenPort: 51820, PeerKeys: []Key{peer}}}
 	pc, manager := newTestProxyClient(t, inner, &fakeProxyConfig{protocol: "ipv4"})
 
-	if _, err := pc.Device("wg0"); err != nil {
+	if _, err := pc.Device(context.Background(), "wg0"); err != nil {
 		t.Fatalf("Device: %v", err)
 	}
-	if err := pc.UpdatePeerEndpoint(PeerEndpointUpdate{
+	if err := pc.UpdatePeerEndpoint(context.Background(), PeerEndpointUpdate{
 		DeviceName: "wg0",
 		PublicKey:  peer,
 		Host:       "203.0.113.9",
@@ -418,7 +419,7 @@ func TestProxyClient_Close_ClosesBoth(t *testing.T) {
 	inner := &fakeClient{device: &DeviceInfo{Name: "wg0", ListenPort: 51820}}
 	pc, manager := newTestProxyClient(t, inner, &fakeProxyConfig{protocol: "ipv4"})
 
-	if _, err := pc.Device("wg0"); err != nil {
+	if _, err := pc.Device(context.Background(), "wg0"); err != nil {
 		t.Fatalf("Device: %v", err)
 	}
 	if err := pc.Close(); err != nil {

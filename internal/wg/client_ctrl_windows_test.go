@@ -3,6 +3,7 @@
 package wg
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -21,7 +22,7 @@ func TestCtrlClient_Device_AccessDeniedMapsToElevationRequired(t *testing.T) {
 	}
 	c := &ctrlClient{c: backend}
 
-	_, err := c.Device("testdev")
+	_, err := c.Device(context.Background(), "testdev")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -38,7 +39,7 @@ func TestCtrlClient_UpdatePeerEndpoint_AccessDeniedMapsToElevationRequired(t *te
 	}
 	c := &ctrlClient{c: backend}
 
-	err := c.UpdatePeerEndpoint(PeerEndpointUpdate{DeviceName: "testdev"})
+	err := c.UpdatePeerEndpoint(context.Background(), PeerEndpointUpdate{DeviceName: "testdev"})
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}

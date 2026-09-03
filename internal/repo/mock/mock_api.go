@@ -10,6 +10,7 @@
 package mock_repo
 
 import (
+	context "context"
 	reflect "reflect"
 
 	wg "github.com/tjjh89017/stunmesh-go/internal/wg"
@@ -41,16 +42,16 @@ func (m *MockWireGuardClient) EXPECT() *MockWireGuardClientMockRecorder {
 }
 
 // Device mocks base method.
-func (m *MockWireGuardClient) Device(deviceName string) (*wg.DeviceInfo, error) {
+func (m *MockWireGuardClient) Device(ctx context.Context, deviceName string) (*wg.DeviceInfo, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Device", deviceName)
+	ret := m.ctrl.Call(m, "Device", ctx, deviceName)
 	ret0, _ := ret[0].(*wg.DeviceInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Device indicates an expected call of Device.
-func (mr *MockWireGuardClientMockRecorder) Device(deviceName any) *gomock.Call {
+func (mr *MockWireGuardClientMockRecorder) Device(ctx, deviceName any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Device", reflect.TypeOf((*MockWireGuardClient)(nil).Device), deviceName)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Device", reflect.TypeOf((*MockWireGuardClient)(nil).Device), ctx, deviceName)
 }

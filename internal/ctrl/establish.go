@@ -125,7 +125,7 @@ func (c *EstablishController) ConfigureDevice(ctx context.Context, peer *entity.
 	remoteEndpoint := host + ":" + strconv.FormatInt(int64(port), 10)
 	c.logger.Debug().Str("peer", peer.LocalId()).Str("remote", remoteEndpoint).Msg("configuring device for peer")
 
-	err := c.wgCtrl.UpdatePeerEndpoint(wg.PeerEndpointUpdate{
+	err := c.wgCtrl.UpdatePeerEndpoint(ctx, wg.PeerEndpointUpdate{
 		DeviceName: string(peer.DeviceName()),
 		PublicKey:  peer.PublicKey(),
 		Host:       host,

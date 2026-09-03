@@ -11,7 +11,12 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 )
+
+// wgCommandTimeout bounds a single wg(8) invocation so a hung command
+// cannot block shutdown indefinitely.
+const wgCommandTimeout = 10 * time.Second
 
 type Runner func(ctx context.Context, name string, args ...string) ([]byte, error)
 
@@ -42,8 +47,11 @@ func New() (Client, error) {
 	return &cliClient{runner: defaultRunner}, nil
 }
 
-func (c *cliClient) Device(name string) (*DeviceInfo, error) {
-	out, err := c.runner(context.Background(), "wg", "show", name, "dump")
+func (c *cliClient) Device(ctx context.Context, name string) (*DeviceInfo, error) {
+	ctx, cancel := context.WithTimeout(ctx, wgCommandTimeout)
+	defer cancel()
+
+	out, err := c.runner(ctx, "wg", "show", name, "dump")
 	if err != nil {
 		return nil, fmt.Errorf("wg show dump: %w", err)
 	}
@@ -136,10 +144,13 @@ func decodeKey(s string) (Key, error) {
 	return k, nil
 }
 
-func (c *cliClient) UpdatePeerEndpoint(u PeerEndpointUpdate) error {
+func (c *cliClient) UpdatePeerEndpoint(ctx context.Context, u PeerEndpointUpdate) error {
+	ctx, cancel := context.WithTimeout(ctx, wgCommandTimeout)
+	defer cancel()
+
 	endpoint := net.JoinHostPort(u.Host, strconv.Itoa(u.Port))
 	pk := base64.StdEncoding.EncodeToString(u.PublicKey[:])
-	_, err := c.runner(context.Background(), "wg", "set", u.DeviceName, "peer", pk, "endpoint", endpoint)
+	_, err := c.runner(ctx, "wg", "set", u.DeviceName, "peer", pk, "endpoint", endpoint)
 	if err != nil {
 		return fmt.Errorf("wg set endpoint: %w", err)
 	}

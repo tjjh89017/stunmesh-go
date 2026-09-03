@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 )
 
 func fakeRunner(output []byte, err error) Runner {
@@ -51,7 +52,7 @@ func TestCliClient_Device_ParseSuccess(t *testing.T) {
 	var captured []capturedCall
 	c := &cliClient{runner: capturingRunner([]byte(dump), nil, &captured)}
 
-	info, err := c.Device("testdev")
+	info, err := c.Device(context.Background(), "testdev")
 	if err != nil {
 		t.Fatalf("Device: unexpected error: %v", err)
 	}
@@ -123,7 +124,7 @@ func TestCliClient_Device_ParseFirewallMark(t *testing.T) {
 			dump := strings.Join([]string{privB64, pubB64, "51820", tt.field}, "\t") + "\n"
 			c := &cliClient{runner: fakeRunner([]byte(dump), nil)}
 
-			info, err := c.Device("testdev")
+			info, err := c.Device(context.Background(), "testdev")
 			if tt.wantErr {
 				if err == nil {
 					t.Fatalf("Device: expected error for fwmark field %q, got none", tt.field)
@@ -148,7 +149,7 @@ func TestCliClient_UpdatePeerEndpoint_IPv4(t *testing.T) {
 	copy(pk[:], bytes.Repeat([]byte{0x07}, 32))
 	pkB64 := base64.StdEncoding.EncodeToString(pk[:])
 
-	err := c.UpdatePeerEndpoint(PeerEndpointUpdate{
+	err := c.UpdatePeerEndpoint(context.Background(), PeerEndpointUpdate{
 		DeviceName: "testdev",
 		PublicKey:  pk,
 		Host:       "1.2.3.4",
@@ -174,7 +175,7 @@ func TestCliClient_UpdatePeerEndpoint_IPv6(t *testing.T) {
 	copy(pk[:], bytes.Repeat([]byte{0x08}, 32))
 	pkB64 := base64.StdEncoding.EncodeToString(pk[:])
 
-	err := c.UpdatePeerEndpoint(PeerEndpointUpdate{
+	err := c.UpdatePeerEndpoint(context.Background(), PeerEndpointUpdate{
 		DeviceName: "testdev",
 		PublicKey:  pk,
 		Host:       "2001:db8::1",
@@ -196,7 +197,7 @@ func TestCliClient_UpdatePeerEndpoint_RunnerError(t *testing.T) {
 	runErr := errors.New("exit status 1")
 	c := &cliClient{runner: fakeRunner(nil, runErr)}
 	var pk Key
-	err := c.UpdatePeerEndpoint(PeerEndpointUpdate{
+	err := c.UpdatePeerEndpoint(context.Background(), PeerEndpointUpdate{
 		DeviceName: "testdev",
 		PublicKey:  pk,
 		Host:       "1.2.3.4",
@@ -240,7 +241,7 @@ func TestCliClient_Device_ErrorPaths(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			c := &cliClient{runner: fakeRunner(tc.output, tc.runErr)}
-			_, err := c.Device("testdev")
+			_, err := c.Device(context.Background(), "testdev")
 			if err == nil {
 				t.Fatal("expected error, got nil")
 			}
@@ -252,7 +253,7 @@ func TestCliClient_Device_ErrorPaths(t *testing.T) {
 		// private key field must not echo the raw input or the word "private".
 		leakyDump := []byte(fmt.Sprintf("%s\t%s\t51820\toff\n", rawSecret, pubB64))
 		c := &cliClient{runner: fakeRunner(leakyDump, nil)}
-		_, err := c.Device("testdev")
+		_, err := c.Device(context.Background(), "testdev")
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
@@ -270,6 +271,38 @@ func TestCliClient_Device_ErrorPaths(t *testing.T) {
 			t.Logf("note: error mentions 'private': %q", msg)
 		}
 	})
+}
+
+// blockingRunner blocks until ctx is done, then returns ctx.Err(), simulating
+// a wg(8) invocation that never completes on its own.
+func blockingRunner() Runner {
+	return func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+}
+
+func TestCliClient_Device_CancelledContextReturnsPromptly(t *testing.T) {
+	c := &cliClient{runner: blockingRunner()}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	done := make(chan struct{})
+	var err error
+	go func() {
+		_, err = c.Device(ctx, "testdev")
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Device did not return promptly after context cancellation")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("Device error = %v, want context.Canceled", err)
+	}
 }
 
 func equalSlice(a, b []string) bool {

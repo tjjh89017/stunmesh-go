@@ -53,7 +53,7 @@ func (ctrl *BootstrapController) Execute(ctx context.Context) error {
 }
 
 func (ctrl *BootstrapController) registerDevice(ctx context.Context, deviceName string) error {
-	device, err := ctrl.wg.Device(deviceName)
+	device, err := ctrl.wg.Device(ctx, deviceName)
 	if err != nil {
 		return err
 	}

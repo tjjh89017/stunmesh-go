@@ -369,7 +369,7 @@ func TestEstablishController_Execute_IPv4Selection(t *testing.T) {
 		Decrypt(ctx, gomock.Any()).
 		Return(&ctrl.EndpointDecryptResponse{Content: string(jsonData)}, nil)
 	mockWgClient.EXPECT().
-		UpdatePeerEndpoint(gomock.Any()).
+		UpdatePeerEndpoint(gomock.Any(), gomock.Any()).
 		Return(nil)
 
 	controller := ctrl.NewEstablishController(
@@ -433,7 +433,7 @@ func TestEstablishController_Execute_IPv6Selection(t *testing.T) {
 		Decrypt(ctx, gomock.Any()).
 		Return(&ctrl.EndpointDecryptResponse{Content: string(jsonData)}, nil)
 	mockWgClient.EXPECT().
-		UpdatePeerEndpoint(gomock.Any()).
+		UpdatePeerEndpoint(gomock.Any(), gomock.Any()).
 		Return(nil)
 
 	controller := ctrl.NewEstablishController(
@@ -497,7 +497,7 @@ func TestEstablishController_Execute_PreferIPv4_HasIPv4(t *testing.T) {
 		Decrypt(ctx, gomock.Any()).
 		Return(&ctrl.EndpointDecryptResponse{Content: string(jsonData)}, nil)
 	mockWgClient.EXPECT().
-		UpdatePeerEndpoint(gomock.Any()).
+		UpdatePeerEndpoint(gomock.Any(), gomock.Any()).
 		Return(nil)
 
 	controller := ctrl.NewEstablishController(
@@ -561,7 +561,7 @@ func TestEstablishController_Execute_PreferIPv4_FallbackIPv6(t *testing.T) {
 		Decrypt(ctx, gomock.Any()).
 		Return(&ctrl.EndpointDecryptResponse{Content: string(jsonData)}, nil)
 	mockWgClient.EXPECT().
-		UpdatePeerEndpoint(gomock.Any()).
+		UpdatePeerEndpoint(gomock.Any(), gomock.Any()).
 		Return(nil)
 
 	controller := ctrl.NewEstablishController(
@@ -625,7 +625,7 @@ func TestEstablishController_Execute_PreferIPv6_HasIPv6(t *testing.T) {
 		Decrypt(ctx, gomock.Any()).
 		Return(&ctrl.EndpointDecryptResponse{Content: string(jsonData)}, nil)
 	mockWgClient.EXPECT().
-		UpdatePeerEndpoint(gomock.Any()).
+		UpdatePeerEndpoint(gomock.Any(), gomock.Any()).
 		Return(nil)
 
 	controller := ctrl.NewEstablishController(
@@ -689,7 +689,7 @@ func TestEstablishController_Execute_PreferIPv6_FallbackIPv4(t *testing.T) {
 		Decrypt(ctx, gomock.Any()).
 		Return(&ctrl.EndpointDecryptResponse{Content: string(jsonData)}, nil)
 	mockWgClient.EXPECT().
-		UpdatePeerEndpoint(gomock.Any()).
+		UpdatePeerEndpoint(gomock.Any(), gomock.Any()).
 		Return(nil)
 
 	controller := ctrl.NewEstablishController(
@@ -812,7 +812,7 @@ func TestEstablishController_Execute_WireGuardError(t *testing.T) {
 		Decrypt(ctx, gomock.Any()).
 		Return(&ctrl.EndpointDecryptResponse{Content: string(jsonData)}, nil)
 	mockWgClient.EXPECT().
-		UpdatePeerEndpoint(gomock.Any()).
+		UpdatePeerEndpoint(gomock.Any(), gomock.Any()).
 		Return(errors.New("wireguard configuration failed"))
 
 	controller := ctrl.NewEstablishController(

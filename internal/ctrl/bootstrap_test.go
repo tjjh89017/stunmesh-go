@@ -39,7 +39,7 @@ func TestBootstrap_WithError(t *testing.T) {
 	mockDevicePeerChecker := mockEntity.NewMockDevicePeerChecker(mockCtrl)
 	peerFilterService := entity.NewFilterPeerService(mockDevicePeerChecker, deviceConfig)
 
-	mockWgClient.EXPECT().Device("wg0").Return(nil, errors.New("device not found"))
+	mockWgClient.EXPECT().Device(gomock.Any(), "wg0").Return(nil, errors.New("device not found"))
 
 	bootstrap := ctrl.NewBootstrapController(
 		mockWgClient,
@@ -71,7 +71,7 @@ func TestBootstrap_WithElevationRequired_ReturnsError(t *testing.T) {
 	mockDevicePeerChecker := mockEntity.NewMockDevicePeerChecker(mockCtrl)
 	peerFilterService := entity.NewFilterPeerService(mockDevicePeerChecker, deviceConfig)
 
-	mockWgClient.EXPECT().Device("wg0").Return(nil, wg.ErrElevationRequired)
+	mockWgClient.EXPECT().Device(gomock.Any(), "wg0").Return(nil, wg.ErrElevationRequired)
 
 	bootstrap := ctrl.NewBootstrapController(
 		mockWgClient,
@@ -144,8 +144,8 @@ func TestBootstrap_WithMultipleInterfaces(t *testing.T) {
 		},
 	}
 
-	mockWgClient.EXPECT().Device("wg0").Return(mockDevice0, nil)
-	mockWgClient.EXPECT().Device("wg1").Return(mockDevice1, nil)
+	mockWgClient.EXPECT().Device(gomock.Any(), "wg0").Return(mockDevice0, nil)
+	mockWgClient.EXPECT().Device(gomock.Any(), "wg1").Return(mockDevice1, nil)
 	mockDevices.EXPECT().Save(gomock.Any(), gomock.Any()).Times(2)
 	mockPeers.EXPECT().Save(gomock.Any(), gomock.Any()).Times(3)
 
