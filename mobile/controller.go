@@ -111,6 +111,9 @@ func (c *controller) start() {
 func (c *controller) stop() {
 	c.cancel()
 	<-c.done
+	if err := c.manager.Close(); err != nil {
+		c.node.listener.OnLog("warn", "plugin manager close: "+err.Error())
+	}
 }
 
 func (c *controller) run(ctx context.Context) {

@@ -6,6 +6,7 @@ import (
 	"context"
 
 	"github.com/google/wire"
+	"github.com/rs/zerolog"
 	"github.com/tjjh89017/stunmesh-go/internal/config"
 	"github.com/tjjh89017/stunmesh-go/internal/crypto"
 	"github.com/tjjh89017/stunmesh-go/internal/ctrl"
@@ -48,13 +49,19 @@ func setup(cfg *config.Config) (*daemon.Daemon, func(), error) {
 	return nil, nil, nil
 }
 
-func providePluginManager(config *config.Config) (*plugin.Manager, error) {
+func providePluginManager(config *config.Config, logger *zerolog.Logger) (*plugin.Manager, func(), error) {
 	manager := plugin.NewManager()
 	ctx := context.Background()
 
 	if err := manager.LoadPlugins(ctx, config.Plugins); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return manager, nil
+	cleanup := func() {
+		if err := manager.Close(); err != nil {
+			logger.Warn().Err(err).Msg("failed to close plugin manager")
+		}
+	}
+
+	return manager, cleanup, nil
 }

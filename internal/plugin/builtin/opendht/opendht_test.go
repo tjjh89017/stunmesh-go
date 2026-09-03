@@ -639,3 +639,25 @@ func TestAllEndpointsFailingReportsEach(t *testing.T) {
 		}
 	}
 }
+
+func TestOpenDHTPlugin_Close(t *testing.T) {
+	store, err := NewOpenDHTPlugin(pluginapi.PluginConfig{
+		configKeyEndpoint: "http://127.0.0.1:1",
+	})
+	if err != nil {
+		t.Fatalf("NewOpenDHTPlugin() unexpected error: %v", err)
+	}
+
+	closer, ok := store.(io.Closer)
+	if !ok {
+		t.Fatal("OpenDHTPlugin does not implement io.Closer")
+	}
+
+	if err := closer.Close(); err != nil {
+		t.Errorf("Close() unexpected error: %v", err)
+	}
+
+	if err := closer.Close(); err != nil {
+		t.Errorf("second Close() unexpected error: %v", err)
+	}
+}

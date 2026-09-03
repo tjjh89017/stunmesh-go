@@ -226,6 +226,13 @@ func (p *CloudflarePlugin) Get(ctx context.Context, key string) (string, error) 
 	return content, nil
 }
 
+// Close closes the plugin's idle HTTP connections. Safe to call more than
+// once.
+func (p *CloudflarePlugin) Close() error {
+	p.client.CloseIdleConnections()
+	return nil
+}
+
 // Set stores a value in Cloudflare DNS
 func (p *CloudflarePlugin) Set(ctx context.Context, key string, value string) error {
 	logger := zerolog.Ctx(ctx)

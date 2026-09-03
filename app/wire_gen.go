@@ -8,6 +8,7 @@ package app
 
 import (
 	"context"
+	"github.com/rs/zerolog"
 	"github.com/tjjh89017/stunmesh-go/internal/config"
 	"github.com/tjjh89017/stunmesh-go/internal/crypto"
 	"github.com/tjjh89017/stunmesh-go/internal/ctrl"
@@ -32,7 +33,7 @@ func setup(cfg *config.Config) (*daemon.Daemon, func(), error) {
 	peers := repo.NewPeers(client)
 	filterPeerService := entity.NewFilterPeerService(peers, deviceConfig)
 	bootstrapController := ctrl.NewBootstrapController(client, cfg, deviceConfig, devices, peers, zerologLogger, filterPeerService)
-	manager, err := providePluginManager(cfg)
+	manager, cleanup2, err := providePluginManager(cfg, zerologLogger)
 	if err != nil {
 		cleanup()
 		return nil, nil, err
@@ -44,19 +45,27 @@ func setup(cfg *config.Config) (*daemon.Daemon, func(), error) {
 	pingMonitorController := ctrl.NewPingMonitorController(cfg, devices, peers, publishController, establishController, zerologLogger)
 	daemonDaemon := daemon.New(cfg, bootstrapController, publishController, establishController, pingMonitorController, zerologLogger)
 	return daemonDaemon, func() {
+		cleanup2()
 		cleanup()
 	}, nil
 }
 
 // wire.go:
 
-func providePluginManager(config2 *config.Config) (*plugin.Manager, error) {
+func providePluginManager(config2 *config.Config, logger2 *zerolog.Logger) (*plugin.Manager, func(), error) {
 	manager := plugin.NewManager()
 	ctx := context.Background()
 
 	if err := manager.LoadPlugins(ctx, config2.Plugins); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return manager, nil
+	cleanup := func() {
+		if err := manager.Close(); err != nil {
+			logger2.
+				Warn().Err(err).Msg("failed to close plugin manager")
+		}
+	}
+
+	return manager, cleanup, nil
 }
