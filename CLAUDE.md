@@ -113,7 +113,10 @@ dependencies are wired together — both the CLI (`main.go`) and any external
 embedder import it. `app.New(app.Options{ConfigFile, ConfigDir})` loads
 config and wires everything, returning an `*app.App` with `Run(ctx)`,
 `RunOneshot(ctx)`, and `Close()`. `Close` is idempotent and safe to call more
-than once. `app.Options` mirrors the CLI's `-c/--config`/`--config-dir`
+than once; it also cancels an in-flight `Run`/`RunOneshot` and waits for it
+to return before releasing resources, and `Run`/`RunOneshot` return
+`ErrAlreadyRunning`/`ErrClosed` when called concurrently or after `Close`.
+`app.Options` mirrors the CLI's `-c/--config`/`--config-dir`
 flags; exported `app` signatures never mention `internal/*` types.
 
 ### Dependency Injection with Google Wire

@@ -19,7 +19,7 @@ import (
 	"github.com/tjjh89017/stunmesh-go/internal/wg"
 )
 
-func setup(cfg *config.Config) (*daemon.Daemon, func(), error) {
+func setup(ctx context.Context, cfg *config.Config) (*daemon.Daemon, func(), error) {
 	wire.Build(
 		newProxyStack,
 		wire.FieldsOf(new(*proxyStack), "Client", "Resolver"),
@@ -49,9 +49,8 @@ func setup(cfg *config.Config) (*daemon.Daemon, func(), error) {
 	return nil, nil, nil
 }
 
-func providePluginManager(config *config.Config, logger *zerolog.Logger) (*plugin.Manager, func(), error) {
+func providePluginManager(ctx context.Context, config *config.Config, logger *zerolog.Logger) (*plugin.Manager, func(), error) {
 	manager := plugin.NewManager()
-	ctx := context.Background()
 
 	if err := manager.LoadPlugins(ctx, config.Plugins); err != nil {
 		return nil, nil, err
