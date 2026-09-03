@@ -133,7 +133,13 @@ there's a stated reason not to.
   plugin owning connections or goroutines implements `io.Closer` to release
   them. `plugin.Manager.Close` closes every instance that does so and runs
   from `App.Close` (via the plugin manager provider's cleanup func) and from
-  the mobile controller's `stop`.
+  the mobile controller's `stop`. `App.New` creates the App's own lifetime
+  `context.Context` and passes it into the plugin manager provider (instead
+  of `context.Background()`), so plugin construction is tied to the App
+  rather than to whichever `Run` call happens to be active. `App.Close`
+  cancels that context and waits for any in-flight `Run`/`RunOneshot` to
+  return before releasing resources, so a plugin is never closed out from
+  under a live worker.
 
 ### One escape hatch for every outbound path
 

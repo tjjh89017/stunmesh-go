@@ -21,7 +21,7 @@ import (
 
 // Injectors from wire.go:
 
-func setup(cfg *config.Config) (*daemon.Daemon, func(), error) {
+func setup(ctx context.Context, cfg *config.Config) (*daemon.Daemon, func(), error) {
 	deviceConfig := config.NewDeviceConfig(cfg)
 	zerologLogger := logger.NewLogger(cfg)
 	appProxyStack, cleanup, err := newProxyStack(cfg, deviceConfig, zerologLogger)
@@ -33,7 +33,7 @@ func setup(cfg *config.Config) (*daemon.Daemon, func(), error) {
 	peers := repo.NewPeers(client)
 	filterPeerService := entity.NewFilterPeerService(peers, deviceConfig)
 	bootstrapController := ctrl.NewBootstrapController(client, cfg, deviceConfig, devices, peers, zerologLogger, filterPeerService)
-	manager, cleanup2, err := providePluginManager(cfg, zerologLogger)
+	manager, cleanup2, err := providePluginManager(ctx, cfg, zerologLogger)
 	if err != nil {
 		cleanup()
 		return nil, nil, err
@@ -52,9 +52,8 @@ func setup(cfg *config.Config) (*daemon.Daemon, func(), error) {
 
 // wire.go:
 
-func providePluginManager(config2 *config.Config, logger2 *zerolog.Logger) (*plugin.Manager, func(), error) {
+func providePluginManager(ctx context.Context, config2 *config.Config, logger2 *zerolog.Logger) (*plugin.Manager, func(), error) {
 	manager := plugin.NewManager()
-	ctx := context.Background()
 
 	if err := manager.LoadPlugins(ctx, config2.Plugins); err != nil {
 		return nil, nil, err
