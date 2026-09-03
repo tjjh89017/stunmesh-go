@@ -100,9 +100,9 @@ func (c *PublishController) discoverEndpoints(ctx context.Context, device *entit
 // publishToPeer builds the endpoint JSON, applies dedup, encrypts and
 // stores it for a single peer, and records it in lastPublished on success.
 // storeCtx is the context used for the store.Set call (after applying the
-// dialer escape); callers pass different bases (Execute keeps the
-// peer-scoped logger attached, ExecuteForPeer detaches from cancellation)
-// while ctx is used unchanged for encryption.
+// dialer escape); ctx is used unchanged for encryption. Both Execute and
+// ExecuteForPeer pass the same cancellable context, with the peer-scoped
+// logger attached to storeCtx.
 func (c *PublishController) publishToPeer(ctx, storeCtx context.Context, device *entity.Device, peer *entity.Peer, ipv4Endpoint, ipv6Endpoint string, logger zerolog.Logger) error {
 	// Build endpoint data in plain JSON
 	endpointData := EndpointData{
@@ -222,7 +222,7 @@ func (c *PublishController) ExecuteForPeer(ctx context.Context, peerId entity.Pe
 		Str("ipv6", ipv6Endpoint).
 		Msg("discovered endpoints for peer")
 
-	if err := c.publishToPeer(ctx, context.WithoutCancel(ctx), device, peer, ipv4Endpoint, ipv6Endpoint, logger); err != nil {
+	if err := c.publishToPeer(ctx, logger.WithContext(ctx), device, peer, ipv4Endpoint, ipv6Endpoint, logger); err != nil {
 		return
 	}
 

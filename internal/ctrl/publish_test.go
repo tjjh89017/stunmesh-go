@@ -769,6 +769,81 @@ func TestPublishController_ExecuteForPeer_Success(t *testing.T) {
 	controller.ExecuteForPeer(ctx, peerId)
 }
 
+// cancellationCapturingStore records whether the context it receives on
+// Set was already done, so tests can assert it carries the parent's
+// cancellation.
+type cancellationCapturingStore struct {
+	doneAtCall bool
+	called     bool
+}
+
+func (s *cancellationCapturingStore) Get(ctx context.Context, key string) (string, error) {
+	return "", nil
+}
+
+func (s *cancellationCapturingStore) Set(ctx context.Context, key string, value string) error {
+	s.called = true
+	s.doneAtCall = ctx.Err() != nil
+	return nil
+}
+
+// Test ExecuteForPeer's store ctx is cancelled when the triggering ctx is,
+// matching Execute's behavior.
+func TestPublishController_ExecuteForPeer_StoreCtxCancelledWithParent(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+
+	mockDevices := mock.NewMockDeviceRepository(mockCtrl)
+	mockPeers := mock.NewMockPeerRepository(mockCtrl)
+	mockResolver := mock.NewMockStunResolver(mockCtrl)
+	mockEncryptor := mock.NewMockEndpointEncryptor(mockCtrl)
+	logger := zerolog.Nop()
+
+	store := &cancellationCapturingStore{}
+	pluginProvider := mock.NewMockPluginProvider(mockCtrl)
+	pluginProvider.EXPECT().IsDedup("test_plugin").Return(false).AnyTimes()
+	pluginProvider.EXPECT().GetPlugin("test_plugin").Return(store, nil).AnyTimes()
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	device := createTestDevice("wg0", 51820, "ipv4")
+	peer := createTestPeer("wg0", "test_plugin", "ipv4")
+	publicKey := peer.PublicKey()
+	peerId := entity.NewPeerId(make([]byte, 32), publicKey[:])
+
+	mockPeers.EXPECT().Find(gomock.Any(), peerId).Return(peer, nil)
+	mockDevices.EXPECT().Find(gomock.Any(), entity.DeviceId("wg0")).Return(device, nil)
+	mockResolver.EXPECT().
+		Resolve(gomock.Any(), "wg0", uint16(51820), "ipv4", gomock.Any()).
+		Return("1.2.3.4", 51820, nil)
+	mockEncryptor.EXPECT().
+		Encrypt(gomock.Any(), gomock.Any()).
+		Return(&ctrl.EndpointEncryptResponse{Data: "encrypted_data"}, nil)
+
+	controller := ctrl.NewPublishController(
+		mockDevices,
+		mockPeers,
+		pluginProvider,
+		mockResolver,
+		mockEncryptor,
+		nil,
+		&logger,
+	)
+
+	// Cancel the parent ctx before the call, to prove the store ctx carries
+	// the cancellation instead of being detached from it.
+	cancel()
+
+	controller.ExecuteForPeer(ctx, peerId)
+
+	if !store.called {
+		t.Fatal("store.Set was not called")
+	}
+	if !store.doneAtCall {
+		t.Error("store ctx was not done at call time, want it cancelled with the parent ctx")
+	}
+}
+
 // Test Execute with dedup ON and a changed endpoint - should publish every time
 func TestPublishController_Execute_Dedup_ChangedEndpoint_Publishes(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
