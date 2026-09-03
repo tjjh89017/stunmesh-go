@@ -3,10 +3,12 @@
 package ctrl
 
 import (
+	"context"
+
 	"github.com/tjjh89017/stunmesh-go/internal/wg"
 )
 
 type WireGuardClient interface {
-	Device(deviceName string) (*wg.DeviceInfo, error)
-	UpdatePeerEndpoint(u wg.PeerEndpointUpdate) error
+	Device(ctx context.Context, deviceName string) (*wg.DeviceInfo, error)
+	UpdatePeerEndpoint(ctx context.Context, u wg.PeerEndpointUpdate) error
 }

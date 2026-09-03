@@ -3,6 +3,7 @@
 package wg
 
 import (
+	"context"
 	"errors"
 	"net"
 	"testing"
@@ -57,7 +58,7 @@ func TestCtrlClient_Device_MapsFields(t *testing.T) {
 	}
 	c := &ctrlClient{c: backend}
 
-	info, err := c.Device("testdev")
+	info, err := c.Device(context.Background(), "testdev")
 	if err != nil {
 		t.Fatalf("Device: unexpected error: %v", err)
 	}
@@ -91,7 +92,7 @@ func TestCtrlClient_Device_ErrorPassesThroughElevationHint(t *testing.T) {
 	}
 	c := &ctrlClient{c: backend}
 
-	_, err := c.Device("testdev")
+	_, err := c.Device(context.Background(), "testdev")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -116,7 +117,7 @@ func TestCtrlClient_UpdatePeerEndpoint_ConfiguresDevice(t *testing.T) {
 	}
 	c := &ctrlClient{c: backend}
 
-	err := c.UpdatePeerEndpoint(PeerEndpointUpdate{
+	err := c.UpdatePeerEndpoint(context.Background(), PeerEndpointUpdate{
 		DeviceName: "testdev",
 		PublicKey:  pk,
 		Host:       "1.2.3.4",
@@ -154,7 +155,7 @@ func TestCtrlClient_UpdatePeerEndpoint_ErrorPassesThroughElevationHint(t *testin
 	}
 	c := &ctrlClient{c: backend}
 
-	err := c.UpdatePeerEndpoint(PeerEndpointUpdate{DeviceName: "testdev"})
+	err := c.UpdatePeerEndpoint(context.Background(), PeerEndpointUpdate{DeviceName: "testdev"})
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}

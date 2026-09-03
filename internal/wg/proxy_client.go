@@ -1,6 +1,7 @@
 package wg
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/netip"
@@ -54,12 +55,12 @@ func NewProxyClient(inner Client, manager *wgproxy.Manager, config ProxyConfig, 
 // to inner, even when proxy mode is on for the process as a whole — the
 // decorator being installed only means at least one interface opted in, not
 // that this one did.
-func (c *proxyClient) Device(name string) (*DeviceInfo, error) {
+func (c *proxyClient) Device(ctx context.Context, name string) (*DeviceInfo, error) {
 	if !c.config.GetProxyEnabled(name, runtime.GOOS) {
-		return c.inner.Device(name)
+		return c.inner.Device(ctx, name)
 	}
 
-	info, err := c.inner.Device(name)
+	info, err := c.inner.Device(ctx, name)
 	if err != nil {
 		return nil, err
 	}
@@ -80,9 +81,9 @@ func (c *proxyClient) Device(name string) (*DeviceInfo, error) {
 // UpdatePeerEndpoint programs the proxy with the real remote, then delegates
 // with the endpoint replaced by the peer's loopback inner socket. A device
 // that opted out of proxy mode delegates the endpoint unchanged.
-func (c *proxyClient) UpdatePeerEndpoint(u PeerEndpointUpdate) error {
+func (c *proxyClient) UpdatePeerEndpoint(ctx context.Context, u PeerEndpointUpdate) error {
 	if !c.config.GetProxyEnabled(u.DeviceName, runtime.GOOS) {
-		return c.inner.UpdatePeerEndpoint(u)
+		return c.inner.UpdatePeerEndpoint(ctx, u)
 	}
 
 	addr, err := netip.ParseAddr(u.Host)
@@ -104,7 +105,7 @@ func (c *proxyClient) UpdatePeerEndpoint(u PeerEndpointUpdate) error {
 		Str("remote", remote.String()).
 		Str("inner", innerAddr.String()).
 		Msg("peer endpoint substituted with proxy inner socket")
-	return c.inner.UpdatePeerEndpoint(PeerEndpointUpdate{
+	return c.inner.UpdatePeerEndpoint(ctx, PeerEndpointUpdate{
 		DeviceName: u.DeviceName,
 		PublicKey:  u.PublicKey,
 		Host:       innerAddr.Addr().String(),

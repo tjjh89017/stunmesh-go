@@ -70,7 +70,7 @@ func (r *Peers) Save(ctx context.Context, peer *entity.Peer) {
 }
 
 func (r *Peers) GetDevicePeerMap(ctx context.Context, deviceName string) (map[entity.PeerKey]bool, error) {
-	device, err := r.wgCtrl.Device(deviceName)
+	device, err := r.wgCtrl.Device(ctx, deviceName)
 	if err != nil {
 		return nil, err
 	}

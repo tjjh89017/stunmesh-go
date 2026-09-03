@@ -3,6 +3,7 @@
 package wg
 
 import (
+	"context"
 	"net"
 
 	"golang.zx2c4.com/wireguard/wgctrl"
@@ -30,7 +31,8 @@ func New() (Client, error) {
 	return &ctrlClient{c: c}, nil
 }
 
-func (cc *ctrlClient) Device(name string) (*DeviceInfo, error) {
+// Device ignores ctx: wgctrl has no context-aware API.
+func (cc *ctrlClient) Device(ctx context.Context, name string) (*DeviceInfo, error) {
 	d, err := cc.c.Device(name)
 	if err != nil {
 		return nil, elevationHint(err)
@@ -51,7 +53,8 @@ func (cc *ctrlClient) Device(name string) (*DeviceInfo, error) {
 	}, nil
 }
 
-func (cc *ctrlClient) UpdatePeerEndpoint(u PeerEndpointUpdate) error {
+// UpdatePeerEndpoint ignores ctx: wgctrl has no context-aware API.
+func (cc *ctrlClient) UpdatePeerEndpoint(ctx context.Context, u PeerEndpointUpdate) error {
 	cfg := wgtypes.Config{
 		Peers: []wgtypes.PeerConfig{
 			{

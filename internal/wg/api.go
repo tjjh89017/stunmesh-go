@@ -1,5 +1,7 @@
 package wg
 
+import "context"
+
 // Key is a 32-byte WireGuard key (public or private).
 type Key = [32]byte
 
@@ -24,7 +26,7 @@ type PeerEndpointUpdate struct {
 
 // Client is the abstraction over a WireGuard control-plane backend.
 type Client interface {
-	Device(name string) (*DeviceInfo, error)
-	UpdatePeerEndpoint(u PeerEndpointUpdate) error
+	Device(ctx context.Context, name string) (*DeviceInfo, error)
+	UpdatePeerEndpoint(ctx context.Context, u PeerEndpointUpdate) error
 	Close() error
 }
