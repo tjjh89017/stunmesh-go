@@ -129,6 +129,11 @@ there's a stated reason not to.
   registration that depends on config read at runtime) — `init()`-time
   self-registration assumes registration has no inputs beyond the build
   tags baked into the binary.
+- **Lifecycle**: plugin instances live for the whole `App` lifetime — a
+  plugin owning connections or goroutines implements `io.Closer` to release
+  them. `plugin.Manager.Close` closes every instance that does so and runs
+  from `App.Close` (via the plugin manager provider's cleanup func) and from
+  the mobile controller's `stop`.
 
 ### One escape hatch for every outbound path
 

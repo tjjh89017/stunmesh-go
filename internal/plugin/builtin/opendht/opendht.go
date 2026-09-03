@@ -222,6 +222,13 @@ func (p *OpenDHTPlugin) doRequestTo(ctx context.Context, endpoint, method, key s
 	return data, nil
 }
 
+// Close closes the plugin's idle HTTP connections. Safe to call more than
+// once.
+func (p *OpenDHTPlugin) Close() error {
+	p.client.CloseIdleConnections()
+	return nil
+}
+
 // Get retrieves a value from OpenDHT
 func (p *OpenDHTPlugin) Get(ctx context.Context, key string) (string, error) {
 	logger := zerolog.Ctx(ctx)

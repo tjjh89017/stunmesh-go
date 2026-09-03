@@ -2,10 +2,43 @@ package plugin
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 
 	pluginapi "github.com/tjjh89017/stunmesh-go/pluginapi"
 )
+
+// fakeCloserStore is a Store that also implements io.Closer, recording
+// close calls and optionally failing once.
+type fakeCloserStore struct {
+	closeCalls int
+	closeErr   error
+}
+
+func (f *fakeCloserStore) Get(ctx context.Context, key string) (string, error) {
+	return "", nil
+}
+
+func (f *fakeCloserStore) Set(ctx context.Context, key string, value string) error {
+	return nil
+}
+
+func (f *fakeCloserStore) Close() error {
+	f.closeCalls++
+	return f.closeErr
+}
+
+// fakePlainStore is a Store without a Close method.
+type fakePlainStore struct{}
+
+func (f *fakePlainStore) Get(ctx context.Context, key string) (string, error) {
+	return "", nil
+}
+
+func (f *fakePlainStore) Set(ctx context.Context, key string, value string) error {
+	return nil
+}
 
 func TestNewManager(t *testing.T) {
 	m := NewManager()
@@ -221,5 +254,55 @@ func TestIsDedup_UnknownPluginReturnsFalse(t *testing.T) {
 
 	if got := m.IsDedup("nonexistent"); got != false {
 		t.Errorf("IsDedup() = %v, want false for unknown plugin name", got)
+	}
+}
+
+func TestClose_ClosesOnlyClosers(t *testing.T) {
+	m := NewManager()
+	closer := &fakeCloserStore{}
+	plain := &fakePlainStore{}
+	m.plugins["closer"] = closer
+	m.plugins["plain"] = plain
+
+	if err := m.Close(); err != nil {
+		t.Fatalf("Close() unexpected error: %v", err)
+	}
+
+	if closer.closeCalls != 1 {
+		t.Errorf("closer.closeCalls = %d, want 1", closer.closeCalls)
+	}
+}
+
+func TestClose_JoinsAndPrefixesErrors(t *testing.T) {
+	m := NewManager()
+	m.plugins["a"] = &fakeCloserStore{closeErr: errors.New("boom a")}
+	m.plugins["b"] = &fakeCloserStore{closeErr: errors.New("boom b")}
+
+	err := m.Close()
+	if err == nil {
+		t.Fatal("Close() expected error, got nil")
+	}
+
+	for _, want := range []string{"plugin a: boom a", "plugin b: boom b"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("Close() error = %q, want it to contain %q", err.Error(), want)
+		}
+	}
+}
+
+func TestClose_IdempotentSecondCallIsNoOp(t *testing.T) {
+	m := NewManager()
+	closer := &fakeCloserStore{}
+	m.plugins["closer"] = closer
+
+	if err := m.Close(); err != nil {
+		t.Fatalf("first Close() unexpected error: %v", err)
+	}
+	if err := m.Close(); err != nil {
+		t.Fatalf("second Close() unexpected error: %v", err)
+	}
+
+	if closer.closeCalls != 1 {
+		t.Errorf("closer.closeCalls after two Close() calls = %d, want 1", closer.closeCalls)
 	}
 }

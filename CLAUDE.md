@@ -465,6 +465,7 @@ Common parameters to remember:
 3. Add a blank import to `internal/plugin/imports.go`
    - That file carries no build tag, and must not: a blank import names no symbol, so importing a built-in that is tagged out (leaving only its stub) is fine. The tag belongs on the implementation, once
 4. Update the built-in plugin list and configuration example in the docs site ([tjjh89017/stunmesh-docs](https://github.com/tjjh89017/stunmesh-docs), published at docs.stunmesh.dev), and the `BUILTIN` examples in README.md if affected
+5. If the plugin holds connections or goroutines, implement `Close() error`; `Manager.Close` calls it on shutdown.
 
 Verify every tag combination, since a built-in must compile alone, under
 `builtin_all`, and alongside the others:

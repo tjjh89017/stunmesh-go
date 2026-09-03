@@ -2,7 +2,11 @@ package plugin
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
+	"maps"
+	"slices"
 
 	pluginapi "github.com/tjjh89017/stunmesh-go/pluginapi"
 )
@@ -37,6 +41,24 @@ func (m *Manager) GetPlugin(name string) (pluginapi.Store, error) {
 		return nil, fmt.Errorf("plugin %s not found", name)
 	}
 	return store, nil
+}
+
+// Close closes every plugin instance that implements io.Closer, in sorted
+// name order, and joins any errors. It is idempotent: after closing, the
+// plugin set is emptied, so a second call is a no-op returning nil.
+func (m *Manager) Close() error {
+	var errs []error
+	for _, name := range slices.Sorted(maps.Keys(m.plugins)) {
+		closer, ok := m.plugins[name].(io.Closer)
+		if !ok {
+			continue
+		}
+		if err := closer.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("plugin %s: %w", name, err))
+		}
+	}
+	clear(m.plugins)
+	return errors.Join(errs...)
 }
 
 // IsDedup reports whether the named plugin instance has dedup enabled.

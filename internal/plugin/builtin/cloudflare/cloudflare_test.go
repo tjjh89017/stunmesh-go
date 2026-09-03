@@ -3,6 +3,7 @@
 package cloudflare
 
 import (
+	"io"
 	"testing"
 
 	pluginapi "github.com/tjjh89017/stunmesh-go/pluginapi"
@@ -143,3 +144,26 @@ func TestCloudflarePlugin_StructFields(t *testing.T) {
 //       apiURL string     // configurable
 //       ...
 //   }
+
+func TestCloudflarePlugin_Close(t *testing.T) {
+	store, err := NewCloudflarePlugin(pluginapi.PluginConfig{
+		"zone":  "example.com",
+		"token": "test-token",
+	})
+	if err != nil {
+		t.Fatalf("NewCloudflarePlugin() unexpected error: %v", err)
+	}
+
+	closer, ok := store.(io.Closer)
+	if !ok {
+		t.Fatal("CloudflarePlugin does not implement io.Closer")
+	}
+
+	if err := closer.Close(); err != nil {
+		t.Errorf("Close() unexpected error: %v", err)
+	}
+
+	if err := closer.Close(); err != nil {
+		t.Errorf("second Close() unexpected error: %v", err)
+	}
+}
