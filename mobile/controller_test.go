@@ -51,7 +51,7 @@ func TestSelectEndpoint(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := ctrl.SelectEndpoint(tt.data, tt.protocol)
+			got, err := ctrl.SelectEndpoint(tt.data, tt.protocol, nil)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatalf("SelectEndpoint(%+v, %q) = %q, nil; want error", tt.data, tt.protocol, got)

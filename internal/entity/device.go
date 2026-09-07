@@ -2,6 +2,7 @@ package entity
 
 import (
 	"errors"
+	"time"
 )
 
 var (
@@ -68,4 +69,13 @@ func (d *Device) Protocol() string {
 
 func (d *Device) FirewallMark() int {
 	return d.firewallMark
+}
+
+// DeviceStatus records the local host's last STUN discovery result for a
+// device, so EstablishController can tell which endpoint address families
+// the local host itself can actually reach.
+type DeviceStatus struct {
+	IPv4         string
+	IPv6         string
+	DiscoveredAt time.Time
 }

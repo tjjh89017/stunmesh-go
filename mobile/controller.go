@@ -150,12 +150,14 @@ func (c *controller) cycle(ctx context.Context) {
 	}
 
 	data, err := c.discover(ctx)
+	var local *entity.DeviceStatus
 	if err != nil {
 		listener.OnLog("warn", "endpoint discovery failed, skipping publish: "+err.Error())
 	} else {
 		c.publish(ctx, data)
+		local = &entity.DeviceStatus{IPv4: data.IPv4, IPv6: data.IPv6}
 	}
-	c.establish(ctx)
+	c.establish(ctx, local)
 }
 
 // discover resolves the reflexive addresses the interface protocol asks for,
@@ -279,7 +281,11 @@ func (c *controller) publish(ctx context.Context, data ctrl.EndpointData) {
 	}
 }
 
-func (c *controller) establish(ctx context.Context) {
+// establish decrypts and applies each peer's stored endpoint. local is the
+// local host's own last STUN discovery result (nil if unknown or the last
+// discovery cycle failed), passed through to ctrl.SelectEndpoint so a
+// family the local host cannot reach is not selected.
+func (c *controller) establish(ctx context.Context, local *entity.DeviceStatus) {
 	listener := c.node.listener
 	for _, peer := range c.cfg.Peers {
 		peerPub, err := keyToBytes(peer.PublicKey)
@@ -312,7 +318,7 @@ func (c *controller) establish(ctx context.Context) {
 			listener.OnLog("warn", "parse record for "+peer.Name+": "+err.Error())
 			continue
 		}
-		endpoint, err := ctrl.SelectEndpoint(data, peer.Protocol)
+		endpoint, err := ctrl.SelectEndpoint(data, peer.Protocol, local)
 		if err != nil {
 			listener.OnLog("warn", "select endpoint for "+peer.Name+": "+err.Error())
 			continue

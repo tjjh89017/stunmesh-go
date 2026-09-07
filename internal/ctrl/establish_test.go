@@ -13,6 +13,7 @@ import (
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
 	"github.com/tjjh89017/stunmesh-go/internal/plugin"
 	"github.com/tjjh89017/stunmesh-go/internal/plugin/registry"
+	"github.com/tjjh89017/stunmesh-go/internal/wg"
 	"github.com/tjjh89017/stunmesh-go/pluginapi"
 	"go.uber.org/mock/gomock"
 )
@@ -365,6 +366,7 @@ func TestEstablishController_Execute_IPv4Selection(t *testing.T) {
 	// Setup expectations
 	mockPeers.EXPECT().Find(ctx, gomock.Any()).Return(peer, nil)
 	mockDevices.EXPECT().Find(ctx, entity.DeviceId("wg0")).Return(device, nil)
+	mockDevices.EXPECT().Status(ctx, entity.DeviceId("wg0")).Return(entity.DeviceStatus{}, false)
 	mockDecryptor.EXPECT().
 		Decrypt(ctx, gomock.Any()).
 		Return(&ctrl.EndpointDecryptResponse{Content: string(jsonData)}, nil)
@@ -429,6 +431,7 @@ func TestEstablishController_Execute_IPv6Selection(t *testing.T) {
 	// Setup expectations
 	mockPeers.EXPECT().Find(ctx, gomock.Any()).Return(peer, nil)
 	mockDevices.EXPECT().Find(ctx, entity.DeviceId("wg0")).Return(device, nil)
+	mockDevices.EXPECT().Status(ctx, entity.DeviceId("wg0")).Return(entity.DeviceStatus{}, false)
 	mockDecryptor.EXPECT().
 		Decrypt(ctx, gomock.Any()).
 		Return(&ctrl.EndpointDecryptResponse{Content: string(jsonData)}, nil)
@@ -493,6 +496,7 @@ func TestEstablishController_Execute_PreferIPv4_HasIPv4(t *testing.T) {
 	// Setup expectations
 	mockPeers.EXPECT().Find(ctx, gomock.Any()).Return(peer, nil)
 	mockDevices.EXPECT().Find(ctx, entity.DeviceId("wg0")).Return(device, nil)
+	mockDevices.EXPECT().Status(ctx, entity.DeviceId("wg0")).Return(entity.DeviceStatus{}, false)
 	mockDecryptor.EXPECT().
 		Decrypt(ctx, gomock.Any()).
 		Return(&ctrl.EndpointDecryptResponse{Content: string(jsonData)}, nil)
@@ -557,6 +561,7 @@ func TestEstablishController_Execute_PreferIPv4_FallbackIPv6(t *testing.T) {
 	// Setup expectations
 	mockPeers.EXPECT().Find(ctx, gomock.Any()).Return(peer, nil)
 	mockDevices.EXPECT().Find(ctx, entity.DeviceId("wg0")).Return(device, nil)
+	mockDevices.EXPECT().Status(ctx, entity.DeviceId("wg0")).Return(entity.DeviceStatus{}, false)
 	mockDecryptor.EXPECT().
 		Decrypt(ctx, gomock.Any()).
 		Return(&ctrl.EndpointDecryptResponse{Content: string(jsonData)}, nil)
@@ -621,6 +626,7 @@ func TestEstablishController_Execute_PreferIPv6_HasIPv6(t *testing.T) {
 	// Setup expectations
 	mockPeers.EXPECT().Find(ctx, gomock.Any()).Return(peer, nil)
 	mockDevices.EXPECT().Find(ctx, entity.DeviceId("wg0")).Return(device, nil)
+	mockDevices.EXPECT().Status(ctx, entity.DeviceId("wg0")).Return(entity.DeviceStatus{}, false)
 	mockDecryptor.EXPECT().
 		Decrypt(ctx, gomock.Any()).
 		Return(&ctrl.EndpointDecryptResponse{Content: string(jsonData)}, nil)
@@ -685,6 +691,7 @@ func TestEstablishController_Execute_PreferIPv6_FallbackIPv4(t *testing.T) {
 	// Setup expectations
 	mockPeers.EXPECT().Find(ctx, gomock.Any()).Return(peer, nil)
 	mockDevices.EXPECT().Find(ctx, entity.DeviceId("wg0")).Return(device, nil)
+	mockDevices.EXPECT().Status(ctx, entity.DeviceId("wg0")).Return(entity.DeviceStatus{}, false)
 	mockDecryptor.EXPECT().
 		Decrypt(ctx, gomock.Any()).
 		Return(&ctrl.EndpointDecryptResponse{Content: string(jsonData)}, nil)
@@ -749,6 +756,7 @@ func TestEstablishController_Execute_IPv4_NotAvailable(t *testing.T) {
 	// Setup expectations
 	mockPeers.EXPECT().Find(ctx, gomock.Any()).Return(peer, nil)
 	mockDevices.EXPECT().Find(ctx, entity.DeviceId("wg0")).Return(device, nil)
+	mockDevices.EXPECT().Status(ctx, entity.DeviceId("wg0")).Return(entity.DeviceStatus{}, false)
 	mockDecryptor.EXPECT().
 		Decrypt(ctx, gomock.Any()).
 		Return(&ctrl.EndpointDecryptResponse{Content: string(jsonData)}, nil)
@@ -808,6 +816,7 @@ func TestEstablishController_Execute_WireGuardError(t *testing.T) {
 	// Setup expectations
 	mockPeers.EXPECT().Find(ctx, gomock.Any()).Return(peer, nil)
 	mockDevices.EXPECT().Find(ctx, entity.DeviceId("wg0")).Return(device, nil)
+	mockDevices.EXPECT().Status(ctx, entity.DeviceId("wg0")).Return(entity.DeviceStatus{}, false)
 	mockDecryptor.EXPECT().
 		Decrypt(ctx, gomock.Any()).
 		Return(&ctrl.EndpointDecryptResponse{Content: string(jsonData)}, nil)
@@ -826,6 +835,78 @@ func TestEstablishController_Execute_WireGuardError(t *testing.T) {
 	)
 
 	// Should not panic
+	controller.Execute(ctx, peerId)
+}
+
+// Test Execute - prefer_ipv6 skips the record's IPv6 endpoint when the
+// local host's own last STUN discovery found no IPv6 address, falling
+// back to IPv4 instead of writing an endpoint the local host can't reach.
+func TestEstablishController_Execute_PreferIPv6_LocalHasNoIPv6_FallsBackIPv4(t *testing.T) {
+	registerTestPlugin()
+
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+
+	mockWgClient := mock.NewMockWireGuardClient(mockCtrl)
+	mockDevices := mock.NewMockDeviceRepository(mockCtrl)
+	mockPeers := mock.NewMockPeerRepository(mockCtrl)
+	mockDecryptor := mock.NewMockEndpointDecryptor(mockCtrl)
+	logger := zerolog.Nop()
+
+	ctx := context.Background()
+
+	device := createTestDevice("wg0", 51820, "dualstack")
+	peer := createTestPeer("wg0", "test_storage", "prefer_ipv6")
+	publicKey := peer.PublicKey()
+	devicePrivKey := device.PrivateKey()
+	peerId := entity.NewPeerId(devicePrivKey[:], publicKey[:])
+
+	// Setup plugin manager
+	pluginManager := plugin.NewManager()
+	_ = pluginManager.LoadPlugins(ctx, map[string]pluginapi.PluginDefinition{
+		"test_storage": {
+			Type:   "builtin",
+			Config: pluginapi.PluginConfig{"name": "test_storage"},
+		},
+	})
+
+	// Pre-populate store
+	_ = testStoreInstance.Set(ctx, peer.RemoteId(), "encrypted_data")
+
+	// Record has both endpoints, but the local host has no IPv6 of its own.
+	endpointData := ctrl.EndpointData{
+		IPv4: "1.2.3.4:51820",
+		IPv6: "[2001:db8::1]:51820",
+	}
+	jsonData, _ := json.Marshal(endpointData)
+
+	// Setup expectations
+	mockPeers.EXPECT().Find(ctx, gomock.Any()).Return(peer, nil)
+	mockDevices.EXPECT().Find(ctx, entity.DeviceId("wg0")).Return(device, nil)
+	mockDevices.EXPECT().Status(ctx, entity.DeviceId("wg0")).
+		Return(entity.DeviceStatus{IPv4: "9.9.9.9:51820"}, true)
+	mockDecryptor.EXPECT().
+		Decrypt(ctx, gomock.Any()).
+		Return(&ctrl.EndpointDecryptResponse{Content: string(jsonData)}, nil)
+	mockWgClient.EXPECT().
+		UpdatePeerEndpoint(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, update wg.PeerEndpointUpdate) error {
+			if update.Host != "1.2.3.4" || update.Port != 51820 {
+				t.Errorf("UpdatePeerEndpoint got host %q port %d, want the IPv4 endpoint 1.2.3.4:51820", update.Host, update.Port)
+			}
+			return nil
+		})
+
+	controller := ctrl.NewEstablishController(
+		mockWgClient,
+		mockDevices,
+		mockPeers,
+		pluginManager,
+		mockDecryptor,
+		nil, // deviceConfig
+		&logger,
+	)
+
 	controller.Execute(ctx, peerId)
 }
 

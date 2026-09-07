@@ -92,14 +92,25 @@ func (c *EstablishController) Execute(ctx context.Context, peerId entity.PeerId)
 	// Log decrypted endpoint data for debugging
 	logger.Trace().Str("json", res.Content).Msg("decrypted endpoint data")
 
-	// Select endpoint based on peer protocol
+	// Select endpoint based on peer protocol, constrained by what the local
+	// host's own last STUN discovery showed it can reach.
+	status, statusKnown := c.devices.Status(ctx, device.Name())
+	var local *entity.DeviceStatus
+	if statusKnown {
+		local = &status
+	}
+
 	peerProtocol := peer.Protocol()
-	selectedEndpoint, err := SelectEndpoint(endpointData, peerProtocol)
+	selectedEndpoint, err := SelectEndpoint(endpointData, peerProtocol, local)
 	if err != nil {
 		logger.Error().Err(err).Str("protocol", peerProtocol).Msg("failed to select endpoint")
 		return
 	}
-	logger.Debug().Str("endpoint", selectedEndpoint).Str("protocol", peerProtocol).Msg("selected endpoint")
+	logger.Debug().
+		Str("endpoint", selectedEndpoint).
+		Str("protocol", peerProtocol).
+		Bool("local_status_known", statusKnown).
+		Msg("selected endpoint")
 
 	// Parse host:port
 	host, portStr, err := net.SplitHostPort(selectedEndpoint)

@@ -233,6 +233,7 @@ func TestPublishController_Execute_PeerListError(t *testing.T) {
 
 	// Setup expectations
 	mockDevices.EXPECT().List(ctx).Return([]*entity.Device{device}, nil)
+	mockDevices.EXPECT().UpdateStatus(ctx, entity.DeviceId("wg0"), gomock.Any())
 	mockResolver.EXPECT().
 		Resolve(gomock.Any(), "wg0", uint16(51820), "ipv4", gomock.Any()).
 		Return("1.2.3.4", 51820, nil)
@@ -272,6 +273,7 @@ func TestPublishController_Execute_EncryptionError(t *testing.T) {
 
 	// Setup expectations
 	mockDevices.EXPECT().List(ctx).Return([]*entity.Device{device}, nil)
+	mockDevices.EXPECT().UpdateStatus(ctx, entity.DeviceId("wg0"), gomock.Any())
 	mockPeers.EXPECT().ListByDevice(ctx, entity.DeviceId("wg0")).Return([]*entity.Peer{peer}, nil)
 	mockResolver.EXPECT().
 		Resolve(gomock.Any(), "wg0", uint16(51820), "ipv4", gomock.Any()).
@@ -315,6 +317,7 @@ func TestPublishController_Execute_SuccessfulEncryption(t *testing.T) {
 
 	// Setup expectations
 	mockDevices.EXPECT().List(ctx).Return([]*entity.Device{device}, nil)
+	mockDevices.EXPECT().UpdateStatus(ctx, entity.DeviceId("wg0"), gomock.Any())
 	mockPeers.EXPECT().ListByDevice(ctx, entity.DeviceId("wg0")).Return([]*entity.Peer{peer}, nil)
 	mockResolver.EXPECT().
 		Resolve(gomock.Any(), "wg0", uint16(51820), "ipv4", gomock.Any()).
@@ -376,6 +379,7 @@ func TestPublishController_Execute_IPv6(t *testing.T) {
 
 	// Setup expectations
 	mockDevices.EXPECT().List(ctx).Return([]*entity.Device{device}, nil)
+	mockDevices.EXPECT().UpdateStatus(ctx, entity.DeviceId("wg0"), gomock.Any())
 	mockPeers.EXPECT().ListByDevice(ctx, entity.DeviceId("wg0")).Return([]*entity.Peer{peer}, nil)
 	mockResolver.EXPECT().
 		Resolve(gomock.Any(), "wg0", uint16(51820), "ipv6", gomock.Any()).
@@ -429,6 +433,7 @@ func TestPublishController_Execute_Dualstack(t *testing.T) {
 
 	// Setup expectations
 	mockDevices.EXPECT().List(ctx).Return([]*entity.Device{device}, nil)
+	mockDevices.EXPECT().UpdateStatus(ctx, entity.DeviceId("wg0"), gomock.Any())
 	mockPeers.EXPECT().ListByDevice(ctx, entity.DeviceId("wg0")).Return([]*entity.Peer{peer}, nil)
 
 	// Expect both IPv4 and IPv6 resolution
@@ -537,6 +542,7 @@ func TestPublishController_Execute_Dualstack_PartialFail(t *testing.T) {
 
 	// Setup expectations
 	mockDevices.EXPECT().List(ctx).Return([]*entity.Device{device}, nil)
+	mockDevices.EXPECT().UpdateStatus(ctx, entity.DeviceId("wg0"), gomock.Any())
 	mockPeers.EXPECT().ListByDevice(ctx, entity.DeviceId("wg0")).Return([]*entity.Peer{peer}, nil)
 
 	// IPv4 resolves, IPv6 fails
@@ -610,6 +616,8 @@ func TestPublishController_Execute_MultipleDevices(t *testing.T) {
 
 	// Setup expectations
 	mockDevices.EXPECT().List(ctx).Return([]*entity.Device{device1, device2}, nil)
+	mockDevices.EXPECT().UpdateStatus(ctx, entity.DeviceId("wg0"), gomock.Any())
+	mockDevices.EXPECT().UpdateStatus(ctx, entity.DeviceId("wg1"), gomock.Any())
 
 	// Device 1 (wg0)
 	mockPeers.EXPECT().ListByDevice(ctx, entity.DeviceId("wg0")).Return([]*entity.Peer{peer1}, nil)
@@ -862,6 +870,7 @@ func TestPublishController_Execute_Dedup_ChangedEndpoint_Publishes(t *testing.T)
 	peer := createTestPeer("wg0", "test_plugin", "ipv4")
 
 	mockDevices.EXPECT().List(ctx).Return([]*entity.Device{device}, nil).Times(2)
+	mockDevices.EXPECT().UpdateStatus(ctx, entity.DeviceId("wg0"), gomock.Any()).Times(2)
 	mockPeers.EXPECT().ListByDevice(ctx, entity.DeviceId("wg0")).Return([]*entity.Peer{peer}, nil).Times(2)
 
 	// Two calls, two different resolved endpoints.
@@ -915,6 +924,7 @@ func TestPublishController_Execute_Dedup_UnchangedEndpoint_Skips(t *testing.T) {
 	peer := createTestPeer("wg0", "test_plugin", "ipv4")
 
 	mockDevices.EXPECT().List(ctx).Return([]*entity.Device{device}, nil).Times(2)
+	mockDevices.EXPECT().UpdateStatus(ctx, entity.DeviceId("wg0"), gomock.Any()).Times(2)
 	mockPeers.EXPECT().ListByDevice(ctx, entity.DeviceId("wg0")).Return([]*entity.Peer{peer}, nil).Times(2)
 
 	// Same endpoint resolved both times.
@@ -965,6 +975,7 @@ func TestPublishController_Execute_Dedup_OffByDefault_AlwaysPublishes(t *testing
 	peer := createTestPeer("wg0", "test_plugin", "ipv4")
 
 	mockDevices.EXPECT().List(ctx).Return([]*entity.Device{device}, nil).Times(2)
+	mockDevices.EXPECT().UpdateStatus(ctx, entity.DeviceId("wg0"), gomock.Any()).Times(2)
 	mockPeers.EXPECT().ListByDevice(ctx, entity.DeviceId("wg0")).Return([]*entity.Peer{peer}, nil).Times(2)
 
 	// Same endpoint resolved both times.
@@ -1129,6 +1140,7 @@ func TestPublishController_Execute_Dedup_FailedStore_DoesNotCacheAndRetries(t *t
 	peer := createTestPeer("wg0", "test_plugin", "ipv4")
 
 	mockDevices.EXPECT().List(ctx).Return([]*entity.Device{device}, nil).Times(2)
+	mockDevices.EXPECT().UpdateStatus(ctx, entity.DeviceId("wg0"), gomock.Any()).Times(2)
 	mockPeers.EXPECT().ListByDevice(ctx, entity.DeviceId("wg0")).Return([]*entity.Peer{peer}, nil).Times(2)
 
 	// Same endpoint resolved both times.
