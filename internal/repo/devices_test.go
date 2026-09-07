@@ -96,6 +96,47 @@ func Test_DeviceList(t *testing.T) {
 	}
 }
 
+func Test_DeviceStatus_RoundTrip(t *testing.T) {
+	devices := repo.NewDevices()
+	name := entity.DeviceId("wg0")
+
+	status := entity.DeviceStatus{IPv4: "1.2.3.4:51820", IPv6: "[2001:db8::1]:51820"}
+	devices.UpdateStatus(context.TODO(), name, status)
+
+	got, ok := devices.Status(context.TODO(), name)
+	if !ok {
+		t.Fatal("Status() ok = false, want true after UpdateStatus")
+	}
+	if got != status {
+		t.Errorf("Status() = %+v, want %+v", got, status)
+	}
+}
+
+func Test_DeviceStatus_UnknownDevice(t *testing.T) {
+	devices := repo.NewDevices()
+
+	_, ok := devices.Status(context.TODO(), entity.DeviceId("wg0"))
+	if ok {
+		t.Error("Status() ok = true for a device that was never updated, want false")
+	}
+}
+
+func Test_DeviceStatus_OverwriteReplaces(t *testing.T) {
+	devices := repo.NewDevices()
+	name := entity.DeviceId("wg0")
+
+	devices.UpdateStatus(context.TODO(), name, entity.DeviceStatus{IPv4: "1.2.3.4:51820"})
+	devices.UpdateStatus(context.TODO(), name, entity.DeviceStatus{IPv6: "[2001:db8::1]:51820"})
+
+	got, ok := devices.Status(context.TODO(), name)
+	if !ok {
+		t.Fatal("Status() ok = false, want true")
+	}
+	if got.IPv4 != "" || got.IPv6 != "[2001:db8::1]:51820" {
+		t.Errorf("Status() = %+v, want overwrite to fully replace the prior status", got)
+	}
+}
+
 // Test_DeviceRepository_ConcurrentAccess spawns concurrent readers and
 // writers on a shared repo instance to exercise the sync.RWMutex under
 // `go test -race`. It intentionally mixes Save (write lock) with Find and

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net"
 	"strconv"
+	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
@@ -174,6 +175,12 @@ func (c *PublishController) Execute(ctx context.Context) {
 			Str("ipv4", ipv4Endpoint).
 			Str("ipv6", ipv6Endpoint).
 			Msg("discovered endpoints for device")
+
+		c.devices.UpdateStatus(ctx, device.Name(), entity.DeviceStatus{
+			IPv4:         ipv4Endpoint,
+			IPv6:         ipv6Endpoint,
+			DiscoveredAt: time.Now(),
+		})
 
 		peers, err := c.peers.ListByDevice(ctx, device.Name())
 		if err != nil {

@@ -83,6 +83,33 @@ func (mr *MockDeviceRepositoryMockRecorder) Save(ctx, device any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Save", reflect.TypeOf((*MockDeviceRepository)(nil).Save), ctx, device)
 }
 
+// Status mocks base method.
+func (m *MockDeviceRepository) Status(ctx context.Context, name entity.DeviceId) (entity.DeviceStatus, bool) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Status", ctx, name)
+	ret0, _ := ret[0].(entity.DeviceStatus)
+	ret1, _ := ret[1].(bool)
+	return ret0, ret1
+}
+
+// Status indicates an expected call of Status.
+func (mr *MockDeviceRepositoryMockRecorder) Status(ctx, name any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Status", reflect.TypeOf((*MockDeviceRepository)(nil).Status), ctx, name)
+}
+
+// UpdateStatus mocks base method.
+func (m *MockDeviceRepository) UpdateStatus(ctx context.Context, name entity.DeviceId, s entity.DeviceStatus) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "UpdateStatus", ctx, name, s)
+}
+
+// UpdateStatus indicates an expected call of UpdateStatus.
+func (mr *MockDeviceRepositoryMockRecorder) UpdateStatus(ctx, name, s any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateStatus", reflect.TypeOf((*MockDeviceRepository)(nil).UpdateStatus), ctx, name, s)
+}
+
 // MockPeerRepository is a mock of PeerRepository interface.
 type MockPeerRepository struct {
 	ctrl     *gomock.Controller

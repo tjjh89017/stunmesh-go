@@ -205,6 +205,7 @@ of its own.
      - `ipv6`: Use IPv6 endpoint only (returns error if empty)
      - `prefer_ipv4`: Prefer IPv4, fallback to IPv6 if unavailable
      - `prefer_ipv6`: Prefer IPv6, fallback to IPv4 if unavailable
+   - **Local address family awareness**: `prefer_ipv4`/`prefer_ipv6` also require the local host to have that family, based on the local host's last STUN result recorded via `DeviceRepository.UpdateStatus` in `PublishController`; unknown status keeps pure preference
    - **No port validation needed**: Since publish validates before storage, port should never be 0
    - Configures WireGuard peer with selected endpoint
 
