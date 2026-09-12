@@ -37,6 +37,19 @@ For best results, ensure at least one peer is behind a cone NAT type.
 > [!NOTE]
 > We only support wireguard-go in MacOS, Wireguard App store version is not supported because of sandbox currently.
 
+## Related Projects
+
+The stunmesh ecosystem spans several repositories:
+
+- [stunmesh-go](https://github.com/tjjh89017/stunmesh-go) - this repository, the core daemon and built-in plugins
+- [stunmesh-docs](https://github.com/tjjh89017/stunmesh-docs) - documentation site, published at [docs.stunmesh.dev](https://docs.stunmesh.dev)
+- [stunmesh-android](https://github.com/tjjh89017/stunmesh-android) - Android app
+- [stunmesh-provisioner](https://github.com/tjjh89017/stunmesh-provisioner) - provisioner and agent for managing stunmesh deployments
+- [stunmesh-openwrt](https://github.com/tjjh89017/stunmesh-openwrt) - OpenWrt package feed
+- [stunmesh-openwrt-firmware](https://github.com/tjjh89017/stunmesh-openwrt-firmware) - prebuilt OpenWrt firmware images with stunmesh included
+- [stunmesh-opnsense](https://github.com/tjjh89017/stunmesh-opnsense) - OPNsense plugin
+- [stunmesh-cla](https://github.com/tjjh89017/stunmesh-cla) - contributor license agreement
+
 ## Quick Start
 
 Download a binary from the [releases page](https://github.com/tjjh89017/stunmesh-go/releases), or use the container image:
