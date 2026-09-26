@@ -158,6 +158,7 @@ for long-lived tunnels.
 | Configuration reference (protocols, STUN servers, ping monitoring) | [docs.stunmesh.dev/configuration/overview](https://docs.stunmesh.dev/configuration/overview) |
 | Storage plugins (built-in, exec, shell, dedup) | [docs.stunmesh.dev/plugins/overview](https://docs.stunmesh.dev/plugins/overview) |
 | Writing your own plugin | [docs.stunmesh.dev/plugins/exec-protocol](https://docs.stunmesh.dev/plugins/exec-protocol) |
+| Linux to Linux with Docker Compose | [docs.stunmesh.dev/guides/linux-docker](https://docs.stunmesh.dev/guides/linux-docker) |
 | Deployment guides (VyOS, macOS, OSPF/VRF) | [docs.stunmesh.dev/guides/vyos](https://docs.stunmesh.dev/guides/vyos) |
 | Building from source & backend selection | [docs.stunmesh.dev/reference/build](https://docs.stunmesh.dev/reference/build) |
 | Platform internals (fwmark, BPF capture, listen interfaces) | [docs.stunmesh.dev/reference/platform-internals](https://docs.stunmesh.dev/reference/platform-internals) |
