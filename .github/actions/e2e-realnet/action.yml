@@ -107,6 +107,7 @@ runs:
         ROLE: ${{ inputs.role }}
         WG_PRIVATE_KEY: ${{ inputs.wg-private-key }}
         PEER_PUBLIC_KEY: ${{ inputs.peer-public-key }}
+        REALNET_PAIR: ${{ inputs.pair }}
         RESULT_DIR: ${{ runner.temp }}/realnet
         CANARY_BIN: ${{ runner.temp }}/canary
         GH_TOKEN: ${{ github.token }}
@@ -127,6 +128,7 @@ runs:
         ROLE: ${{ inputs.role }}
         WG_PRIVATE_KEY: ${{ inputs.wg-private-key }}
         PEER_PUBLIC_KEY: ${{ inputs.peer-public-key }}
+        REALNET_PAIR: ${{ inputs.pair }}
       run: |
         tmp=$(cygpath -u "$RUNNER_TEMP")
         RESULT_DIR="$tmp/realnet" && export RESULT_DIR
@@ -143,7 +145,7 @@ runs:
       with:
         arch: amd64
         sync: sshfs
-        envs: 'ROLE WG_PRIVATE_KEY PEER_PUBLIC_KEY'
+        envs: 'ROLE WG_PRIVATE_KEY PEER_PUBLIC_KEY REALNET_PAIR GITHUB_RUN_ATTEMPT'
         prepare: |
           pkg install -y wireguard-tools jq curl iperf3
           kldload if_wg
@@ -158,6 +160,7 @@ runs:
         ROLE: ${{ inputs.role }}
         WG_PRIVATE_KEY: ${{ inputs.wg-private-key }}
         PEER_PUBLIC_KEY: ${{ inputs.peer-public-key }}
+        REALNET_PAIR: ${{ inputs.pair }}
 
     - name: Resolve result dir
       id: dir

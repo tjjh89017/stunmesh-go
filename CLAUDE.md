@@ -530,8 +530,13 @@ done
       one anchor/subject pair per subject OS (anchors are always Linux), keys
       job → peer jobs → report job. Peer cells are `continue-on-error`
       (advisory); only the report job's verdict counts, and it hard-fails
-      solely on what is ours to break (results missing, endpoint round-trip,
-      canary integrity) — handshake/traffic checks are recorded burn-in data.
+      solely on what is ours to break (results missing or from different run
+      attempts, endpoint round-trip, canary integrity) — handshake/traffic
+      checks are recorded burn-in data. The peer cells fail as a pair: the
+      subject POSTs an acknowledgement through the tunnel to the anchor's
+      overlay canary, and without it both cells go red (network weather
+      included), so "Re-run failed jobs" reruns anchor and subject together;
+      the gate rule is unchanged.
       The full-tunnel escape scenario runs only on the Linux subject (the
       netns crash bunker exists nowhere else)
 
