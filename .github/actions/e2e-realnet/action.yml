@@ -185,11 +185,14 @@ runs:
         done
 
     # Two artifacts on purpose: the report job downloads only the small
-    # results set, so it never pulls the packet captures with it.
+    # results set, so it never pulls the packet captures with it. The name
+    # carries the attempt: download-artifact keeps the highest artifact ID
+    # per name, and IDs do not grow with time, so a rerun's upload under the
+    # same name can lose to the older attempt's.
     - uses: actions/upload-artifact@v7
       if: always()
       with:
-        name: realnet-results-${{ inputs.pair }}-${{ inputs.role }}
+        name: realnet-results-${{ inputs.pair }}-${{ inputs.role }}-${{ github.run_attempt }}
         path: ${{ steps.dir.outputs.path }}/results.json
         if-no-files-found: warn
 
