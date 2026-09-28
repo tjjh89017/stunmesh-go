@@ -42,14 +42,26 @@ runs:
       shell: bash
       run: brew install wireguard-tools wireguard-go jq iperf3
 
-    # iperf3 via the preinstalled Chocolatey (winget is absent on the Server
-    # images): the windows subject is the only proxy-mode pair, and the
-    # sustained-stream check is the one signal that loads the relay over a
-    # real NAT -- without iperf3 phases.sh records it as skipped.
+    # iperf3 from a pinned, hash-checked release zip (the Chocolatey package's
+    # download host is dead): the windows subject is the only proxy-mode pair,
+    # and the sustained-stream check is the one signal that loads the relay
+    # over a real NAT -- without iperf3 phases.sh records it as skipped.
+    # iperf3.exe needs the cygwin1.dll shipped beside it in the zip.
     - name: Install iperf3 (Windows)
       if: inputs.os == 'windows'
       shell: pwsh
-      run: choco install iperf3 -y --no-progress
+      run: |
+        $url = 'https://github.com/ar51an/iperf3-win-builds/releases/download/3.21/iperf-3.21-win64.zip'
+        $sha256 = '9b73b7e0e0326347b5f4ac4f6a1fc34fe60a5966e5fd172c7bfcd0e1cc93e709'
+        $zip = Join-Path $env:RUNNER_TEMP 'iperf3.zip'
+        $dir = Join-Path $env:RUNNER_TEMP 'iperf3'
+        Invoke-WebRequest -Uri $url -OutFile $zip
+        $actual = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLower()
+        if ($actual -ne $sha256) { throw "iperf3 zip SHA256 mismatch: got $actual, want $sha256" }
+        Expand-Archive -Path $zip -DestinationPath $dir -Force
+        Add-Content -Path $env:GITHUB_PATH -Value $dir
+        & (Join-Path $dir 'iperf3.exe') --version
+        if ($LASTEXITCODE -ne 0) { throw "iperf3 --version failed: $LASTEXITCODE" }
 
     # Mirrors the same-host e2e's WireGuard install (see that composite
     # action's comment for the installer/poll rationale).
