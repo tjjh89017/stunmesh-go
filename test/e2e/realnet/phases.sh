@@ -8,7 +8,8 @@
 #               over WireGuard, proving the STUN socket still escapes it.
 #
 # Every probe records a conclusion via rec; nothing here exits the job. The
-# report step decides the verdict from the recorded conclusions of both sides.
+# report step decides the verdict from the recorded conclusions of both sides;
+# only the pair acknowledgement also sets the peer jobs' exit code.
 
 # wait_handshake KEY -- poll until the peer's latest-handshake is nonzero.
 wait_handshake() {
@@ -118,6 +119,25 @@ split_tunnel_subject() {
 	sleep 60
 	ping_probe split_idle_resume "$PEER_OVERLAY" || true
 	return 0
+}
+
+# send_ack -- the subject's pair acknowledgement: one POST through the tunnel
+# to the anchor's overlay canary. Sets PAIR_ACK; run-peer.sh turns a fail into
+# a nonzero exit on both sides, so a failed pair reruns as a pair.
+send_ack() {
+	_ack_body="pair=${REALNET_PAIR:-local} attempt=$RUN_ATTEMPT"
+	PAIR_ACK=fail
+	_ack_i=0
+	while [ $_ack_i -lt 3 ]; do
+		if ns_exec curl -4 -sS -f -m 5 -X POST --data-binary "$_ack_body" \
+			"http://$PEER_OVERLAY:$CANARY_PORT/ack" >/dev/null 2>>"$WORK/curl.log"; then
+			PAIR_ACK=pass
+			break
+		fi
+		_ack_i=$((_ack_i + 1))
+		sleep 2
+	done
+	rec pair_ack "$PAIR_ACK"
 }
 
 # resolve_v4 HOST -- all IPv4 addresses, resolved from inside the namespace so

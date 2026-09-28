@@ -7,14 +7,15 @@
 # an address the *other* side actually discovered via STUN.
 #
 # Hard checks -- a failure means our bug, not network weather:
-#   * both sides of a pair reported conclusions at all
+#   * both sides of a pair reported conclusions at all, from the same attempt
 #   * the publish -> store -> establish round-trip propagated real endpoints
 #     in both directions across two independent public IPs
 #   * a fetched canary blob is byte-identical to the one served
 # Everything else (handshake, ping, throughput, escape survival) is recorded
 # for trend-watching only: cloud runners give no NAT-behavior guarantee, so a
 # hard assert there would fail for reasons that are not ours. Promote a check
-# once its observed success rate justifies it.
+# once its observed success rate justifies it. The tunnel acknowledgement
+# fails both peer cells of a pair (see run-peer.sh) but not this verdict.
 #
 # Usage: report.sh ARTIFACT_DIR
 #   ARTIFACT_DIR holds one directory per uploaded result set, named
@@ -70,6 +71,13 @@ for pair in $PAIRS; do
 		continue
 	fi
 
+	# A rerun replaces only the artifacts of the jobs it reran, so a side that
+	# uploaded nothing would otherwise pair a stale attempt with a fresh one.
+	a_att=$(get "$a" run_attempt); s_att=$(get "$s" run_attempt)
+	ok=ok
+	[ "$a_att" = "$s_att" ] && [ "$a_att" != "(missing)" ] || ok=bad
+	hard "$pair" "same run attempt" "$ok" "anchor $a_att vs subject $s_att"
+
 	a_disc=$(get "$a" discovered_all); s_disc=$(get "$s" discovered_all)
 	a_ep=$(get "$a" peer_endpoint); s_ep=$(get "$s" peer_endpoint)
 
@@ -94,6 +102,8 @@ for pair in $PAIRS; do
 	fi
 
 	info "$pair" "subject platform" "$(get "$s" os)"
+	info "$pair" "tunnel acknowledgement (anchor / subject)" \
+		"$(get "$a" pair_ack) / $(get "$s" pair_ack)"
 	info "$pair" "storage preflight (anchor / subject)" \
 		"$(get "$a" dht_preflight) / $(get "$s" dht_preflight)"
 	info "$pair" "handshake (anchor)" \
