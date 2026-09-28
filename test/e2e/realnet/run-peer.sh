@@ -11,9 +11,12 @@
 # There is no cross-job rendezvous: endpoint exchange is stunmesh's own data
 # plane (the storage plugin), and the daemon's refresh loop is the barrier.
 # Every check records a conclusion into $WORK/results.env; assert.sh turns
-# those plus the daemon log into results.json. This script fails only on
-# infra/script errors -- the verdict belongs to report.sh, which sees both
-# sides.
+# those plus the daemon log into results.json. The gating verdict belongs to
+# report.sh, which sees both sides. This script fails on infra/script errors,
+# and on a missing pair acknowledgement: the subject POSTs one through the
+# tunnel to the anchor's overlay canary, and both sides exit nonzero after
+# assert.sh when it did not arrive, so both cells of a pair fail together
+# (whatever the cause) and "Re-run failed jobs" reruns the pair.
 #
 # Usage: run-peer.sh /path/to/stunmesh
 # Env:
@@ -25,6 +28,8 @@
 #   CANARY_BIN         prebuilt canary server (anchor; default: go build)
 #   ANCHOR_HOLD_SECS   anchor lifetime from script start (default 600)
 #   HANDSHAKE_TIMEOUT  seconds to wait for the first handshake (default 300)
+#   REALNET_PAIR       pair name, carried in the acknowledgement (default local)
+#   GITHUB_RUN_ATTEMPT run attempt, recorded and carried in the acknowledgement
 set -eu
 umask 077
 
@@ -63,6 +68,8 @@ CANARY_IP=192.0.2.1
 CANARY_PORT=8080
 ANCHOR_HOLD_SECS=${ANCHOR_HOLD_SECS:-600}
 HANDSHAKE_TIMEOUT=${HANDSHAKE_TIMEOUT:-300}
+RUN_ATTEMPT=${GITHUB_RUN_ATTEMPT:-local}
+PAIR_ACK=fail
 
 case "$ROLE" in
 anchor) MY_OVERLAY=10.99.0.1 PEER_OVERLAY=10.99.0.2 ;;
@@ -119,6 +126,16 @@ start_daemon() {
 	fi
 	DPID=$!
 }
+start_canary() { # LISTEN LOG
+	# shellcheck disable=SC2024
+	ns_exec "$CANARY_BIN" -listen "$1" >"$2" 2>&1 &
+	for _ in $(seq 1 20); do
+		grep -q CANARY_READY "$2" 2>/dev/null && return 0
+		sleep 1
+	done
+	echo "canary on $1 never came up" >&2
+	exit 1
+}
 stop_daemon() {
 	[ -n "$DPID" ] || return 0
 	kill "$DPID" 2>/dev/null || $SUDO kill "$DPID" 2>/dev/null || true
@@ -134,6 +151,7 @@ stop_daemon() {
 log "OS=$OS work=$WORK"
 rec role "$ROLE"
 rec os "$OS"
+rec run_attempt "$RUN_ATTEMPT"
 
 if [ "$HAS_BUNKER" = 1 ]; then
 	netns_up
@@ -209,14 +227,12 @@ if [ "$ROLE" = anchor ]; then
 	ns_exec ip link add canary0 type dummy
 	ns_exec ip addr add "$CANARY_IP/32" dev canary0
 	ns_exec ip link set canary0 up
-	# shellcheck disable=SC2024
-	ns_exec "$CANARY_BIN" -listen "$CANARY_IP:$CANARY_PORT" >"$WORK/canary.log" 2>&1 &
-	for _ in $(seq 1 20); do
-		grep -q CANARY_READY "$WORK/canary.log" 2>/dev/null && break
-		sleep 1
-	done
-	grep -q CANARY_READY "$WORK/canary.log" || { echo "canary never came up" >&2; exit 1; }
+	start_canary "$CANARY_IP:$CANARY_PORT" "$WORK/canary.log"
 	rec canary_sha256 "$(sed -n 's/^CANARY_SHA256=//p' "$WORK/canary.log" | head -1)"
+	# The acknowledgement listener. Split-tunnel AllowedIPs admit only the
+	# overlay /32, so the subject reaches this one in every pair; both
+	# instances live in the netns, whose teardown reaps them.
+	start_canary "$MY_OVERLAY:$CANARY_PORT" "$WORK/canary-ack.log"
 
 	ns_exec iperf3 -s -D --logfile "$WORK/iperf3.log"
 fi
@@ -247,12 +263,26 @@ anchor)
 		left=$((ANCHOR_HOLD_SECS - ($(date +%s) - START_TS)))
 	done
 	rec hold_released "$released"
+	# The acknowledgement does not end the hold: the subject sends it before
+	# its full-tunnel scenario, which still needs this far end. Only the exact
+	# line for this pair and attempt counts.
+	if grep -qxF "CANARY_ACK=pair=${REALNET_PAIR:-local} attempt=$RUN_ATTEMPT" "$WORK/canary-ack.log"; then
+		PAIR_ACK=pass
+	else
+		log "no acknowledgement from the subject; received: $(grep '^CANARY_ACK=' "$WORK/canary-ack.log" | tr '\n' ' ')"
+	fi
+	rec pair_ack "$PAIR_ACK"
 	;;
 subject)
+	# Sent whatever the handshake result, so a subject that is up but cannot
+	# reach the anchor still fails the pair on both sides.
+	split_ok=1
+	split_tunnel_subject || split_ok=0
+	send_ack
 	# The full-tunnel checks are relative to the split-tunnel baseline: they
 	# run only if it handshook, so network weather can never masquerade as a
 	# routing or escape regression.
-	if ! split_tunnel_subject; then
+	if [ "$split_ok" = 0 ]; then
 		log "no baseline handshake; skipping the full-tunnel scenario"
 		rec fulltunnel_ran no
 		rec fulltunnel_skipped "no baseline handshake"
@@ -277,3 +307,8 @@ rec wg_endpoint "${wgep:-(none)}"
 
 stop_daemon
 sh "$HERE/assert.sh" "$WORK"
+
+if [ "$PAIR_ACK" != pass ]; then
+	echo "pair acknowledgement missing; failing this side of the pair" >&2
+	exit 1
+fi
