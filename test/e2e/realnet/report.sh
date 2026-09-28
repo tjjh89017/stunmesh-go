@@ -19,7 +19,8 @@
 #
 # Usage: report.sh ARTIFACT_DIR
 #   ARTIFACT_DIR holds one directory per uploaded result set, named
-#   realnet-results-<pair>-<role>, each containing results.json.
+#   realnet-results-<pair>-<role>-<attempt>, each containing results.json.
+#   The highest attempt of each pair and role is the one read.
 # Env: REALNET_PAIRS  pairs that were expected to run; a pair listed here but
 #                     missing from ARTIFACT_DIR is a hard failure, which is
 #                     how a job that died before reporting gets caught.
@@ -31,8 +32,14 @@ fail=0
 
 # Default to whatever arrived, which cannot notice a wholly missing pair --
 # the workflow always passes the matrix explicitly.
-PAIRS=${REALNET_PAIRS:-$(find "$DIR" -mindepth 1 -maxdepth 1 -name 'realnet-results-*-anchor' 2>/dev/null |
-	sed -n 's/.*realnet-results-\(.*\)-anchor$/\1/p' | sort -u | tr '\n' ' ')}
+PAIRS=${REALNET_PAIRS:-$(find "$DIR" -mindepth 1 -maxdepth 1 -name 'realnet-results-*-anchor-*' 2>/dev/null |
+	sed -n 's/.*realnet-results-\(.*\)-anchor-[0-9]*$/\1/p' | sort -u | tr '\n' ' ')}
+
+results() { # PAIR ROLE -> results.json of the highest attempt
+	_n=$(find "$DIR" -mindepth 1 -maxdepth 1 -name "realnet-results-$1-$2-*" 2>/dev/null |
+		sed -n "s/.*-$2-\([0-9][0-9]*\)$/\1/p" | sort -n | tail -n 1)
+	echo "$DIR/realnet-results-$1-$2-${_n:-missing}/results.json"
+}
 
 get() { # FILE KEY -> value, or "(missing)"
 	[ -f "$1" ] || { echo "(missing)"; return; }
@@ -60,8 +67,8 @@ member() { # NEEDLE CSV
 } >> "$SUM"
 
 for pair in $PAIRS; do
-	a=$DIR/realnet-results-$pair-anchor/results.json
-	s=$DIR/realnet-results-$pair-subject/results.json
+	a=$(results "$pair" anchor)
+	s=$(results "$pair" subject)
 
 	ok=ok; [ -f "$a" ] || ok=bad
 	hard "$pair" "anchor reported" "$ok" "${a#"$DIR"/}"
