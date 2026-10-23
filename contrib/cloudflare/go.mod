@@ -1,11 +1,11 @@
 module github.com/tjjh89017/stunmesh-go/contrib/cloudflare
 
-go 1.25.0
+go 1.26.0
 
 require (
 	github.com/cloudflare/cloudflare-go v0.119.0
 	github.com/tjjh89017/stunmesh-go v1.15.1
-	golang.org/x/crypto/x509roots/fallback v0.0.0-20260723152544-d701c51f7e4e
+	golang.org/x/crypto/x509roots/fallback v0.0.0-20261020153306-9f2b28d4331a
 )
 
 require (
