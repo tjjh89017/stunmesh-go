@@ -194,38 +194,3 @@ install: build
 .PHONY: uninstall
 uninstall:
 	rm -f $(BINDIR)/$(APP)
-
-.PHONY: plugin
-plugin:
-	$(MAKE) -C contrib all
-
-.PHONY: contrib
-contrib: plugin
-
-.PHONY: plugin-clean
-plugin-clean:
-	$(MAKE) -C contrib clean
-
-.PHONY: contrib-clean
-contrib-clean: plugin-clean
-
-.PHONY: plugin-install
-plugin-install:
-	$(MAKE) -C contrib install PREFIX=$(PREFIX) BINDIR=$(BINDIR)
-
-.PHONY: contrib-install
-contrib-install: plugin-install
-
-.PHONY: plugin-uninstall
-plugin-uninstall:
-	$(MAKE) -C contrib uninstall PREFIX=$(PREFIX) BINDIR=$(BINDIR)
-
-.PHONY: contrib-uninstall
-contrib-uninstall: plugin-uninstall
-
-.PHONY: plugin-test
-plugin-test:
-	$(MAKE) -C contrib test
-
-.PHONY: contrib-test
-contrib-test: plugin-test

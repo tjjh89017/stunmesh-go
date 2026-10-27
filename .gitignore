@@ -36,11 +36,6 @@ stunmesh-go
 .idea/
 *.iml
 
-# Build artifacts
-plugins_dist/
-contrib/*/stunmesh-*
-!contrib/*/stunmesh-*.md
-
 # Temporary files
 *.tmp
 *.log
