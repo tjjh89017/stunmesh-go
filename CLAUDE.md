@@ -101,12 +101,11 @@ Cutting a stunmesh-go release:
 Downstream repos, in this order (each item: what to change, how to release):
 
 1. **stunmesh-provisioner**. Dependabot (gomod, daily) opens a PR bumping `github.com/tjjh89017/stunmesh-go` in `go.mod`. To do it by hand: `go get github.com/tjjh89017/stunmesh-go@vX.Y.Z && go mod tidy`. Merge, then push a `v*` tag if a provisioner release is wanted. stunmesh-agent embeds the `app` package, so a provisioner release usually follows a stunmesh-go release.
-2. **stunmesh-plugins**. Dependabot (gomod, daily) opens a PR bumping `github.com/tjjh89017/stunmesh-go` in `go.mod`. To do it by hand: `go get github.com/tjjh89017/stunmesh-go@vX.Y.Z && go mod tidy`. Merge, then push a `v*` tag to release the plugin archives.
-3. **stunmesh-openwrt**. Edit `net/stunmesh-go/Makefile`: `PKG_VERSION`, reset `PKG_RELEASE:=1`, refresh `PKG_HASH` with `curl -sL https://codeload.github.com/tjjh89017/stunmesh-go/tar.gz/vX.Y.Z | sha256sum`. If provisioner released, do the same in `net/stunmesh-provisioner/Makefile`. Push to main; `build.yml` republishes the apk feed. There are no tags.
-4. **stunmesh-openwrt-firmware**. Nothing to edit; it installs whatever the stunmesh-openwrt feed serves at build time. Trigger `firmware.yml` with `workflow_dispatch` after the feed build finishes (a push to main also builds, and the weekly cron picks it up otherwise). Every run publishes a `firmware-<build_id>` release.
-5. **stunmesh-opnsense**. Edit `Makefile`: `PLUGIN_VERSION`, reset `PLUGIN_REVISION=1`. Refresh `distinfo` from `gh release view vX.Y.Z --repo tjjh89017/stunmesh-go --json assets --jq '.assets[] | "\(.name) \(.digest)"'`. Push to main; `build.yml` builds the pkg and republishes the feed. There are no tags.
-6. **stunmesh-android**. Edit `gradle.properties`: `stunmeshCoreVersion=vX.Y.Z`. Push a `v*` tag to release.
-7. **stunmesh-docs**. For a new minor version run `pnpm docusaurus docs:version X.Y`, which snapshots `docs/` into `versioned_docs/version-X.Y` and prepends `versions.json`. Check `docs/guides/openwrt.md` for the OpenWrt series in the feed URL. Push to main deploys.
+2. **stunmesh-openwrt**. Edit `net/stunmesh-go/Makefile`: `PKG_VERSION`, reset `PKG_RELEASE:=1`, refresh `PKG_HASH` with `curl -sL https://codeload.github.com/tjjh89017/stunmesh-go/tar.gz/vX.Y.Z | sha256sum`. If provisioner released, do the same in `net/stunmesh-provisioner/Makefile`. Push to main; `build.yml` republishes the apk feed. There are no tags.
+3. **stunmesh-openwrt-firmware**. Nothing to edit; it installs whatever the stunmesh-openwrt feed serves at build time. Trigger `firmware.yml` with `workflow_dispatch` after the feed build finishes (a push to main also builds, and the weekly cron picks it up otherwise). Every run publishes a `firmware-<build_id>` release.
+4. **stunmesh-opnsense**. Edit `Makefile`: `PLUGIN_VERSION`, reset `PLUGIN_REVISION=1`. Refresh `distinfo` from `gh release view vX.Y.Z --repo tjjh89017/stunmesh-go --json assets --jq '.assets[] | "\(.name) \(.digest)"'`. Push to main; `build.yml` builds the pkg and republishes the feed. There are no tags.
+5. **stunmesh-android**. Edit `gradle.properties`: `stunmeshCoreVersion=vX.Y.Z`. Push a `v*` tag to release.
+6. **stunmesh-docs**. For a new minor version run `pnpm docusaurus docs:version X.Y`, which snapshots `docs/` into `versioned_docs/version-X.Y` and prepends `versions.json`. Check `docs/guides/openwrt.md` for the OpenWrt series in the feed URL. Push to main deploys.
 
 Each downstream repo has its own copy of its step in its README or CLAUDE.md; keep both in sync.
 
@@ -148,7 +147,7 @@ The plugin system supports multiple named storage backend instances:
 - `exec`: External process communication via JSON stdin/stdout (for complex plugins)
 - `shell`: Simplified protocol using shell variables via stdin (for simple shell scripts)
 
-**External Plugins**: exec and shell plugins live in the `stunmesh-plugins` repository (https://github.com/tjjh89017/stunmesh-plugins). They import the `pluginapi` package of this module.
+**External Plugins**: exec and shell plugins live in the `stunmesh-plugins` repository (https://github.com/tjjh89017/stunmesh-plugins). They implement the exec or shell protocol and have no Go dependency on this module.
 
 **Configuration Structure**:
 ```yaml
