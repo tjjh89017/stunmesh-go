@@ -14,11 +14,11 @@ type mockStore struct {
 	name string
 }
 
-func (m *mockStore) Get(ctx context.Context, key string) (string, error) {
-	return fmt.Sprintf("value_%s", key), nil
+func (m *mockStore) Get(ctx context.Context, req pluginapi.PluginRequest) (string, error) {
+	return fmt.Sprintf("value_%s", req.Key), nil
 }
 
-func (m *mockStore) Set(ctx context.Context, key string, value string) error {
+func (m *mockStore) Set(ctx context.Context, req pluginapi.PluginRequest) error {
 	return nil
 }
 

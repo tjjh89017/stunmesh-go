@@ -22,6 +22,8 @@ import (
 type testStore struct {
 	mu   sync.RWMutex
 	data map[string]string
+
+	lastGetRequest pluginapi.PluginRequest
 }
 
 func newTestStore() *testStore {
@@ -30,22 +32,23 @@ func newTestStore() *testStore {
 	}
 }
 
-func (s *testStore) Get(ctx context.Context, key string) (string, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+func (s *testStore) Get(ctx context.Context, req pluginapi.PluginRequest) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.lastGetRequest = req
 
-	value, ok := s.data[key]
+	value, ok := s.data[req.Key]
 	if !ok {
 		return "", errors.New("key not found")
 	}
 	return value, nil
 }
 
-func (s *testStore) Set(ctx context.Context, key string, value string) error {
+func (s *testStore) Set(ctx context.Context, req pluginapi.PluginRequest) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.data[key] = value
+	s.data[req.Key] = req.Value
 	return nil
 }
 
@@ -246,7 +249,7 @@ func TestEstablishController_Execute_DecryptionError(t *testing.T) {
 	})
 
 	// Pre-populate store with encrypted data
-	_ = testStoreInstance.Set(ctx, peer.RemoteId(), "encrypted_data_here")
+	_ = testStoreInstance.Set(ctx, pluginapi.PluginRequest{Key: peer.RemoteId(), Value: "encrypted_data_here"})
 
 	// Setup expectations
 	mockPeers.EXPECT().Find(ctx, gomock.Any()).Return(peer, nil)
@@ -300,7 +303,7 @@ func TestEstablishController_Execute_InvalidJSON(t *testing.T) {
 	})
 
 	// Pre-populate store
-	_ = testStoreInstance.Set(ctx, peer.RemoteId(), "encrypted_data")
+	_ = testStoreInstance.Set(ctx, pluginapi.PluginRequest{Key: peer.RemoteId(), Value: "encrypted_data"})
 
 	// Setup expectations
 	mockPeers.EXPECT().Find(ctx, gomock.Any()).Return(peer, nil)
@@ -354,7 +357,7 @@ func TestEstablishController_Execute_IPv4Selection(t *testing.T) {
 	})
 
 	// Pre-populate store
-	_ = testStoreInstance.Set(ctx, peer.RemoteId(), "encrypted_data")
+	_ = testStoreInstance.Set(ctx, pluginapi.PluginRequest{Key: peer.RemoteId(), Value: "encrypted_data"})
 
 	// Prepare endpoint data
 	endpointData := ctrl.EndpointData{
@@ -388,6 +391,57 @@ func TestEstablishController_Execute_IPv4Selection(t *testing.T) {
 	controller.Execute(ctx, peerId)
 }
 
+func TestEstablishController_Execute_PassesRequest(t *testing.T) {
+	registerTestPlugin()
+
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+
+	mockWgClient := mock.NewMockWireGuardClient(mockCtrl)
+	mockDevices := mock.NewMockDeviceRepository(mockCtrl)
+	mockPeers := mock.NewMockPeerRepository(mockCtrl)
+	mockDecryptor := mock.NewMockEndpointDecryptor(mockCtrl)
+	logger := zerolog.Nop()
+
+	ctx := context.Background()
+
+	device := createTestDevice("wg0", 51820, "ipv4")
+	peer, want := createRequestTestPeer("wg0", "test_storage")
+	want.Key = peer.RemoteId()
+
+	pluginManager := plugin.NewManager()
+	_ = pluginManager.LoadPlugins(ctx, map[string]pluginapi.PluginDefinition{
+		"test_storage": {
+			Type:   "builtin",
+			Config: pluginapi.PluginConfig{"name": "test_storage"},
+		},
+	})
+	_ = testStoreInstance.Set(ctx, pluginapi.PluginRequest{Key: peer.RemoteId(), Value: "encrypted_data"})
+
+	jsonData, _ := json.Marshal(ctrl.EndpointData{IPv4: "1.2.3.4:51820"})
+	mockPeers.EXPECT().Find(ctx, gomock.Any()).Return(peer, nil)
+	mockDevices.EXPECT().Find(ctx, entity.DeviceId("wg0")).Return(device, nil)
+	mockDevices.EXPECT().Status(ctx, entity.DeviceId("wg0")).Return(entity.DeviceStatus{}, false)
+	mockDecryptor.EXPECT().
+		Decrypt(ctx, gomock.Any()).
+		Return(&ctrl.EndpointDecryptResponse{Content: string(jsonData)}, nil)
+	mockWgClient.EXPECT().UpdatePeerEndpoint(gomock.Any(), gomock.Any()).Return(nil)
+
+	testStoreInstance.mu.Lock()
+	testStoreInstance.lastGetRequest = pluginapi.PluginRequest{}
+	testStoreInstance.mu.Unlock()
+
+	controller := ctrl.NewEstablishController(mockWgClient, mockDevices, mockPeers, pluginManager, mockDecryptor, nil, &logger)
+	controller.Execute(ctx, peer.Id())
+
+	testStoreInstance.mu.RLock()
+	got := testStoreInstance.lastGetRequest
+	testStoreInstance.mu.RUnlock()
+	if got != want {
+		t.Errorf("Get request = %+v, want %+v", got, want)
+	}
+}
+
 // Test Execute - IPv6 endpoint selection
 func TestEstablishController_Execute_IPv6Selection(t *testing.T) {
 	registerTestPlugin()
@@ -419,7 +473,7 @@ func TestEstablishController_Execute_IPv6Selection(t *testing.T) {
 	})
 
 	// Pre-populate store
-	_ = testStoreInstance.Set(ctx, peer.RemoteId(), "encrypted_data")
+	_ = testStoreInstance.Set(ctx, pluginapi.PluginRequest{Key: peer.RemoteId(), Value: "encrypted_data"})
 
 	// Prepare endpoint data
 	endpointData := ctrl.EndpointData{
@@ -484,7 +538,7 @@ func TestEstablishController_Execute_PreferIPv4_HasIPv4(t *testing.T) {
 	})
 
 	// Pre-populate store
-	_ = testStoreInstance.Set(ctx, peer.RemoteId(), "encrypted_data")
+	_ = testStoreInstance.Set(ctx, pluginapi.PluginRequest{Key: peer.RemoteId(), Value: "encrypted_data"})
 
 	// Both endpoints available
 	endpointData := ctrl.EndpointData{
@@ -549,7 +603,7 @@ func TestEstablishController_Execute_PreferIPv4_FallbackIPv6(t *testing.T) {
 	})
 
 	// Pre-populate store
-	_ = testStoreInstance.Set(ctx, peer.RemoteId(), "encrypted_data")
+	_ = testStoreInstance.Set(ctx, pluginapi.PluginRequest{Key: peer.RemoteId(), Value: "encrypted_data"})
 
 	// Only IPv6 available
 	endpointData := ctrl.EndpointData{
@@ -614,7 +668,7 @@ func TestEstablishController_Execute_PreferIPv6_HasIPv6(t *testing.T) {
 	})
 
 	// Pre-populate store
-	_ = testStoreInstance.Set(ctx, peer.RemoteId(), "encrypted_data")
+	_ = testStoreInstance.Set(ctx, pluginapi.PluginRequest{Key: peer.RemoteId(), Value: "encrypted_data"})
 
 	// Both endpoints available
 	endpointData := ctrl.EndpointData{
@@ -679,7 +733,7 @@ func TestEstablishController_Execute_PreferIPv6_FallbackIPv4(t *testing.T) {
 	})
 
 	// Pre-populate store
-	_ = testStoreInstance.Set(ctx, peer.RemoteId(), "encrypted_data")
+	_ = testStoreInstance.Set(ctx, pluginapi.PluginRequest{Key: peer.RemoteId(), Value: "encrypted_data"})
 
 	// Only IPv4 available
 	endpointData := ctrl.EndpointData{
@@ -744,7 +798,7 @@ func TestEstablishController_Execute_IPv4_NotAvailable(t *testing.T) {
 	})
 
 	// Pre-populate store
-	_ = testStoreInstance.Set(ctx, peer.RemoteId(), "encrypted_data")
+	_ = testStoreInstance.Set(ctx, pluginapi.PluginRequest{Key: peer.RemoteId(), Value: "encrypted_data"})
 
 	// Only IPv6 available
 	endpointData := ctrl.EndpointData{
@@ -806,7 +860,7 @@ func TestEstablishController_Execute_WireGuardError(t *testing.T) {
 	})
 
 	// Pre-populate store
-	_ = testStoreInstance.Set(ctx, peer.RemoteId(), "encrypted_data")
+	_ = testStoreInstance.Set(ctx, pluginapi.PluginRequest{Key: peer.RemoteId(), Value: "encrypted_data"})
 
 	endpointData := ctrl.EndpointData{
 		IPv4: "1.2.3.4:51820",
@@ -871,7 +925,7 @@ func TestEstablishController_Execute_PreferIPv6_LocalHasNoIPv6_FallsBackIPv4(t *
 	})
 
 	// Pre-populate store
-	_ = testStoreInstance.Set(ctx, peer.RemoteId(), "encrypted_data")
+	_ = testStoreInstance.Set(ctx, pluginapi.PluginRequest{Key: peer.RemoteId(), Value: "encrypted_data"})
 
 	// Record has both endpoints, but the local host has no IPv6 of its own.
 	endpointData := ctrl.EndpointData{

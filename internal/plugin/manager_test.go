@@ -16,11 +16,11 @@ type fakeCloserStore struct {
 	closeErr   error
 }
 
-func (f *fakeCloserStore) Get(ctx context.Context, key string) (string, error) {
+func (f *fakeCloserStore) Get(ctx context.Context, req pluginapi.PluginRequest) (string, error) {
 	return "", nil
 }
 
-func (f *fakeCloserStore) Set(ctx context.Context, key string, value string) error {
+func (f *fakeCloserStore) Set(ctx context.Context, req pluginapi.PluginRequest) error {
 	return nil
 }
 
@@ -32,11 +32,11 @@ func (f *fakeCloserStore) Close() error {
 // fakePlainStore is a Store without a Close method.
 type fakePlainStore struct{}
 
-func (f *fakePlainStore) Get(ctx context.Context, key string) (string, error) {
+func (f *fakePlainStore) Get(ctx context.Context, req pluginapi.PluginRequest) (string, error) {
 	return "", nil
 }
 
-func (f *fakePlainStore) Set(ctx context.Context, key string, value string) error {
+func (f *fakePlainStore) Set(ctx context.Context, req pluginapi.PluginRequest) error {
 	return nil
 }
 

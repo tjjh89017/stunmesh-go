@@ -42,3 +42,7 @@ func (p *PeerId) RemoteEndpointKey() string {
 func (p PeerId) PeerPublicKeyString() string {
 	return base64.StdEncoding.EncodeToString(p.peerPublicKey[:])
 }
+
+func (p PeerId) DevicePublicKey() PeerKey {
+	return p.devicePublicKey
+}

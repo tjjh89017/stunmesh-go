@@ -44,3 +44,16 @@ func TestPeerId_Comparable(t *testing.T) {
 		t.Errorf("Expected 2, got %d", store[pid])
 	}
 }
+
+func TestPeerId_DevicePublicKey(t *testing.T) {
+	var device, peer entity.PeerKey
+	for i := range device {
+		device[i] = byte(i + 1)
+		peer[i] = byte(i + 101)
+	}
+
+	peerId := entity.NewPeerId(device[:], peer[:])
+	if got := peerId.DevicePublicKey(); got != device {
+		t.Errorf("DevicePublicKey() = %x, want %x", got, device)
+	}
+}

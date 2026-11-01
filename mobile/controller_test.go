@@ -5,13 +5,20 @@ package mobile
 import (
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"net"
 	"net/netip"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/tjjh89017/stunmesh-go/internal/crypto"
 	"github.com/tjjh89017/stunmesh-go/internal/ctrl"
+	"github.com/tjjh89017/stunmesh-go/internal/plugin"
+	pluginapi "github.com/tjjh89017/stunmesh-go/pluginapi"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 // TestSelectEndpoint mirrors the four-protocol matrix covered by
@@ -392,3 +399,79 @@ const (
 	dnsTypeA     = 1
 	dnsTypeAAAA  = 28
 )
+
+// newCaptureController wires an exec plugin that saves its request to out.
+func newCaptureController(t *testing.T, out string) (*controller, wgtypes.Key) {
+	t.Helper()
+	manager := plugin.NewManager()
+	if err := manager.LoadPlugins(context.Background(), map[string]pluginapi.PluginDefinition{
+		"capture": {Type: "exec", Config: pluginapi.PluginConfig{
+			"command": "/bin/sh",
+			"args":    []string{"-c", `cat > "$0"; echo '{"success":true}'`, out},
+		}},
+	}); err != nil {
+		t.Fatalf("LoadPlugins: %v", err)
+	}
+
+	priv, err := wgtypes.GeneratePrivateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	peerPriv, err := wgtypes.GeneratePrivateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return &controller{
+		node: &Node{listener: &fakeListener{}},
+		cfg: &tunnelConfig{
+			Name:  "Home's tunnel",
+			Peers: []peerConfig{{Name: "p", PublicKey: peerPriv.PublicKey().String(), Plugin: "capture"}},
+		},
+		manager:       manager,
+		crypt:         crypto.NewEndpoint(),
+		priv:          priv,
+		pub:           priv.PublicKey(),
+		lastPublished: make(map[string]string),
+		lastApplied:   make(map[string]string),
+	}, peerPriv.PublicKey()
+}
+
+func readCapturedRequest(t *testing.T, out string) pluginapi.ExecRequest {
+	t.Helper()
+	raw, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var req pluginapi.ExecRequest
+	if err := json.Unmarshal(raw, &req); err != nil {
+		t.Fatalf("unmarshal %q: %v", raw, err)
+	}
+	return req
+}
+
+func TestControllerPublish_PassesRequest(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "request.json")
+	c, peerPub := newCaptureController(t, out)
+
+	c.publish(context.Background(), ctrl.EndpointData{IPv4: "192.0.2.1:51820"})
+
+	req := readCapturedRequest(t, out)
+	if req.Action != pluginapi.OpSet || req.Device != "Home's tunnel" ||
+		req.LocalPublicKey != wgtypes.Key(c.pub).String() || req.PeerPublicKey != peerPub.String() {
+		t.Errorf("request = %+v", req)
+	}
+}
+
+func TestControllerEstablish_PassesRequest(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "request.json")
+	c, peerPub := newCaptureController(t, out)
+
+	c.establish(context.Background(), nil)
+
+	req := readCapturedRequest(t, out)
+	if req.Action != pluginapi.OpGet || req.Device != "Home's tunnel" ||
+		req.LocalPublicKey != wgtypes.Key(c.pub).String() || req.PeerPublicKey != peerPub.String() {
+		t.Errorf("request = %+v", req)
+	}
+}

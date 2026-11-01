@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -131,13 +132,16 @@ func TestExecPlugin_Get_Success(t *testing.T) {
 	testKey := "testkey_get"
 	testValue := "testvalue"
 
-	err = plugin.Set(ctx, testKey, testValue)
+	// A fixture unaware of the identity fields must keep working.
+	req := testRequest(testKey, "wg0")
+	req.Value = testValue
+	err = plugin.Set(ctx, req)
 	if err != nil {
 		t.Fatalf("Set() error = %v", err)
 	}
 
 	// Then get it back
-	gotValue, err := plugin.Get(ctx, testKey)
+	gotValue, err := plugin.Get(ctx, req)
 	if err != nil {
 		t.Fatalf("Get() error = %v", err)
 	}
@@ -175,7 +179,7 @@ func TestExecPlugin_Get_NotFound(t *testing.T) {
 	ctx := context.Background()
 
 	// Try to get a nonexistent key
-	_, err = plugin.Get(ctx, "nonexistent_key")
+	_, err = plugin.Get(ctx, pluginapi.PluginRequest{Key: "nonexistent_key"})
 	if err == nil {
 		t.Error("Get() should return error for nonexistent key")
 	}
@@ -206,7 +210,7 @@ func TestExecPlugin_Set_Success(t *testing.T) {
 	testKey := "testkey_set"
 	testValue := "testvalue"
 
-	err = plugin.Set(ctx, testKey, testValue)
+	err = plugin.Set(ctx, pluginapi.PluginRequest{Key: testKey, Value: testValue})
 	if err != nil {
 		t.Errorf("Set() error = %v, want nil", err)
 	}
@@ -229,7 +233,7 @@ func TestExecPlugin_CommandNotFound(t *testing.T) {
 	ctx := context.Background()
 
 	// Try to execute - should fail because command doesn't exist
-	_, err = plugin.Get(ctx, "testkey")
+	_, err = plugin.Get(ctx, pluginapi.PluginRequest{Key: "testkey"})
 	if err == nil {
 		t.Error("Get() should return error when command doesn't exist")
 	}
@@ -255,7 +259,7 @@ func TestExecPlugin_InvalidJSON(t *testing.T) {
 	ctx := context.Background()
 
 	// Try to get - should fail due to invalid JSON response
-	_, err = plugin.Get(ctx, "testkey")
+	_, err = plugin.Get(ctx, pluginapi.PluginRequest{Key: "testkey"})
 	if err == nil {
 		t.Error("Get() should return error when plugin returns invalid JSON")
 	}
@@ -281,7 +285,7 @@ func TestExecPlugin_PluginFailure(t *testing.T) {
 	ctx := context.Background()
 
 	// Try to get - should fail with plugin error
-	_, err = plugin.Get(ctx, "testkey")
+	_, err = plugin.Get(ctx, pluginapi.PluginRequest{Key: "testkey"})
 	if err == nil {
 		t.Error("Get() should return error when plugin fails")
 	}
@@ -307,7 +311,7 @@ func TestExecPlugin_SetFailure(t *testing.T) {
 	ctx := context.Background()
 
 	// Try to set - should fail with plugin error
-	err = plugin.Set(ctx, "testkey", "testvalue")
+	err = plugin.Set(ctx, pluginapi.PluginRequest{Key: "testkey", Value: "testvalue"})
 	if err == nil {
 		t.Error("Set() should return error when plugin fails")
 	}
@@ -333,12 +337,88 @@ func TestExecPlugin_WithArgs(t *testing.T) {
 	ctx := context.Background()
 
 	// Should succeed and return "test"
-	value, err := plugin.Get(ctx, "anykey")
+	value, err := plugin.Get(ctx, pluginapi.PluginRequest{Key: "anykey"})
 	if err != nil {
 		t.Errorf("Get() error = %v, want nil", err)
 	}
 
 	if value != "test" {
 		t.Errorf("Get() = %q, want %q", value, "test")
+	}
+}
+
+func testRequest(key, device string) pluginapi.PluginRequest {
+	var local, peer pluginapi.Key
+	for i := range local {
+		local[i] = byte(i + 1)
+		peer[i] = byte(i + 101)
+	}
+	return pluginapi.PluginRequest{Device: device, LocalPublicKey: local, PeerPublicKey: peer, Key: key}
+}
+
+func TestExecPlugin_RequestCarriesIdentity(t *testing.T) {
+	skipOnWindows(t)
+	out := filepath.Join(t.TempDir(), "request.json")
+	plugin, err := NewExecPlugin(pluginapi.PluginConfig{
+		"command": "/bin/sh",
+		"args":    []string{"-c", `cat > "$0"; echo '{"success":true,"value":"v"}'`, out},
+	})
+	if err != nil {
+		t.Fatalf("NewExecPlugin() error = %v", err)
+	}
+	want := testRequest("k", "wg0")
+
+	for _, action := range []string{pluginapi.OpGet, pluginapi.OpSet} {
+		if action == pluginapi.OpGet {
+			_, err = plugin.Get(context.Background(), want)
+		} else {
+			setReq := want
+			setReq.Value = "v"
+			err = plugin.Set(context.Background(), setReq)
+		}
+		if err != nil {
+			t.Fatalf("%s error = %v", action, err)
+		}
+		raw, err := os.ReadFile(out)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var req pluginapi.ExecRequest
+		if err := json.Unmarshal(raw, &req); err != nil {
+			t.Fatalf("unmarshal %q: %v", raw, err)
+		}
+		if req.Action != action || req.Key != "k" || req.Device != "wg0" ||
+			req.LocalPublicKey != want.LocalPublicKey.String() ||
+			req.PeerPublicKey != want.PeerPublicKey.String() {
+			t.Errorf("request = %+v, want %+v", req, want)
+		}
+	}
+}
+
+func TestExecPlugin_UnknownIdentityOmitted(t *testing.T) {
+	skipOnWindows(t)
+	out := filepath.Join(t.TempDir(), "request.json")
+	plugin, err := NewExecPlugin(pluginapi.PluginConfig{
+		"command": "/bin/sh",
+		"args":    []string{"-c", `cat > "$0"; echo '{"success":true}'`, out},
+	})
+	if err != nil {
+		t.Fatalf("NewExecPlugin() error = %v", err)
+	}
+	if err := plugin.Set(context.Background(), pluginapi.PluginRequest{Key: "k", Value: "v"}); err != nil {
+		t.Fatalf("Set() error = %v", err)
+	}
+	raw, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]any
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{"device", "local_public_key", "peer_public_key"} {
+		if _, ok := fields[k]; ok {
+			t.Errorf("field %q present for unknown identity: %s", k, raw)
+		}
 	}
 }

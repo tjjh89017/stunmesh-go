@@ -230,7 +230,8 @@ func (p *OpenDHTPlugin) Close() error {
 }
 
 // Get retrieves a value from OpenDHT
-func (p *OpenDHTPlugin) Get(ctx context.Context, key string) (string, error) {
+func (p *OpenDHTPlugin) Get(ctx context.Context, req pluginapi.PluginRequest) (string, error) {
+	key := req.Key
 	logger := zerolog.Ctx(ctx)
 	logger.Info().Str("key", key).Msg("get data from builtin opendht plugin")
 
@@ -285,7 +286,8 @@ func (p *OpenDHTPlugin) Get(ctx context.Context, key string) (string, error) {
 }
 
 // Set stores a value in OpenDHT
-func (p *OpenDHTPlugin) Set(ctx context.Context, key string, value string) error {
+func (p *OpenDHTPlugin) Set(ctx context.Context, req pluginapi.PluginRequest) error {
+	key, value := req.Key, req.Value
 	logger := zerolog.Ctx(ctx)
 	logger.Info().Str("key", key).Msg("set data to builtin opendht plugin")
 

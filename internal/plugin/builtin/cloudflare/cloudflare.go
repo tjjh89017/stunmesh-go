@@ -207,7 +207,8 @@ func (p *CloudflarePlugin) findRecord(ctx context.Context, name string) (string,
 }
 
 // Get retrieves a value from Cloudflare DNS
-func (p *CloudflarePlugin) Get(ctx context.Context, key string) (string, error) {
+func (p *CloudflarePlugin) Get(ctx context.Context, req pluginapi.PluginRequest) (string, error) {
+	key := req.Key
 	logger := zerolog.Ctx(ctx)
 	logger.Info().Str("key", key).Msg("get data from builtin cloudflare plugin")
 
@@ -234,7 +235,8 @@ func (p *CloudflarePlugin) Close() error {
 }
 
 // Set stores a value in Cloudflare DNS
-func (p *CloudflarePlugin) Set(ctx context.Context, key string, value string) error {
+func (p *CloudflarePlugin) Set(ctx context.Context, req pluginapi.PluginRequest) error {
+	key, value := req.Key, req.Value
 	logger := zerolog.Ctx(ctx)
 	logger.Info().Str("key", key).Msg("set data to builtin cloudflare plugin")
 

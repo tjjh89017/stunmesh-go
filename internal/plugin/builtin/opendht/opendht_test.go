@@ -77,7 +77,7 @@ func TestGetReturnsMostRecentValue(t *testing.T) {
 	}))
 	defer server.Close()
 
-	got, err := newTestPlugin(t, server.URL).Get(context.Background(), testKey)
+	got, err := newTestPlugin(t, server.URL).Get(context.Background(), pluginapi.PluginRequest{Key: testKey})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -97,7 +97,7 @@ func TestGetIgnoresForeignValues(t *testing.T) {
 	}))
 	defer server.Close()
 
-	got, err := newTestPlugin(t, server.URL).Get(context.Background(), testKey)
+	got, err := newTestPlugin(t, server.URL).Get(context.Background(), pluginapi.PluginRequest{Key: testKey})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -112,7 +112,7 @@ func TestGetEmptyKey(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	defer server.Close()
 
-	_, err := newTestPlugin(t, server.URL).Get(context.Background(), testKey)
+	_, err := newTestPlugin(t, server.URL).Get(context.Background(), pluginapi.PluginRequest{Key: testKey})
 	if err == nil {
 		t.Fatal("expected an error for a key with no values")
 	}
@@ -124,7 +124,7 @@ func TestGetOnlyForeignValues(t *testing.T) {
 	}))
 	defer server.Close()
 
-	_, err := newTestPlugin(t, server.URL).Get(context.Background(), testKey)
+	_, err := newTestPlugin(t, server.URL).Get(context.Background(), pluginapi.PluginRequest{Key: testKey})
 	if err == nil {
 		t.Fatal("expected an error when no value carries our magic")
 	}
@@ -145,7 +145,7 @@ func TestGetRespectsConfiguredMagic(t *testing.T) {
 		t.Fatalf("failed to create plugin: %v", err)
 	}
 
-	got, err := p.Get(context.Background(), testKey)
+	got, err := p.Get(context.Background(), pluginapi.PluginRequest{Key: testKey})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -161,7 +161,7 @@ func TestGetServerError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	_, err := newTestPlugin(t, server.URL).Get(context.Background(), testKey)
+	_, err := newTestPlugin(t, server.URL).Get(context.Background(), pluginapi.PluginRequest{Key: testKey})
 	if err == nil {
 		t.Fatal("expected an error for a 502 response")
 	}
@@ -200,7 +200,7 @@ func TestSetPublishesEnvelope(t *testing.T) {
 	defer server.Close()
 
 	before := time.Now().Unix()
-	if err := newTestPlugin(t, server.URL).Set(context.Background(), testKey, "payload"); err != nil {
+	if err := newTestPlugin(t, server.URL).Set(context.Background(), pluginapi.PluginRequest{Key: testKey, Value: "payload"}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	after := time.Now().Unix()
@@ -232,7 +232,7 @@ func TestSetServerError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	err := newTestPlugin(t, server.URL).Set(context.Background(), testKey, "payload")
+	err := newTestPlugin(t, server.URL).Set(context.Background(), pluginapi.PluginRequest{Key: testKey, Value: "payload"})
 	if err == nil {
 		t.Fatal("expected an error for a 502 response")
 	}
@@ -259,11 +259,11 @@ func TestRoundTrip(t *testing.T) {
 	p := newTestPlugin(t, server.URL)
 	want := strings.Repeat("deadbeef", 75)
 
-	if err := p.Set(context.Background(), testKey, want); err != nil {
+	if err := p.Set(context.Background(), pluginapi.PluginRequest{Key: testKey, Value: want}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	got, err := p.Get(context.Background(), testKey)
+	got, err := p.Get(context.Background(), pluginapi.PluginRequest{Key: testKey})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -293,11 +293,11 @@ func TestKeyMustBeInfoHash(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			p := newTestPlugin(t, server.URL)
 
-			if _, err := p.Get(context.Background(), tt.key); err == nil {
+			if _, err := p.Get(context.Background(), pluginapi.PluginRequest{Key: tt.key}); err == nil {
 				t.Error("expected Get to reject the key")
 			}
 
-			if err := p.Set(context.Background(), tt.key, "payload"); err == nil {
+			if err := p.Set(context.Background(), pluginapi.PluginRequest{Key: tt.key, Value: "payload"}); err == nil {
 				t.Error("expected Set to reject the key")
 			}
 		})
@@ -534,14 +534,14 @@ func TestFailsOverToNextEndpoint(t *testing.T) {
 			}
 
 			if action == "get" {
-				got, err := p.Get(context.Background(), testKey)
+				got, err := p.Get(context.Background(), pluginapi.PluginRequest{Key: testKey})
 				if err != nil {
 					t.Fatalf("Get() error = %v, want the second endpoint to answer", err)
 				}
 				if got != "payload" {
 					t.Errorf("Get() = %q, want payload", got)
 				}
-			} else if err := p.Set(context.Background(), testKey, "payload"); err != nil {
+			} else if err := p.Set(context.Background(), pluginapi.PluginRequest{Key: testKey, Value: "payload"}); err != nil {
 				t.Fatalf("Set() error = %v, want the second endpoint to accept", err)
 			}
 
@@ -572,7 +572,7 @@ func TestDoesNotTryLaterEndpointsOnSuccess(t *testing.T) {
 		t.Fatalf("failed to create plugin: %v", err)
 	}
 
-	if _, err := p.Get(context.Background(), testKey); err != nil {
+	if _, err := p.Get(context.Background(), pluginapi.PluginRequest{Key: testKey}); err != nil {
 		t.Fatalf("Get() error = %v", err)
 	}
 
@@ -599,7 +599,7 @@ func TestNoValueDoesNotFailOver(t *testing.T) {
 		t.Fatalf("failed to create plugin: %v", err)
 	}
 
-	if _, err := p.Get(context.Background(), testKey); err == nil {
+	if _, err := p.Get(context.Background(), pluginapi.PluginRequest{Key: testKey}); err == nil {
 		t.Fatal("Get() error = nil, want no value found")
 	}
 
@@ -628,7 +628,7 @@ func TestAllEndpointsFailingReportsEach(t *testing.T) {
 		t.Fatalf("failed to create plugin: %v", err)
 	}
 
-	err = p.Set(context.Background(), testKey, "payload")
+	err = p.Set(context.Background(), pluginapi.PluginRequest{Key: testKey, Value: "payload"})
 	if err == nil {
 		t.Fatal("Set() error = nil, want both endpoints reported")
 	}
