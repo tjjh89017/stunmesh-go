@@ -1,5 +1,4 @@
-//go:build builtin_cloudflare || builtin_all
-
+// Package cloudflare provides the "cloudflare" built-in, which stores endpoints in Cloudflare DNS TXT records.
 package cloudflare
 
 import (
@@ -13,7 +12,7 @@ import (
 
 	"time"
 
-	"github.com/tjjh89017/stunmesh-go/internal/plugin/builtin"
+	"github.com/tjjh89017/stunmesh-go/internal/pluginconfig"
 	"github.com/tjjh89017/stunmesh-go/pluginapi/dialer"
 
 	"github.com/rs/zerolog"
@@ -21,7 +20,7 @@ import (
 )
 
 func init() {
-	pluginapi.Register("cloudflare", NewCloudflarePlugin)
+	pluginapi.Register("cloudflare", New)
 }
 
 const (
@@ -33,8 +32,8 @@ const (
 	configKeySubdomain = "subdomain"
 )
 
-// CloudflarePlugin implements the Store interface
-type CloudflarePlugin struct {
+// plugin implements the Store interface
+type plugin struct {
 	token     string
 	zoneID    string
 	zoneOnce  sync.Mutex
@@ -55,9 +54,9 @@ type cfError struct {
 	Message string `json:"message"`
 }
 
-// NewCloudflarePlugin creates a new Cloudflare plugin instance
-func NewCloudflarePlugin(_ context.Context, config pluginapi.PluginConfig) (pluginapi.Store, error) {
-	cfg := builtin.NewConfig(config)
+// New creates a new Cloudflare plugin instance
+func New(_ context.Context, config pluginapi.PluginConfig) (pluginapi.Store, error) {
+	cfg := pluginconfig.NewConfig(config)
 
 	zoneName, err := cfg.GetStringRequired(configKeyZoneName)
 	if err != nil {
@@ -79,7 +78,7 @@ func NewCloudflarePlugin(_ context.Context, config pluginapi.PluginConfig) (plug
 		Transport: dialer.Transport(),
 	}
 
-	p := &CloudflarePlugin{
+	p := &plugin{
 		token:     token,
 		zoneName:  zoneName,
 		subdomain: subdomain,
@@ -96,7 +95,7 @@ func NewCloudflarePlugin(_ context.Context, config pluginapi.PluginConfig) (plug
 
 // ensureZoneID resolves the zone once, with the caller's context so the
 // request carries whatever escape that context asks for.
-func (p *CloudflarePlugin) ensureZoneID(ctx context.Context) error {
+func (p *plugin) ensureZoneID(ctx context.Context) error {
 	p.zoneOnce.Lock()
 	defer p.zoneOnce.Unlock()
 	if p.zoneID != "" {
@@ -110,7 +109,7 @@ func (p *CloudflarePlugin) ensureZoneID(ctx context.Context) error {
 	return nil
 }
 
-func (p *CloudflarePlugin) doRequest(ctx context.Context, method, path string, body []byte) ([]byte, error) {
+func (p *plugin) doRequest(ctx context.Context, method, path string, body []byte) ([]byte, error) {
 	url := cfAPI + path
 
 	var bodyReader io.Reader
@@ -144,7 +143,7 @@ func (p *CloudflarePlugin) doRequest(ctx context.Context, method, path string, b
 	return data, nil
 }
 
-func (p *CloudflarePlugin) getZoneID(ctx context.Context) (string, error) {
+func (p *plugin) getZoneID(ctx context.Context) (string, error) {
 	data, err := p.doRequest(ctx, "GET", "/zones?name="+p.zoneName, nil)
 	if err != nil {
 		return "", err
@@ -170,7 +169,7 @@ func (p *CloudflarePlugin) getZoneID(ctx context.Context) (string, error) {
 	return result.ID, nil
 }
 
-func (p *CloudflarePlugin) getRecordName(key string) string {
+func (p *plugin) getRecordName(key string) string {
 	// Key is already SHA1 hex from stunmesh
 	if p.subdomain != "" {
 		return fmt.Sprintf("%s.%s.%s", key, p.subdomain, p.zoneName)
@@ -178,7 +177,7 @@ func (p *CloudflarePlugin) getRecordName(key string) string {
 	return fmt.Sprintf("%s.%s", key, p.zoneName)
 }
 
-func (p *CloudflarePlugin) findRecord(ctx context.Context, name string) (string, string, error) {
+func (p *plugin) findRecord(ctx context.Context, name string) (string, string, error) {
 	path := fmt.Sprintf("/zones/%s/dns_records?type=TXT&name=%s", p.zoneID, name)
 	data, err := p.doRequest(ctx, "GET", path, nil)
 	if err != nil {
@@ -206,7 +205,7 @@ func (p *CloudflarePlugin) findRecord(ctx context.Context, name string) (string,
 }
 
 // Get retrieves a value from Cloudflare DNS
-func (p *CloudflarePlugin) Get(ctx context.Context, req pluginapi.PluginRequest) (string, error) {
+func (p *plugin) Get(ctx context.Context, req pluginapi.PluginRequest) (string, error) {
 	key := req.Key
 	logger := zerolog.Ctx(ctx)
 	logger.Info().Str("key", key).Msg("get data from builtin cloudflare plugin")
@@ -228,13 +227,13 @@ func (p *CloudflarePlugin) Get(ctx context.Context, req pluginapi.PluginRequest)
 
 // Close closes the plugin's idle HTTP connections. Safe to call more than
 // once.
-func (p *CloudflarePlugin) Close() error {
+func (p *plugin) Close() error {
 	p.client.CloseIdleConnections()
 	return nil
 }
 
 // Set stores a value in Cloudflare DNS
-func (p *CloudflarePlugin) Set(ctx context.Context, req pluginapi.PluginRequest) error {
+func (p *plugin) Set(ctx context.Context, req pluginapi.PluginRequest) error {
 	key, value := req.Key, req.Value
 	logger := zerolog.Ctx(ctx)
 	logger.Info().Str("key", key).Msg("set data to builtin cloudflare plugin")

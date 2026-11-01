@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	"github.com/tjjh89017/stunmesh-go/app"
+	_ "github.com/tjjh89017/stunmesh-go/builtin/all"
 )
 
 // version comes from the VCS build info the Go toolchain stamps into the

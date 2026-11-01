@@ -34,7 +34,7 @@ runs:
     - name: Test (Windows)
       if: inputs.os == 'windows'
       shell: bash
-      run: go test -race -tags builtin_all ./...
+      run: go test -race ./...
 
     # FreeBSD runs the tests in the guest, where the process is already root.
     - name: Test (FreeBSD VM)

@@ -172,7 +172,7 @@ make all
 > [!NOTE]
 > For FreeBSD and MacOS, please use GNU Makefile `gmake` to build.
 
-Build options (built-in plugin selection, binary minimization, WireGuard backend) are documented at [docs.stunmesh.dev/reference/build](https://docs.stunmesh.dev/reference/build). Exec and shell plugins live in the [`stunmesh-plugins`](https://github.com/tjjh89017/stunmesh-plugins) repository.
+Build options (binary minimization, WireGuard backend, custom binaries with a chosen set of built-in plugins) are documented at [docs.stunmesh.dev/reference/build](https://docs.stunmesh.dev/reference/build). Exec and shell plugins live in the [`stunmesh-plugins`](https://github.com/tjjh89017/stunmesh-plugins) repository.
 
 ## Future work / Roadmap
 

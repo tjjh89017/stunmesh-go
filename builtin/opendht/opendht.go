@@ -1,5 +1,4 @@
-//go:build builtin_opendht || builtin_all
-
+// Package opendht provides the "opendht" built-in, which stores endpoints in OpenDHT through an HTTP proxy.
 package opendht
 
 import (
@@ -17,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tjjh89017/stunmesh-go/internal/plugin/builtin"
+	"github.com/tjjh89017/stunmesh-go/internal/pluginconfig"
 	"github.com/tjjh89017/stunmesh-go/pluginapi/dialer"
 
 	"github.com/rs/zerolog"
@@ -25,7 +24,7 @@ import (
 )
 
 func init() {
-	pluginapi.Register("opendht", NewOpenDHTPlugin)
+	pluginapi.Register("opendht", New)
 }
 
 const (
@@ -44,8 +43,8 @@ const (
 // rather than let the proxy interpret a bad path segment.
 var keyPattern = regexp.MustCompile(`^[0-9a-fA-F]{40}$`)
 
-// OpenDHTPlugin implements the Store interface
-type OpenDHTPlugin struct {
+// plugin implements the Store interface
+type plugin struct {
 	endpoints []string
 	magic     string
 	client    *http.Client
@@ -91,7 +90,7 @@ func normalizeEndpoint(endpoint string) (string, error) {
 // and deduplicates preserving order, the same shape as stun.address feeding
 // stun.addresses. Every entry is validated here so a typo in the third one is
 // not discovered only when the first two happen to be down.
-func resolveEndpoints(cfg *builtin.Config) ([]string, error) {
+func resolveEndpoints(cfg *pluginconfig.Config) ([]string, error) {
 	list, err := cfg.GetStringSlice(configKeyEndpoints)
 	if err != nil {
 		return nil, err
@@ -127,9 +126,9 @@ func resolveEndpoints(cfg *builtin.Config) ([]string, error) {
 	return endpoints, nil
 }
 
-// NewOpenDHTPlugin creates a new OpenDHT plugin instance
-func NewOpenDHTPlugin(_ context.Context, config pluginapi.PluginConfig) (pluginapi.Store, error) {
-	cfg := builtin.NewConfig(config)
+// New creates a new OpenDHT plugin instance
+func New(_ context.Context, config pluginapi.PluginConfig) (pluginapi.Store, error) {
+	cfg := pluginconfig.NewConfig(config)
 
 	endpoints, err := resolveEndpoints(cfg)
 	if err != nil {
@@ -160,7 +159,7 @@ func NewOpenDHTPlugin(_ context.Context, config pluginapi.PluginConfig) (plugina
 		Transport: dialer.Transport(),
 	}
 
-	return &OpenDHTPlugin{
+	return &plugin{
 		endpoints: endpoints,
 		magic:     magic,
 		client:    client,
@@ -171,7 +170,7 @@ func NewOpenDHTPlugin(_ context.Context, config pluginapi.PluginConfig) (plugina
 // failed request moves on to the next: a request that succeeds but carries no
 // value for the key is an answer, not a failure, and every endpoint fronts the
 // same DHT so asking another would give the same one.
-func (p *OpenDHTPlugin) doRequest(ctx context.Context, method, key string, body []byte) ([]byte, error) {
+func (p *plugin) doRequest(ctx context.Context, method, key string, body []byte) ([]byte, error) {
 	logger := zerolog.Ctx(ctx)
 
 	var errs []error
@@ -188,7 +187,7 @@ func (p *OpenDHTPlugin) doRequest(ctx context.Context, method, key string, body 
 	return nil, errors.Join(errs...)
 }
 
-func (p *OpenDHTPlugin) doRequestTo(ctx context.Context, endpoint, method, key string, body []byte) ([]byte, error) {
+func (p *plugin) doRequestTo(ctx context.Context, endpoint, method, key string, body []byte) ([]byte, error) {
 	url := fmt.Sprintf("%s/key/%s", endpoint, key)
 
 	var bodyReader io.Reader
@@ -223,13 +222,13 @@ func (p *OpenDHTPlugin) doRequestTo(ctx context.Context, endpoint, method, key s
 
 // Close closes the plugin's idle HTTP connections. Safe to call more than
 // once.
-func (p *OpenDHTPlugin) Close() error {
+func (p *plugin) Close() error {
 	p.client.CloseIdleConnections()
 	return nil
 }
 
 // Get retrieves a value from OpenDHT
-func (p *OpenDHTPlugin) Get(ctx context.Context, req pluginapi.PluginRequest) (string, error) {
+func (p *plugin) Get(ctx context.Context, req pluginapi.PluginRequest) (string, error) {
 	key := req.Key
 	logger := zerolog.Ctx(ctx)
 	logger.Info().Str("key", key).Msg("get data from builtin opendht plugin")
@@ -285,7 +284,7 @@ func (p *OpenDHTPlugin) Get(ctx context.Context, req pluginapi.PluginRequest) (s
 }
 
 // Set stores a value in OpenDHT
-func (p *OpenDHTPlugin) Set(ctx context.Context, req pluginapi.PluginRequest) error {
+func (p *plugin) Set(ctx context.Context, req pluginapi.PluginRequest) error {
 	key, value := req.Key, req.Value
 	logger := zerolog.Ctx(ctx)
 	logger.Info().Str("key", key).Msg("set data to builtin opendht plugin")

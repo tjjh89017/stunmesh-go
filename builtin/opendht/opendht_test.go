@@ -1,5 +1,3 @@
-//go:build builtin_opendht || builtin_all
-
 package opendht
 
 import (
@@ -58,7 +56,7 @@ func rawLine(t *testing.T, data string) string {
 func newTestPlugin(t *testing.T, url string) pluginapi.Store {
 	t.Helper()
 
-	p, err := NewOpenDHTPlugin(context.Background(), pluginapi.PluginConfig{configKeyEndpoint: url})
+	p, err := New(context.Background(), pluginapi.PluginConfig{configKeyEndpoint: url})
 	if err != nil {
 		t.Fatalf("failed to create plugin: %v", err)
 	}
@@ -137,7 +135,7 @@ func TestGetRespectsConfiguredMagic(t *testing.T) {
 	}))
 	defer server.Close()
 
-	p, err := NewOpenDHTPlugin(context.Background(), pluginapi.PluginConfig{
+	p, err := New(context.Background(), pluginapi.PluginConfig{
 		configKeyEndpoint: server.URL,
 		configKeyMagic:    "custom",
 	})
@@ -305,22 +303,22 @@ func TestKeyMustBeInfoHash(t *testing.T) {
 }
 
 func TestDefaults(t *testing.T) {
-	p, err := NewOpenDHTPlugin(context.Background(), pluginapi.PluginConfig{configKeyEndpoint: "https://a.example"})
+	p, err := New(context.Background(), pluginapi.PluginConfig{configKeyEndpoint: "https://a.example"})
 	if err != nil {
 		t.Fatalf("failed to create plugin: %v", err)
 	}
 
-	plugin, ok := p.(*OpenDHTPlugin)
+	dht, ok := p.(*plugin)
 	if !ok {
-		t.Fatal("expected an *OpenDHTPlugin")
+		t.Fatal("expected a *plugin")
 	}
 
-	if plugin.magic != defaultMagic {
-		t.Errorf("expected magic %s, got %s", defaultMagic, plugin.magic)
+	if dht.magic != defaultMagic {
+		t.Errorf("expected magic %s, got %s", defaultMagic, dht.magic)
 	}
 
-	if plugin.client.Timeout != defaultTimeout {
-		t.Errorf("expected timeout %s, got %s", defaultTimeout, plugin.client.Timeout)
+	if dht.client.Timeout != defaultTimeout {
+		t.Errorf("expected timeout %s, got %s", defaultTimeout, dht.client.Timeout)
 	}
 }
 
@@ -337,7 +335,7 @@ func TestTimeoutConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p, err := NewOpenDHTPlugin(context.Background(), pluginapi.PluginConfig{
+			p, err := New(context.Background(), pluginapi.PluginConfig{
 				configKeyEndpoint: "https://a.example",
 				configKeyTimeout:  tt.value,
 			})
@@ -345,7 +343,7 @@ func TestTimeoutConfig(t *testing.T) {
 				t.Fatalf("failed to create plugin: %v", err)
 			}
 
-			if got := p.(*OpenDHTPlugin).client.Timeout; got != tt.want {
+			if got := p.(*plugin).client.Timeout; got != tt.want {
 				t.Errorf("expected %s, got %s", tt.want, got)
 			}
 		})
@@ -358,7 +356,7 @@ func TestInvalidTimeoutConfig(t *testing.T) {
 			configKeyEndpoint: "https://a.example",
 			configKeyTimeout:  value,
 		}
-		if _, err := NewOpenDHTPlugin(context.Background(), config); err == nil {
+		if _, err := New(context.Background(), config); err == nil {
 			t.Errorf("expected an error for timeout %v", value)
 		}
 	}
@@ -378,7 +376,7 @@ func TestEndpointRequiresScheme(t *testing.T) {
 
 	for _, endpoint := range rejected {
 		t.Run(endpoint, func(t *testing.T) {
-			_, err := NewOpenDHTPlugin(context.Background(), pluginapi.PluginConfig{configKeyEndpoint: endpoint})
+			_, err := New(context.Background(), pluginapi.PluginConfig{configKeyEndpoint: endpoint})
 			if err == nil {
 				t.Fatalf("expected %q to be rejected", endpoint)
 			}
@@ -396,11 +394,11 @@ func TestEndpointRequiresScheme(t *testing.T) {
 
 	for _, endpoint := range accepted {
 		t.Run(endpoint, func(t *testing.T) {
-			p, err := NewOpenDHTPlugin(context.Background(), pluginapi.PluginConfig{configKeyEndpoint: endpoint})
+			p, err := New(context.Background(), pluginapi.PluginConfig{configKeyEndpoint: endpoint})
 			if err != nil {
 				t.Fatalf("expected %q to be accepted, got: %v", endpoint, err)
 			}
-			if got := p.(*OpenDHTPlugin).endpoints; len(got) != 1 || got[0] != endpoint {
+			if got := p.(*plugin).endpoints; len(got) != 1 || got[0] != endpoint {
 				t.Errorf("endpoints = %v, want [%q]", got, endpoint)
 			}
 		})
@@ -409,12 +407,12 @@ func TestEndpointRequiresScheme(t *testing.T) {
 
 // A trailing slash would make the request path "//key/...".
 func TestEndpointTrailingSlashTrimmed(t *testing.T) {
-	p, err := NewOpenDHTPlugin(context.Background(), pluginapi.PluginConfig{configKeyEndpoint: "http://127.0.0.1:8080/"})
+	p, err := New(context.Background(), pluginapi.PluginConfig{configKeyEndpoint: "http://127.0.0.1:8080/"})
 	if err != nil {
 		t.Fatalf("failed to create plugin: %v", err)
 	}
 
-	if got := p.(*OpenDHTPlugin).endpoints; len(got) != 1 || got[0] != "http://127.0.0.1:8080" {
+	if got := p.(*plugin).endpoints; len(got) != 1 || got[0] != "http://127.0.0.1:8080" {
 		t.Errorf("endpoints = %v, want the trailing slash removed", got)
 	}
 }
@@ -460,12 +458,12 @@ func TestResolveEndpointsMergesAndDeduplicates(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p, err := NewOpenDHTPlugin(context.Background(), tt.config)
+			p, err := New(context.Background(), tt.config)
 			if err != nil {
 				t.Fatalf("failed to create plugin: %v", err)
 			}
 
-			got := p.(*OpenDHTPlugin).endpoints
+			got := p.(*plugin).endpoints
 			if !slices.Equal(got, tt.want) {
 				t.Errorf("endpoints = %v, want %v", got, tt.want)
 			}
@@ -476,7 +474,7 @@ func TestResolveEndpointsMergesAndDeduplicates(t *testing.T) {
 // A bad entry anywhere in the list must fail at startup, not when the earlier
 // endpoints happen to go down.
 func TestResolveEndpointsValidatesEveryEntry(t *testing.T) {
-	_, err := NewOpenDHTPlugin(context.Background(), pluginapi.PluginConfig{
+	_, err := New(context.Background(), pluginapi.PluginConfig{
 		configKeyEndpoints: []interface{}{"https://good.example", "bad.example"},
 	})
 	if err == nil {
@@ -490,7 +488,7 @@ func TestResolveEndpointsValidatesEveryEntry(t *testing.T) {
 // There is no built-in default: an unconfigured plugin must say so rather
 // than silently adopt somebody else's proxy.
 func TestNoEndpointConfigured(t *testing.T) {
-	_, err := NewOpenDHTPlugin(context.Background(), pluginapi.PluginConfig{})
+	_, err := New(context.Background(), pluginapi.PluginConfig{})
 	if err == nil {
 		t.Fatal("expected an error when neither endpoint nor endpoints is set")
 	}
@@ -500,7 +498,7 @@ func TestNoEndpointConfigured(t *testing.T) {
 }
 
 func TestResolveEndpointsRejectsNonList(t *testing.T) {
-	_, err := NewOpenDHTPlugin(context.Background(), pluginapi.PluginConfig{configKeyEndpoints: 42})
+	_, err := New(context.Background(), pluginapi.PluginConfig{configKeyEndpoints: 42})
 	if err == nil {
 		t.Fatal("expected a non-list endpoints value to be rejected")
 	}
@@ -526,7 +524,7 @@ func TestFailsOverToNextEndpoint(t *testing.T) {
 			}))
 			defer live.Close()
 
-			p, err := NewOpenDHTPlugin(context.Background(), pluginapi.PluginConfig{
+			p, err := New(context.Background(), pluginapi.PluginConfig{
 				configKeyEndpoints: []interface{}{dead.URL, live.URL},
 			})
 			if err != nil {
@@ -565,7 +563,7 @@ func TestDoesNotTryLaterEndpointsOnSuccess(t *testing.T) {
 	}))
 	defer first.Close()
 
-	p, err := NewOpenDHTPlugin(context.Background(), pluginapi.PluginConfig{
+	p, err := New(context.Background(), pluginapi.PluginConfig{
 		configKeyEndpoints: []interface{}{first.URL, second.URL},
 	})
 	if err != nil {
@@ -592,7 +590,7 @@ func TestNoValueDoesNotFailOver(t *testing.T) {
 	first := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	defer first.Close()
 
-	p, err := NewOpenDHTPlugin(context.Background(), pluginapi.PluginConfig{
+	p, err := New(context.Background(), pluginapi.PluginConfig{
 		configKeyEndpoints: []interface{}{first.URL, second.URL},
 	})
 	if err != nil {
@@ -621,7 +619,7 @@ func TestAllEndpointsFailingReportsEach(t *testing.T) {
 	}))
 	defer second.Close()
 
-	p, err := NewOpenDHTPlugin(context.Background(), pluginapi.PluginConfig{
+	p, err := New(context.Background(), pluginapi.PluginConfig{
 		configKeyEndpoints: []interface{}{first.URL, second.URL},
 	})
 	if err != nil {
@@ -641,16 +639,16 @@ func TestAllEndpointsFailingReportsEach(t *testing.T) {
 }
 
 func TestOpenDHTPlugin_Close(t *testing.T) {
-	store, err := NewOpenDHTPlugin(context.Background(), pluginapi.PluginConfig{
+	store, err := New(context.Background(), pluginapi.PluginConfig{
 		configKeyEndpoint: "http://127.0.0.1:1",
 	})
 	if err != nil {
-		t.Fatalf("NewOpenDHTPlugin(context.Background(), ) unexpected error: %v", err)
+		t.Fatalf("New() unexpected error: %v", err)
 	}
 
 	closer, ok := store.(io.Closer)
 	if !ok {
-		t.Fatal("OpenDHTPlugin does not implement io.Closer")
+		t.Fatal("plugin does not implement io.Closer")
 	}
 
 	if err := closer.Close(); err != nil {
