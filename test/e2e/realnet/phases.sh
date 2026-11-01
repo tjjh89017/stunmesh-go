@@ -196,7 +196,8 @@ full_tunnel_subject() {
 	# prove the traffic really traversed the tunnel intact rather than that
 	# the route table merely looks right.
 	_nonce="$(date +%s)-$$"
-	if ns_exec curl -4 -sS -m 20 -o "$WORK/canary.blob" "http://$CANARY_IP:$CANARY_PORT/$_nonce" 2>>"$WORK/curl.log"; then
+	# The runner shell opens the blob: a root-created file under umask 077 is unreadable to sha256sum.
+	if ns_exec curl -4 -sS -m 20 "http://$CANARY_IP:$CANARY_PORT/$_nonce" >"$WORK/canary.blob" 2>>"$WORK/curl.log"; then
 		rec fulltunnel_canary pass
 		rec fulltunnel_canary_sha256 "$(sha256sum "$WORK/canary.blob" | awk '{print $1}')"
 	else

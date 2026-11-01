@@ -97,13 +97,12 @@ device_up() {
 	*) echo "unsupported OS: $OS" >&2; exit 1 ;;
 	esac
 
-	# $WORK belongs to the invoking user, so feeding the key on stdin keeps
-	# it out of the process table and off a root-readable path.
-	# shellcheck disable=SC2024
-	ns_exec wg set "$WG_IF" private-key /dev/stdin \
-		listen-port "$WG_PORT" \
-		peer "$_peer" allowed-ips "$PEER_OVERLAY/32" \
-		persistent-keepalive "$KEEPALIVE" < "$_keyfile"
+	# On Ubuntu 26.04 an AppArmor profile confines wg to /etc/wireguard and
+	# denies dac_override, so the key must arrive through a pipe root creates.
+	# shellcheck disable=SC2016
+	ns_exec sh -c 'cat "$1" | wg set "$0" private-key /dev/stdin \
+		listen-port "$2" peer "$3" allowed-ips "$4" persistent-keepalive "$5"' \
+		"$WG_IF" "$_keyfile" "$WG_PORT" "$_peer" "$PEER_OVERLAY/32" "$KEEPALIVE"
 
 	case "$OS" in
 	Linux)
