@@ -17,12 +17,11 @@ import (
 	"github.com/tjjh89017/stunmesh-go/pluginapi/dialer"
 
 	"github.com/rs/zerolog"
-	"github.com/tjjh89017/stunmesh-go/internal/plugin/registry"
 	pluginapi "github.com/tjjh89017/stunmesh-go/pluginapi"
 )
 
 func init() {
-	registry.Register("cloudflare", NewCloudflarePlugin)
+	pluginapi.Register("cloudflare", NewCloudflarePlugin)
 }
 
 const (
@@ -57,7 +56,7 @@ type cfError struct {
 }
 
 // NewCloudflarePlugin creates a new Cloudflare plugin instance
-func NewCloudflarePlugin(config pluginapi.PluginConfig) (pluginapi.Store, error) {
+func NewCloudflarePlugin(_ context.Context, config pluginapi.PluginConfig) (pluginapi.Store, error) {
 	cfg := builtin.NewConfig(config)
 
 	zoneName, err := cfg.GetStringRequired(configKeyZoneName)

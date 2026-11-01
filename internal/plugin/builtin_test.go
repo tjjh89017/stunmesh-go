@@ -3,9 +3,9 @@ package plugin
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
-	"github.com/tjjh89017/stunmesh-go/internal/plugin/registry"
 	pluginapi "github.com/tjjh89017/stunmesh-go/pluginapi"
 )
 
@@ -23,29 +23,37 @@ func (m *mockStore) Set(ctx context.Context, req pluginapi.PluginRequest) error 
 }
 
 // Helper to create a mock factory
-func mockFactory(name string) registry.Factory {
-	return func(config pluginapi.PluginConfig) (pluginapi.Store, error) {
+func mockFactory(name string) pluginapi.FactoryWithStores {
+	return func(ctx context.Context, config pluginapi.PluginConfig, _ pluginapi.PluginStores) (pluginapi.Store, error) {
 		return &mockStore{name: name}, nil
 	}
 }
 
 // Helper to create a failing factory
-func failingFactory(errMsg string) registry.Factory {
-	return func(config pluginapi.PluginConfig) (pluginapi.Store, error) {
+func failingFactory(errMsg string) pluginapi.FactoryWithStores {
+	return func(ctx context.Context, config pluginapi.PluginConfig, _ pluginapi.PluginStores) (pluginapi.Store, error) {
 		return nil, fmt.Errorf("%s", errMsg)
+	}
+}
+
+// singleLookup resolves only name, keeping tests off the global registry.
+func singleLookup(name string, f pluginapi.FactoryWithStores) lookupFunc {
+	return func(n string) (pluginapi.FactoryWithStores, bool) {
+		if n == name {
+			return f, true
+		}
+		return nil, false
 	}
 }
 
 func TestNewBuiltinPlugin_Success(t *testing.T) {
 	pluginName := "test_plugin_new_success"
-	registry.Register(pluginName, mockFactory(pluginName))
-
 	config := pluginapi.PluginConfig{
 		"name": pluginName,
 		"key":  "value",
 	}
 
-	store, err := NewBuiltinPlugin(config)
+	store, err := newBuiltinPlugin(context.Background(), config, nil, singleLookup(pluginName, mockFactory(pluginName)))
 	if err != nil {
 		t.Fatalf("NewBuiltinPlugin() error = %v, want nil", err)
 	}
@@ -69,7 +77,7 @@ func TestNewBuiltinPlugin_MissingName(t *testing.T) {
 		// Missing "name" field
 	}
 
-	store, err := NewBuiltinPlugin(config)
+	store, err := NewBuiltinPlugin(context.Background(), config, nil)
 	if err == nil {
 		t.Error("NewBuiltinPlugin() should return error when 'name' field is missing")
 	}
@@ -102,7 +110,7 @@ func TestNewBuiltinPlugin_NameNotString(t *testing.T) {
 				"name": tt.nameValue,
 			}
 
-			store, err := NewBuiltinPlugin(config)
+			store, err := NewBuiltinPlugin(context.Background(), config, nil)
 			if err == nil {
 				t.Error("NewBuiltinPlugin() should return error when 'name' is not a string")
 			}
@@ -125,7 +133,7 @@ func TestNewBuiltinPlugin_NotFound(t *testing.T) {
 		"name": pluginName,
 	}
 
-	store, err := NewBuiltinPlugin(config)
+	store, err := NewBuiltinPlugin(context.Background(), config, nil)
 	if err == nil {
 		t.Error("NewBuiltinPlugin() should return error for nonexistent plugin")
 	}
@@ -134,22 +142,21 @@ func TestNewBuiltinPlugin_NotFound(t *testing.T) {
 		t.Error("NewBuiltinPlugin() should return nil store on error")
 	}
 
-	expectedMsg := fmt.Sprintf("builtin plugin not found: %s", pluginName)
-	if err != nil && err.Error() != expectedMsg {
-		t.Errorf("NewBuiltinPlugin() error = %q, want %q", err.Error(), expectedMsg)
+	for _, want := range []string{"builtin plugin not found: " + pluginName, "registered: [", "import"} {
+		if err != nil && !strings.Contains(err.Error(), want) {
+			t.Errorf("NewBuiltinPlugin() error = %q, want it to contain %q", err.Error(), want)
+		}
 	}
 }
 
 func TestNewBuiltinPlugin_FactoryError(t *testing.T) {
 	pluginName := "test_plugin_factory_error"
 	errMsg := "factory initialization failed"
-	registry.Register(pluginName, failingFactory(errMsg))
-
 	config := pluginapi.PluginConfig{
 		"name": pluginName,
 	}
 
-	store, err := NewBuiltinPlugin(config)
+	store, err := newBuiltinPlugin(context.Background(), config, nil, singleLookup(pluginName, failingFactory(errMsg)))
 	if err == nil {
 		t.Error("NewBuiltinPlugin() should return error when factory fails")
 	}

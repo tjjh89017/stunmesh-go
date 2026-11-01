@@ -21,12 +21,11 @@ import (
 	"github.com/tjjh89017/stunmesh-go/pluginapi/dialer"
 
 	"github.com/rs/zerolog"
-	"github.com/tjjh89017/stunmesh-go/internal/plugin/registry"
 	pluginapi "github.com/tjjh89017/stunmesh-go/pluginapi"
 )
 
 func init() {
-	registry.Register("opendht", NewOpenDHTPlugin)
+	pluginapi.Register("opendht", NewOpenDHTPlugin)
 }
 
 const (
@@ -129,7 +128,7 @@ func resolveEndpoints(cfg *builtin.Config) ([]string, error) {
 }
 
 // NewOpenDHTPlugin creates a new OpenDHT plugin instance
-func NewOpenDHTPlugin(config pluginapi.PluginConfig) (pluginapi.Store, error) {
+func NewOpenDHTPlugin(_ context.Context, config pluginapi.PluginConfig) (pluginapi.Store, error) {
 	cfg := builtin.NewConfig(config)
 
 	endpoints, err := resolveEndpoints(cfg)
