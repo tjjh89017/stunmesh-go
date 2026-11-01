@@ -91,11 +91,14 @@ make_wg() {
 	ns=$1; name=$2; keyfile=$3; port=$4; peer=$5; allowed=$6; overlay=$7
 	endpoint=${8:-}; keepalive=${9:-}
 	"$ns" ip link add "$name" type wireguard
-	set -- "$name" private-key "$keyfile" listen-port "$port" \
+	set -- "$name" "$keyfile" listen-port "$port" \
 		peer "$peer" allowed-ips "$allowed"
 	[ -n "$endpoint" ] && set -- "$@" endpoint "$endpoint"
 	[ -n "$keepalive" ] && set -- "$@" persistent-keepalive "$keepalive"
-	"$ns" wg set "$@"
+	# On Ubuntu 26.04 an AppArmor profile confines wg to /etc/wireguard and
+	# denies dac_override, so the key must arrive through a pipe root creates.
+	# shellcheck disable=SC2016
+	"$ns" sh -c 'k=$1; shift; cat "$k" | wg set "$0" private-key /dev/stdin "$@"' "$@"
 	"$ns" ip addr add "$overlay/24" dev "$name"
 	"$ns" ip link set "$name" up
 }

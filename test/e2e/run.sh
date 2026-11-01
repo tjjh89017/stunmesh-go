@@ -158,8 +158,12 @@ create_iface() {
 	*) echo "unsupported OS: $OS" >&2; exit 1 ;;
 	esac
 	if [ "$OS" != Windows ]; then
-		$SUDO wg set "$name" private-key "$keyfile" listen-port "$port" \
-			peer "$peer" allowed-ips "$allowed"
+		# On Ubuntu 26.04 an AppArmor profile confines wg to /etc/wireguard and
+		# denies dac_override, so the key must arrive through a pipe root creates.
+		# shellcheck disable=SC2016
+		$SUDO sh -c 'cat "$1" | wg set "$0" private-key /dev/stdin \
+			listen-port "$2" peer "$3" allowed-ips "$4"' \
+			"$name" "$keyfile" "$port" "$peer" "$allowed"
 	fi
 	eval "IF$slot=\$name"
 }
