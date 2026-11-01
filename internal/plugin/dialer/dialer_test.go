@@ -367,3 +367,16 @@ func TestResolveAddrPortRejectsMalformed(t *testing.T) {
 		}
 	}
 }
+
+func TestTransportTLSSessionCache(t *testing.T) {
+	a, b := Transport(), Transport()
+	if a.TLSClientConfig == nil || b.TLSClientConfig == nil {
+		t.Fatal("TLSClientConfig is nil")
+	}
+	if a.TLSClientConfig.ClientSessionCache == nil || b.TLSClientConfig.ClientSessionCache == nil {
+		t.Fatal("ClientSessionCache is nil")
+	}
+	if a.TLSClientConfig.ClientSessionCache == b.TLSClientConfig.ClientSessionCache {
+		t.Error("transports share one ClientSessionCache")
+	}
+}
