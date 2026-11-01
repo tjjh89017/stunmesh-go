@@ -83,7 +83,7 @@ device_up() {
 			echo "AllowedIPs = $PEER_OVERLAY/32"
 			echo "PersistentKeepalive = $KEEPALIVE"
 		} > "$_conf"
-		win_start_tunnel "$WG_IF" "$_conf" || { echo "tunnel $WG_IF never came up" >&2; exit 1; }
+		win_start_tunnel "$WG_IF" "$_conf" "$WG_PORT" || { echo "tunnel $WG_IF never came up" >&2; exit 1; }
 		return 0
 		;;
 	*) echo "unsupported OS: $OS" >&2; exit 1 ;;

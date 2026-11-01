@@ -86,6 +86,7 @@ rec() { echo "$1=$2" >> "$RESULTS"; log "result: $1=$2"; }
 . "$HERE/phases.sh"
 
 detect_os
+[ "$OS" = Windows ] && WG_PORT=$(win_free_udp_port "$WG_PORT")
 # The anchor is deliberately the same boring Linux far end for every subject,
 # so a failure is attributable to the subject side by construction.
 if [ "$ROLE" = anchor ] && [ "$OS" != Linux ]; then
