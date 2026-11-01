@@ -314,6 +314,7 @@ The protocol configuration operates at two distinct levels:
 - Entire JSON is encrypted using NaCl box (Curve25519 + XSalsa20 + Poly1305)
 - Encrypted data is hex-encoded for storage
 - Plugin stores/retrieves hex string (no JSON parsing needed in plugin)
+- `pluginapi/endpoint` is the single implementation of the storage key (`Key`) and the sealed format (`Seal`/`Open`, hex of nonce || box); `internal/entity.PeerId` and `internal/crypto.Endpoint` delegate to it
 
 **Decryption and Selection**:
 - Controller decrypts entire JSON

@@ -1,9 +1,9 @@
 package entity
 
 import (
-	"crypto/sha1"
 	"encoding/base64"
-	"encoding/hex"
+
+	"github.com/tjjh89017/stunmesh-go/pluginapi/endpoint"
 )
 
 const PeerKeyLength = 32
@@ -27,21 +27,11 @@ func NewPeerId(devicePublicKey, peerPublicKey []byte) PeerId {
 }
 
 func (p *PeerId) EndpointKey() string {
-	src, dest := make([]byte, PeerKeyLength), make([]byte, PeerKeyLength)
-	copy(src, p.devicePublicKey[:])
-	copy(dest, p.peerPublicKey[:])
-
-	sum := sha1.Sum(append(src, dest...))
-	return hex.EncodeToString(sum[:])
+	return endpoint.Key(p.devicePublicKey, p.peerPublicKey)
 }
 
 func (p *PeerId) RemoteEndpointKey() string {
-	src, dest := make([]byte, PeerKeyLength), make([]byte, PeerKeyLength)
-	copy(src, p.peerPublicKey[:])
-	copy(dest, p.devicePublicKey[:])
-
-	sum := sha1.Sum(append(src, dest...))
-	return hex.EncodeToString(sum[:])
+	return endpoint.Key(p.peerPublicKey, p.devicePublicKey)
 }
 
 // PeerPublicKeyString returns only the peer-public-key half of the

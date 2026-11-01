@@ -174,6 +174,11 @@ there's a stated reason not to.
 - **Revisit if**: a platform gains a resolver that can be pinned to a
   specific underlay network, which would make the forced pure-Go resolver
   and the explicit nameserver list unnecessary there.
+- **Public surface**: `pluginapi/dialer` forwards `Transport`, `DialContext`
+  and `Resolver` for out-of-tree Go plugins. `Escape`/`WithEscape` stay
+  internal: only the core knows the device's mark, fib or interface, so a
+  plugin passes on the `ctx` it receives from `Store.Get`/`Set` rather than
+  building an escape itself.
 
 ## CI/e2e coverage narrowing
 

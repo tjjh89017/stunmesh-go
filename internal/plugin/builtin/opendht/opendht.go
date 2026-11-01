@@ -18,7 +18,7 @@ import (
 	"time"
 
 	"github.com/tjjh89017/stunmesh-go/internal/plugin/builtin"
-	"github.com/tjjh89017/stunmesh-go/internal/plugin/dialer"
+	"github.com/tjjh89017/stunmesh-go/pluginapi/dialer"
 
 	"github.com/rs/zerolog"
 	"github.com/tjjh89017/stunmesh-go/internal/plugin/registry"
