@@ -83,15 +83,7 @@ device_up() {
 			echo "AllowedIPs = $PEER_OVERLAY/32"
 			echo "PersistentKeepalive = $KEEPALIVE"
 		} > "$_conf"
-		# MSYS_NO_PATHCONV stops Git Bash rewriting /installtunnelservice as
-		# a POSIX path; the conf path is pre-converted with cygpath instead.
-		MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' \
-			wireguard.exe /installtunnelservice "$(cygpath -w "$_conf")"
-		for _ in $(seq 1 60); do
-			wg show "$WG_IF" >/dev/null 2>&1 && break
-			sleep 1
-		done
-		wg show "$WG_IF" >/dev/null 2>&1 || { echo "tunnel $WG_IF never came up" >&2; exit 1; }
+		win_start_tunnel "$WG_IF" "$_conf" || { echo "tunnel $WG_IF never came up" >&2; exit 1; }
 		return 0
 		;;
 	*) echo "unsupported OS: $OS" >&2; exit 1 ;;

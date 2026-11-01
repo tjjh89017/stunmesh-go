@@ -80,6 +80,7 @@ esac
 log() { echo "[realnet:$ROLE] $*"; }
 rec() { echo "$1=$2" >> "$RESULTS"; log "result: $1=$2"; }
 
+. "$HERE/../win_tunnel.sh"
 . "$HERE/device.sh"
 . "$HERE/netns.sh"
 . "$HERE/phases.sh"
