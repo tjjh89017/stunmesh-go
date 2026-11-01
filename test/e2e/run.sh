@@ -70,6 +70,11 @@ trap cleanup EXIT INT TERM
 # shellcheck source=win_tunnel.sh
 . "$HERE/win_tunnel.sh"
 
+if [ "$OS" = Windows ]; then
+	PORT0=$(win_free_udp_port "$PORT0")
+	PORT1=$(win_free_udp_port "$PORT1" "$PORT0")
+fi
+
 # create_iface SLOT PRIVKEY_FILE PORT PEER_PUB PEER_ALLOWED
 # Sets IF$SLOT (and, on Darwin, PID$SLOT) to the resolved interface. No tunnel
 # address is assigned: stunmesh only needs the device's key, listen port and
@@ -120,7 +125,7 @@ create_iface() {
 			echo "PublicKey = $peer"
 			echo "AllowedIPs = $allowed"
 		} > "$conf"
-		if ! win_start_tunnel "$name" "$conf"; then
+		if ! win_start_tunnel "$name" "$conf" "$port"; then
 			echo "tunnel $name never came up" >&2
 			exit 1
 		fi
