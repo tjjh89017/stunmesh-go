@@ -12,6 +12,7 @@ import (
 
 	"github.com/tjjh89017/stunmesh-go/internal/crypto"
 	"github.com/tjjh89017/stunmesh-go/internal/ctrl"
+	"github.com/tjjh89017/stunmesh-go/pluginapi/endpoint"
 	"golang.org/x/crypto/nacl/box"
 )
 
@@ -222,5 +223,41 @@ func Test_Endpoint_Encrypt_NonceFreshness(t *testing.T) {
 
 	if first.Data == second.Data {
 		t.Fatal("expected different ciphertext for repeated encryption of the same plaintext")
+	}
+}
+
+func Test_Endpoint_PluginapiInterop(t *testing.T) {
+	t.Parallel()
+
+	aPub, aPriv, err := box.GenerateKey(crypto_rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bPub, bPriv, err := box.GenerateKey(crypto_rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := crypto.NewEndpoint()
+
+	sealed, err := endpoint.Seal([]byte("from pluginapi"), *bPub, *aPriv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dec, err := e.Decrypt(context.TODO(), &ctrl.EndpointDecryptRequest{PeerPublicKey: *aPub, PrivateKey: *bPriv, Data: sealed})
+	if err != nil || dec.Content != "from pluginapi" {
+		t.Fatalf("Decrypt = %q, %v", dec.Content, err)
+	}
+
+	enc, err := e.Encrypt(context.TODO(), &ctrl.EndpointEncryptRequest{PeerPublicKey: *bPub, PrivateKey: *aPriv, Content: "from crypto"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	opened, err := endpoint.Open(enc.Data, *aPub, *bPriv)
+	if err != nil || string(opened) != "from crypto" {
+		t.Fatalf("Open = %q, %v", opened, err)
+	}
+
+	if !errors.Is(crypto.ErrUnableToDecrypt, endpoint.ErrUnableToDecrypt) {
+		t.Fatal("crypto.ErrUnableToDecrypt is not endpoint.ErrUnableToDecrypt")
 	}
 }
