@@ -299,7 +299,7 @@ jobs:
   # failed jobs" reruns anchor and subject together. See test/e2e/realnet/.
   e2e-realnet-keys:
     name: E2E realnet (keys)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     continue-on-error: true
     timeout-minutes: 5
     needs:
@@ -346,7 +346,7 @@ jobs:
   # VM, the WireGuard installer).
   e2e-realnet-anchor:
     name: E2E realnet (anchor for ${{ matrix.pair }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     continue-on-error: true
     needs: e2e-realnet-keys
     timeout-minutes: 20
@@ -393,7 +393,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { pair: linux, os: linux, arch: amd64, runner: ubuntu-latest, timeout: 12 }
+          - { pair: linux, os: linux, arch: amd64, runner: ubuntu-24.04, timeout: 12 }
           - { pair: darwin, os: darwin, arch: arm64, runner: macos-26, timeout: 20 }
           - { pair: freebsd, os: freebsd, arch: amd64, runner: ubuntu-latest, timeout: 20 }
           - { pair: windows, os: windows, arch: amd64, runner: windows-latest, timeout: 20 }
