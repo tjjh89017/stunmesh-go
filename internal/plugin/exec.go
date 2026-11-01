@@ -37,13 +37,16 @@ func NewExecPlugin(config pluginapi.PluginConfig) (pluginapi.Store, error) {
 	}, nil
 }
 
-func (p *ExecPlugin) Get(ctx context.Context, key string) (string, error) {
+func (p *ExecPlugin) Get(ctx context.Context, req pluginapi.PluginRequest) (string, error) {
 	logger := zerolog.Ctx(ctx)
-	logger.Info().Str("key", key).Msg("get data from exec plugin")
+	logger.Info().Str("key", req.Key).Msg("get data from exec plugin")
 
 	request := pluginapi.ExecRequest{
-		Action: pluginapi.OpGet,
-		Key:    key,
+		Action:         pluginapi.OpGet,
+		Key:            req.Key,
+		Device:         req.Device,
+		LocalPublicKey: keyString(req.LocalPublicKey),
+		PeerPublicKey:  keyString(req.PeerPublicKey),
 	}
 
 	response, err := p.executeCommand(ctx, request)
@@ -58,14 +61,17 @@ func (p *ExecPlugin) Get(ctx context.Context, key string) (string, error) {
 	return response.Value, nil
 }
 
-func (p *ExecPlugin) Set(ctx context.Context, key string, value string) error {
+func (p *ExecPlugin) Set(ctx context.Context, req pluginapi.PluginRequest) error {
 	logger := zerolog.Ctx(ctx)
-	logger.Info().Str("key", key).Str("value", value).Msg("set data to exec plugin")
+	logger.Info().Str("key", req.Key).Str("value", req.Value).Msg("set data to exec plugin")
 
 	request := pluginapi.ExecRequest{
-		Action: pluginapi.OpSet,
-		Key:    key,
-		Value:  value,
+		Action:         pluginapi.OpSet,
+		Key:            req.Key,
+		Value:          req.Value,
+		Device:         req.Device,
+		LocalPublicKey: keyString(req.LocalPublicKey),
+		PeerPublicKey:  keyString(req.PeerPublicKey),
 	}
 
 	response, err := p.executeCommand(ctx, request)

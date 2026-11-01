@@ -14,6 +14,7 @@ import (
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
 	"github.com/tjjh89017/stunmesh-go/internal/plugin"
 	"github.com/tjjh89017/stunmesh-go/internal/plugin/dialer"
+	"github.com/tjjh89017/stunmesh-go/pluginapi"
 	"go.uber.org/mock/gomock"
 )
 
@@ -27,15 +28,18 @@ type fakeDedupStore struct {
 	// so it simulates a single transient storage failure without affecting
 	// subsequent calls.
 	setErr error
+
+	lastRequest pluginapi.PluginRequest
 }
 
-func (f *fakeDedupStore) Get(ctx context.Context, key string) (string, error) {
+func (f *fakeDedupStore) Get(ctx context.Context, req pluginapi.PluginRequest) (string, error) {
 	f.getCalls++
 	return "", nil
 }
 
-func (f *fakeDedupStore) Set(ctx context.Context, key string, value string) error {
+func (f *fakeDedupStore) Set(ctx context.Context, req pluginapi.PluginRequest) error {
 	f.setCalls++
+	f.lastRequest = req
 	if f.setErr != nil {
 		err := f.setErr
 		f.setErr = nil
@@ -71,6 +75,57 @@ func createTestPeer(deviceName string, plugin string, protocol string) *entity.P
 
 	peerId := entity.NewPeerId(devicePublicKey, peerPublicKey[:])
 	return entity.NewPeer(peerId, entity.DeviceId(deviceName), peerPublicKey, plugin, protocol, entity.PeerPingConfig{})
+}
+
+// createRequestTestPeer uses distinct local and peer keys so a swap is caught.
+func createRequestTestPeer(deviceName string, plugin string) (*entity.Peer, pluginapi.PluginRequest) {
+	var local, remote [32]byte
+	for i := range local {
+		local[i] = byte(i + 1)
+		remote[i] = byte(i + 101)
+	}
+	peerId := entity.NewPeerId(local[:], remote[:])
+	peer := entity.NewPeer(peerId, entity.DeviceId(deviceName), remote, plugin, "ipv4", entity.PeerPingConfig{})
+	return peer, pluginapi.PluginRequest{Device: deviceName, LocalPublicKey: local, PeerPublicKey: remote}
+}
+
+func TestPublishController_Execute_PassesRequest(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+
+	mockDevices := mock.NewMockDeviceRepository(mockCtrl)
+	mockPeers := mock.NewMockPeerRepository(mockCtrl)
+	mockResolver := mock.NewMockStunResolver(mockCtrl)
+	mockEncryptor := mock.NewMockEndpointEncryptor(mockCtrl)
+	logger := zerolog.Nop()
+
+	ctx := context.Background()
+	pluginProvider, store := newDedupTestPluginProvider(mockCtrl, false)
+
+	device := createTestDevice("wg0", 51820, "ipv4")
+	peer, want := createRequestTestPeer("wg0", "test_plugin")
+	want.Key = peer.LocalId()
+	want.Value = "encrypted_data"
+
+	mockDevices.EXPECT().List(ctx).Return([]*entity.Device{device}, nil)
+	mockDevices.EXPECT().UpdateStatus(ctx, entity.DeviceId("wg0"), gomock.Any())
+	mockPeers.EXPECT().ListByDevice(ctx, entity.DeviceId("wg0")).Return([]*entity.Peer{peer}, nil)
+	mockResolver.EXPECT().
+		Resolve(gomock.Any(), "wg0", uint16(51820), "ipv4", gomock.Any()).
+		Return("1.2.3.4", 51820, nil)
+	mockEncryptor.EXPECT().
+		Encrypt(ctx, gomock.Any()).
+		Return(&ctrl.EndpointEncryptResponse{Data: "encrypted_data"}, nil)
+
+	controller := ctrl.NewPublishController(mockDevices, mockPeers, pluginProvider, mockResolver, mockEncryptor, nil, &logger)
+	controller.Execute(ctx)
+
+	if store.setCalls != 1 {
+		t.Fatalf("store.Set call count = %d, want 1", store.setCalls)
+	}
+	if store.lastRequest != want {
+		t.Errorf("Set request = %+v, want %+v", store.lastRequest, want)
+	}
 }
 
 // Test Execute with device list error
@@ -785,11 +840,11 @@ type cancellationCapturingStore struct {
 	called     bool
 }
 
-func (s *cancellationCapturingStore) Get(ctx context.Context, key string) (string, error) {
+func (s *cancellationCapturingStore) Get(ctx context.Context, req pluginapi.PluginRequest) (string, error) {
 	return "", nil
 }
 
-func (s *cancellationCapturingStore) Set(ctx context.Context, key string, value string) error {
+func (s *cancellationCapturingStore) Set(ctx context.Context, req pluginapi.PluginRequest) error {
 	s.called = true
 	s.doneAtCall = ctx.Err() != nil
 	return nil

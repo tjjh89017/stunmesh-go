@@ -143,7 +143,9 @@ func (c *PublishController) publishToPeer(ctx, storeCtx context.Context, device 
 	}
 
 	logger.Info().Str("plugin", peer.Plugin()).Msg("store endpoint")
-	err = store.Set(dialer.WithEscape(storeCtx, escapeFor(c.deviceConfig, device)), peer.LocalId(), res.Data)
+	req := requestFor(device, peer, peer.LocalId())
+	req.Value = res.Data
+	err = store.Set(dialer.WithEscape(storeCtx, escapeFor(c.deviceConfig, device)), req)
 	if err != nil {
 		logger.Error().Err(err).Msg("failed to store endpoint")
 		return err

@@ -399,9 +399,16 @@ External storage scripts communicate via JSON stdin/stdout:
 {
   "action": "get|set",
   "key": "peer_identifier_sha1_hex",
-  "value": "encrypted_data_hex"
+  "value": "encrypted_data_hex",
+  "device": "wg0",
+  "local_public_key": "base64_wireguard_public_key",
+  "peer_public_key": "base64_wireguard_public_key"
 }
 ```
+
+`device`, `local_public_key` and `peer_public_key` come from `pluginapi.PluginRequest`
+(the Store `Get`/`Set` argument, which also carries the key and, for Set, the value). Each is omitted when unknown. The private key
+is never passed. Old scripts that ignore unknown fields keep working.
 
 **Response Format**:
 ```json
@@ -420,6 +427,9 @@ Simplified protocol for shell scripts using shell variable assignments:
 STUNMESH_ACTION=get
 STUNMESH_KEY=3061b8fcbdb6972059518f1adc3590dca6a5f352  # SHA1 hex
 STUNMESH_VALUE=a1b2c3d4e5f6...  # hex (for set only)
+STUNMESH_DEVICE='wg0'  # single-quoted, empty when unknown
+STUNMESH_LOCAL_PUBLIC_KEY=base64...  # WireGuard public key, empty when unknown
+STUNMESH_PEER_PUBLIC_KEY=base64...
 ```
 
 **Output**:
@@ -428,8 +438,9 @@ STUNMESH_VALUE=a1b2c3d4e5f6...  # hex (for set only)
 - For errors: exit non-zero, stderr contains error message
 
 **Notes**:
-- Both key and value are hex-encoded strings (no special characters)
-- No escaping or quoting needed - can safely use `source /dev/stdin` or `eval`
+- Key and value are hex, and the public keys are base64, so they are not quoted
+- `STUNMESH_DEVICE` is free text (a mobile tunnel name), so it is single-quoted with `'` written as `'\''`, and control characters are removed from it so the stream stays line-oriented
+- Every line is safe to load with `source /dev/stdin` or `eval`
 - Simpler than JSON protocol for basic shell scripts
 
 ## Testing Patterns

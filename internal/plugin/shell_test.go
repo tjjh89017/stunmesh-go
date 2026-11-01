@@ -118,13 +118,13 @@ func TestShellPlugin_Get_Success(t *testing.T) {
 	testKey := "testkey_get"
 	testValue := "testvalue"
 
-	err = plugin.Set(ctx, testKey, testValue)
+	err = plugin.Set(ctx, pluginapi.PluginRequest{Key: testKey, Value: testValue})
 	if err != nil {
 		t.Fatalf("Set() error = %v", err)
 	}
 
 	// Then get it back
-	gotValue, err := plugin.Get(ctx, testKey)
+	gotValue, err := plugin.Get(ctx, pluginapi.PluginRequest{Key: testKey})
 	if err != nil {
 		t.Fatalf("Get() error = %v", err)
 	}
@@ -162,7 +162,7 @@ func TestShellPlugin_Get_NotFound(t *testing.T) {
 	ctx := context.Background()
 
 	// Try to get a nonexistent key
-	_, err = plugin.Get(ctx, "nonexistent_key")
+	_, err = plugin.Get(ctx, pluginapi.PluginRequest{Key: "nonexistent_key"})
 	if err == nil {
 		t.Error("Get() should return error for nonexistent key")
 	}
@@ -198,7 +198,7 @@ func TestShellPlugin_Set_Success(t *testing.T) {
 	testKey := "testkey_set"
 	testValue := "testvalue"
 
-	err = plugin.Set(ctx, testKey, testValue)
+	err = plugin.Set(ctx, pluginapi.PluginRequest{Key: testKey, Value: testValue})
 	if err != nil {
 		t.Errorf("Set() error = %v, want nil", err)
 	}
@@ -221,7 +221,7 @@ func TestShellPlugin_CommandNotFound(t *testing.T) {
 	ctx := context.Background()
 
 	// Try to execute - should fail because command doesn't exist
-	_, err = plugin.Get(ctx, "testkey")
+	_, err = plugin.Get(ctx, pluginapi.PluginRequest{Key: "testkey"})
 	if err == nil {
 		t.Error("Get() should return error when command doesn't exist")
 	}
@@ -247,7 +247,7 @@ func TestShellPlugin_PluginFailure(t *testing.T) {
 	ctx := context.Background()
 
 	// Try to get - should fail with plugin error
-	_, err = plugin.Get(ctx, "testkey")
+	_, err = plugin.Get(ctx, pluginapi.PluginRequest{Key: "testkey"})
 	if err == nil {
 		t.Error("Get() should return error when plugin fails")
 	}
@@ -281,7 +281,7 @@ func TestShellPlugin_SetFailure(t *testing.T) {
 	ctx := context.Background()
 
 	// Try to set - should fail with plugin error
-	err = plugin.Set(ctx, "testkey", "testvalue")
+	err = plugin.Set(ctx, pluginapi.PluginRequest{Key: "testkey", Value: "testvalue"})
 	if err == nil {
 		t.Error("Set() should return error when plugin fails")
 	}
@@ -315,7 +315,7 @@ func TestShellPlugin_WithArgs(t *testing.T) {
 	ctx := context.Background()
 
 	// Should succeed and echo the key
-	value, err := plugin.Get(ctx, "testkey123")
+	value, err := plugin.Get(ctx, pluginapi.PluginRequest{Key: "testkey123"})
 	if err != nil {
 		t.Errorf("Get() error = %v, want nil", err)
 	}
@@ -340,7 +340,7 @@ func TestShellPlugin_EmptyStdout(t *testing.T) {
 	ctx := context.Background()
 
 	// Should succeed but return empty string
-	value, err := plugin.Get(ctx, "testkey")
+	value, err := plugin.Get(ctx, pluginapi.PluginRequest{Key: "testkey"})
 	if err != nil {
 		t.Errorf("Get() error = %v, want nil", err)
 	}
@@ -377,7 +377,7 @@ func TestShellPlugin_StdinVariables(t *testing.T) {
 	ctx := context.Background()
 
 	// Should succeed and return "success"
-	value, err := plugin.Get(ctx, "mykey")
+	value, err := plugin.Get(ctx, pluginapi.PluginRequest{Key: "mykey"})
 	if err != nil {
 		t.Errorf("Get() error = %v", err)
 	}
@@ -418,8 +418,88 @@ func TestShellPlugin_SetStdinVariables(t *testing.T) {
 	ctx := context.Background()
 
 	// Should succeed
-	err = plugin.Set(ctx, "mykey", "myvalue")
+	err = plugin.Set(ctx, pluginapi.PluginRequest{Key: "mykey", Value: "myvalue"})
 	if err != nil {
 		t.Errorf("Set() error = %v, want nil", err)
 	}
+}
+
+func TestShellPlugin_IdentityVariables(t *testing.T) {
+	skipOnWindows(t)
+	device := "it's; echo pwned $HOME wg0"
+	req := testRequest("k", device)
+	want := device + "\n" + req.LocalPublicKey.String() + "\n" + req.PeerPublicKey.String()
+
+	for name, load := range map[string]string{
+		"source": ". /dev/stdin",
+		"eval":   `eval "$(cat)"`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			plugin, err := NewShellPlugin(pluginapi.PluginConfig{
+				"command": "/bin/sh",
+				"args": []string{"-c", load + `
+					printf '%s\n%s\n%s' "$STUNMESH_DEVICE" "$STUNMESH_LOCAL_PUBLIC_KEY" "$STUNMESH_PEER_PUBLIC_KEY"`},
+			})
+			if err != nil {
+				t.Fatalf("NewShellPlugin() error = %v", err)
+			}
+			got, err := plugin.Get(context.Background(), req)
+			if err != nil {
+				t.Fatalf("Get() error = %v", err)
+			}
+			if got != want {
+				t.Errorf("Get() = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+func TestShellPlugin_DeviceControlCharactersDropped(t *testing.T) {
+	skipOnWindows(t)
+	forgedKey := "0000000000000000000000000000000000000000"
+	req := testRequest("realkey", "a\nSTUNMESH_KEY="+forgedKey+"\r\x7fb")
+
+	t.Run("source", func(t *testing.T) {
+		plugin, err := NewShellPlugin(pluginapi.PluginConfig{
+			"command": "/bin/sh",
+			"args":    []string{"-c", `. /dev/stdin; printf '%s|%s' "$STUNMESH_KEY" "$STUNMESH_DEVICE"`},
+		})
+		if err != nil {
+			t.Fatalf("NewShellPlugin() error = %v", err)
+		}
+		got, err := plugin.Get(context.Background(), req)
+		if err != nil {
+			t.Fatalf("Get() error = %v", err)
+		}
+		if want := "realkey|aSTUNMESH_KEY=" + forgedKey + "b"; got != want {
+			t.Errorf("Get() = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("line parser", func(t *testing.T) {
+		plugin, err := NewShellPlugin(pluginapi.PluginConfig{
+			"command": "/bin/sh",
+			"args": []string{"-c", `
+				n=0
+				while IFS= read -r line; do
+					case "$line" in
+					STUNMESH_KEY=*) key=${line#STUNMESH_KEY=} ;;
+					esac
+					case "$line" in
+					STUNMESH_*) n=$((n+1)) ;;
+					esac
+				done
+				printf '%s|%s' "$n" "$key"`},
+		})
+		if err != nil {
+			t.Fatalf("NewShellPlugin() error = %v", err)
+		}
+		got, err := plugin.Get(context.Background(), req)
+		if err != nil {
+			t.Fatalf("Get() error = %v", err)
+		}
+		if want := "5|realkey"; got != want {
+			t.Errorf("Get() = %q, want %q", got, want)
+		}
+	})
 }

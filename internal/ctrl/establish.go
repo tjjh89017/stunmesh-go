@@ -65,7 +65,7 @@ func (c *EstablishController) Execute(ctx context.Context, peerId entity.PeerId)
 	}
 
 	storeCtx := dialer.WithEscape(logger.WithContext(ctx), escapeFor(c.deviceConfig, device))
-	encryptedData, err := store.Get(storeCtx, peer.RemoteId())
+	encryptedData, err := store.Get(storeCtx, requestFor(device, peer, peer.RemoteId()))
 	if err != nil {
 		logger.Warn().Err(err).Msg("endpoint is unavailable or not ready")
 		return

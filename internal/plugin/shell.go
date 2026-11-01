@@ -38,11 +38,11 @@ func NewShellPlugin(config pluginapi.PluginConfig) (pluginapi.Store, error) {
 	}, nil
 }
 
-func (p *ShellPlugin) Get(ctx context.Context, key string) (string, error) {
+func (p *ShellPlugin) Get(ctx context.Context, req pluginapi.PluginRequest) (string, error) {
 	logger := zerolog.Ctx(ctx)
-	logger.Info().Str("key", key).Msg("get data from shell plugin")
+	logger.Info().Str("key", req.Key).Msg("get data from shell plugin")
 
-	stdout, stderr, err := p.executeCommand(ctx, pluginapi.OpGet, key, "")
+	stdout, stderr, err := p.executeCommand(ctx, pluginapi.OpGet, req)
 	if err != nil {
 		if stderr != "" {
 			return "", fmt.Errorf("%w (stderr: %s)", err, stderr)
@@ -58,11 +58,11 @@ func (p *ShellPlugin) Get(ctx context.Context, key string) (string, error) {
 	return stdout, nil
 }
 
-func (p *ShellPlugin) Set(ctx context.Context, key string, value string) error {
+func (p *ShellPlugin) Set(ctx context.Context, req pluginapi.PluginRequest) error {
 	logger := zerolog.Ctx(ctx)
-	logger.Info().Str("key", key).Msg("set data to shell plugin")
+	logger.Info().Str("key", req.Key).Msg("set data to shell plugin")
 
-	_, stderr, err := p.executeCommand(ctx, pluginapi.OpSet, key, value)
+	_, stderr, err := p.executeCommand(ctx, pluginapi.OpSet, req)
 	if err != nil {
 		if stderr != "" {
 			return fmt.Errorf("%w (stderr: %s)", err, stderr)
@@ -78,16 +78,19 @@ func (p *ShellPlugin) Set(ctx context.Context, key string, value string) error {
 	return nil
 }
 
-func (p *ShellPlugin) executeCommand(ctx context.Context, action, key, value string) (string, string, error) {
+func (p *ShellPlugin) executeCommand(ctx context.Context, action string, req pluginapi.PluginRequest) (string, string, error) {
 	cmd := exec.CommandContext(ctx, p.command, p.args...)
 
 	// Prepare stdin with shell variable assignments
 	var stdinBuf bytes.Buffer
 	fmt.Fprintf(&stdinBuf, "STUNMESH_ACTION=%s\n", action)
-	fmt.Fprintf(&stdinBuf, "STUNMESH_KEY=%s\n", key)
+	fmt.Fprintf(&stdinBuf, "STUNMESH_KEY=%s\n", req.Key)
 	if action == pluginapi.OpSet {
-		fmt.Fprintf(&stdinBuf, "STUNMESH_VALUE=%s\n", value)
+		fmt.Fprintf(&stdinBuf, "STUNMESH_VALUE=%s\n", req.Value)
 	}
+	fmt.Fprintf(&stdinBuf, "STUNMESH_DEVICE=%s\n", shellQuote(req.Device))
+	fmt.Fprintf(&stdinBuf, "STUNMESH_LOCAL_PUBLIC_KEY=%s\n", keyString(req.LocalPublicKey))
+	fmt.Fprintf(&stdinBuf, "STUNMESH_PEER_PUBLIC_KEY=%s\n", keyString(req.PeerPublicKey))
 
 	cmd.Stdin = &stdinBuf
 
@@ -102,4 +105,16 @@ func (p *ShellPlugin) executeCommand(ctx context.Context, action, key, value str
 	}
 
 	return strings.TrimSpace(stdoutBuf.String()), strings.TrimSpace(stderrBuf.String()), nil
+}
+
+// shellQuote single-quotes s for POSIX sh and drops control characters, so
+// the value stays on one line for readers that parse line by line.
+func shellQuote(s string) string {
+	s = strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return -1
+		}
+		return r
+	}, s)
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }

@@ -238,6 +238,10 @@ func (c *controller) resolveSTUN(ctx context.Context, network, server string) (n
 	return dialer.ResolveAddrPort(escaped, network, server)
 }
 
+func (c *controller) request(peerPub [32]byte, key string) pluginapi.PluginRequest {
+	return pluginapi.PluginRequest{Device: c.cfg.Name, LocalPublicKey: c.pub, PeerPublicKey: peerPub, Key: key}
+}
+
 func (c *controller) publish(ctx context.Context, data ctrl.EndpointData) {
 	listener := c.node.listener
 	jsonPlain, err := json.Marshal(data)
@@ -272,7 +276,9 @@ func (c *controller) publish(ctx context.Context, data ctrl.EndpointData) {
 			continue
 		}
 		storeCtx := protectedContext(ctx, c.node.protector, c.node.pluginDNSServers())
-		if err := store.Set(storeCtx, localId, res.Data); err != nil {
+		req := c.request(peerPub, localId)
+		req.Value = res.Data
+		if err := store.Set(storeCtx, req); err != nil {
 			listener.OnLog("warn", "publish for "+peer.Name+": "+err.Error())
 			continue
 		}
@@ -299,7 +305,7 @@ func (c *controller) establish(ctx context.Context, local *entity.DeviceStatus) 
 			continue
 		}
 		storeCtx := protectedContext(ctx, c.node.protector, c.node.pluginDNSServers())
-		encrypted, err := store.Get(storeCtx, peerId.RemoteEndpointKey())
+		encrypted, err := store.Get(storeCtx, c.request(peerPub, peerId.RemoteEndpointKey()))
 		if err != nil {
 			listener.OnLog("debug", "no record for "+peer.Name+": "+err.Error())
 			continue
