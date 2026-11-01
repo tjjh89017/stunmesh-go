@@ -16,12 +16,13 @@ make clean         # Clean build artifacts
 go build -o stunmesh-go  # Direct go build
 ```
 
-Built-ins are selected by imports, not build tags. `main.go` and `mobile/`
+Built-ins are selected by imports. `main.go` and `mobile/`
 blank-import `builtin/all`, the set the release binary ships; `app` imports
 no built-in. A custom binary is your own `main` that imports `app` plus the
 `builtin/*` packages you want, or your own plugin package. Such a `main` may
 also call `pluginapi.Register` before `app.New` to capture runtime values in
-the factory.
+the factory. Building with `-tags no_<name>` drops that plugin from
+`builtin/all`.
 
 ### Testing
 ```bash
@@ -144,11 +145,11 @@ The plugin system supports multiple named storage backend instances:
 - Each peer can reference a different plugin instance
 
 **Supported Plugin Types**:
-- `builtin`: Compiled into the binary; the release binary links the set in `builtin/all` (cloudflare, opendht, passthrough, mirror)
+- `builtin`: Compiled into the binary; the release binary links the set in `builtin/all` (cloudflare, opendht, trace, mirror)
 - `exec`: External process communication via JSON stdin/stdout (for complex plugins)
 - `shell`: Simplified protocol using shell variables via stdin (for simple shell scripts)
 
-**Chaining**: a built-in registered with `pluginapi.RegisterWithStores` gets `PluginStores`, and `stores.Lookup(name)` returns another configured instance (any type). The outer plugin reads the inner instance name from its own config; the core reserves no field for it. `Manager.LoadPlugins` builds inner instances first, rejects cycles and undefined references, closes what it built on any error, and `Close` runs in reverse build order. An inner instance is shared, so a chaining plugin does not close it. `builtin/passthrough` (forwards to `next`) and `builtin/mirror` (writes to every entry of `stores`, reads the first non-empty value in list order) are the shipped examples:
+**Chaining**: a built-in registered with `pluginapi.RegisterWithStores` gets `PluginStores`, and `stores.Lookup(name)` returns another configured instance (any type). The outer plugin reads the inner instance name from its own config; the core reserves no field for it. `Manager.LoadPlugins` builds inner instances first, rejects cycles and undefined references, closes what it built on any error, and `Close` runs in reverse build order. An inner instance is shared, so a chaining plugin does not close it. `builtin/trace` (forwards to `next` and records every call: one JSON line per call to the optional `file`, or a debug log line without it; never the value) and `builtin/mirror` (writes to every entry of `stores`, reads the first non-empty value in list order) are the shipped examples. To write a chaining plugin, start from `builtin/trace` (one inner) or `builtin/mirror` (several inners):
 ```yaml
 plugins:
   cf:
@@ -162,8 +163,9 @@ plugins:
     endpoint: "<OPENDHT_PROXY_URL>"
   front:
     type: builtin
-    name: passthrough
-    next: dht            # passthrough's own field
+    name: trace
+    next: dht            # trace's own field
+    file: /var/log/stunmesh-trace.jsonl  # optional
   both:
     type: builtin
     name: mirror
@@ -227,7 +229,7 @@ of its own.
      - When the peer's plugin instance has `dedup: true` and the plaintext endpoint JSON is unchanged since the last successful publish for that peer, `store.Set` is skipped
      - When `dedup` is `false` (default), every peer is published every refresh cycle, unchanged from prior behavior
      - **Do not enable `dedup` for storage backends with expiring/TTL values** (e.g. a short-TTL DHT) — skipping the write lets the value expire since there is no other mechanism to refresh it; only use `dedup` with persistent backends (e.g. Cloudflare DNS, GitHub Gist) where a written value stays until overwritten
-     - `dedup` on a `mirror` or `passthrough` instance skips the write to every inner store, and the inner instance's own `dedup` setting is not consulted; do not put `dedup: true` on a mirror that contains a TTL backend such as opendht
+     - `dedup` on a `mirror` or `trace` instance skips the write to every inner store, and the inner instance's own `dedup` setting is not consulted; do not put `dedup: true` on a mirror that contains a TTL backend such as opendht
 
 3. **EstablishController** (`internal/ctrl/establish.go`):
    - Retrieves peer endpoint data from storage plugins
@@ -495,6 +497,8 @@ Common parameters to remember:
 Exec and shell plugins live in the `stunmesh-plugins` repository (https://github.com/tjjh89017/stunmesh-plugins). They implement the exec or shell protocol described in "Exec Plugin Protocol" and "Shell Plugin Protocol" above.
 
 ### Adding New Built-in Plugins
+To write a chaining plugin, start from `builtin/trace` (one inner) or `builtin/mirror` (several inners).
+
 1. Create the package `builtin/<name>`
    - Implement `Store`, plus a constructor matching `pluginapi.Factory` (or `pluginapi.FactoryWithStores` if it uses another instance)
    - The constructor receives a ctx but must not do network I/O; open connections lazily on the first `Get`/`Set`. The ctx is for cancellation and the platform dialer
@@ -502,7 +506,7 @@ Exec and shell plugins live in the `stunmesh-plugins` repository (https://github
    - Register it from `init()`: `pluginapi.Register("<name>", New)` (or `pluginapi.RegisterWithStores`)
    - Return a pointer from the factory: the Manager and other plugins share the instance
    - Do not call `pluginapi.LookupFactory` from `init()`; registration order across packages is not defined
-2. Add one blank import to `builtin/all/all.go` if the release binary should ship it
+2. If the release binary should ship it, add `builtin/all/<name>.go` holding only its blank import, under `//go:build !no_<name>`; building with `-tags no_<name>` drops that plugin from `builtin/all`
 3. Update the built-in plugin list and configuration example in the docs site ([tjjh89017/stunmesh-docs](https://github.com/tjjh89017/stunmesh-docs), published at docs.stunmesh.dev)
 4. If the plugin holds connections or goroutines, implement `Close() error`; `Manager.Close` calls it on shutdown. A chaining plugin must not close its inner instances.
 
@@ -537,7 +541,10 @@ go build -tags mobile ./mobile/... ./internal/mobilebind/...
   - Three e2e layers behind the build gates, aggregated by `e2e-required`
     (the only e2e check branch protection needs):
     - `e2e`: same-host two-interface test per OS/arch (`test/e2e/`), runs the
-      build-stage artifact
+      build-stage artifact. Outside Windows it publishes through a plugin
+      chain (mirror over trace -> shell file store and trace -> opendht) and
+      checks that a cycle or an undefined `next` stops startup; Windows runs
+      the plain opendht scenario
     - `e2e-proxy`: deterministic netns test of the wgproxy relay
       (`test/e2e/proxy/`), merge-gating, no internet dependency
     - `e2e-realnet-*`: two-VM real-NAT smoke layer (`test/e2e/realnet/`) —
