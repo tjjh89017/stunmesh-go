@@ -43,6 +43,12 @@ CHAIN=1
 [ "$OS" = Windows ] && CHAIN=0
 STORE=$WORK/store
 
+# The binary must not execute from the sshfs mount of the FreeBSD VM.
+LOCALBIN=$WORK/stunmesh
+[ "$OS" = Windows ] && LOCALBIN=$LOCALBIN.exe
+cp -p "$BIN" "$LOCALBIN"
+BIN=$LOCALBIN
+
 log() { echo "[e2e] $*"; }
 
 cleanup() {
@@ -282,7 +288,22 @@ run_oneshots() {
 	# shellcheck disable=SC2024
 	$SUDO "$BIN" --oneshot -c "$WORK/cfg1.yaml" > "$WORK/if1.log" 2>&1 &
 	j1=$!
-	wait "$j0"; wait "$j1"
+	rc0=0; rc1=0
+	wait "$j0" || rc0=$?
+	wait "$j1" || rc1=$?
+	log "oneshot exit: wg0=$rc0 wg1=$rc1"
+	if [ "$rc0" != 0 ] || [ "$rc1" != 0 ]; then
+		echo "[e2e] daemon failed; logs follow" >&2
+		for f in "$WORK/if0.log" "$WORK/if1.log"; do
+			echo "----- $f -----" >&2
+			cat "$f" >&2 || true
+		done
+		case "$OS" in
+		FreeBSD | Darwin) dmesg | tail -n 20 >&2 || true ;;
+		esac
+		[ "$rc0" != 0 ] && exit "$rc0"
+		exit "$rc1"
+	fi
 }
 
 attempt=1; max_attempts=3
