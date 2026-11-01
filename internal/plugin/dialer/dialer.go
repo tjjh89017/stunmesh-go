@@ -13,6 +13,7 @@ package dialer
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
 	"net/http"
@@ -97,6 +98,9 @@ func Transport() *http.Transport {
 		MaxIdleConnsPerHost: 2,
 		IdleConnTimeout:     30 * time.Second,
 		DialContext:         DialContext,
+		// Per transport on purpose: idle connections expire before the next
+		// refresh round, so only a session cache lets a round skip the full handshake.
+		TLSClientConfig: &tls.Config{ClientSessionCache: tls.NewLRUClientSessionCache(4)},
 	}
 }
 
