@@ -11,6 +11,9 @@
 #   2. the STUN-discovered IP matches an independent oracle (api.ipify.org)
 #   3. each interface's peer endpoint equals what the other side discovered
 #      -- the cross-equality that proves the data path, independent of NAT type
+#   4. only with E2E_STORE set (the chain scenario, see run.sh): both traced
+#      legs of the mirror stored each side's key, the file store in E2E_STORE
+#      holds it, and each side read the other's key back from the file store
 #
 # Args: IF0 LOG0 IF1 LOG1
 set -eu
@@ -123,6 +126,71 @@ else
 		echo "FAIL: $IF1 peer endpoint '$e1' != $IF0 discovered '$d0'"
 		fail=1
 	fi
+fi
+
+if [ -n "${E2E_STORE-}" ]; then
+	echo "== 4. plugin chain: mirror -> [trace -> file store, trace -> opendht] =="
+	traced() { # FILE OP -> sorted keys of successful OP calls with a value
+		$SUDO cat "$1" | jq -r --arg op "$2" 'select(.op==$op and .ok and .value_len>0)|.key' | sort -u
+	}
+	own0=$(traced "$E2E_WORK/shleg0.jsonl" set)
+	own1=$(traced "$E2E_WORK/shleg1.jsonl" set)
+	for slot in 0 1; do
+		if [ "$slot" = 0 ]; then
+			name=$IF0; log=$LOG0; own=$own0; peer=$own1
+		else
+			name=$IF1; log=$LOG1; own=$own1; peer=$own0
+		fi
+		if [ -n "$own" ] && [ "$(echo "$own" | wc -l | tr -d ' ')" = 1 ]; then
+			echo "ok: $name file-store leg traced set $own"
+		else
+			echo "FAIL: $name file-store leg traced set keys '$own', want one"
+			fail=1
+		fi
+		dhtset=$(traced "$E2E_WORK/dhtleg$slot.jsonl" set)
+		if [ -n "$own" ] && [ "$dhtset" = "$own" ]; then
+			echo "ok: $name opendht leg traced set $dhtset"
+		else
+			echo "FAIL: $name opendht leg traced set '$dhtset', want '$own'"
+			fail=1
+		fi
+		dhtlog=$(jq -r 'select(.message=="set data to builtin opendht plugin")|.key' "$log" | sort -u)
+		if [ -n "$own" ] && [ "$dhtlog" = "$own" ]; then
+			echo "ok: $name opendht plugin logged set $dhtlog"
+		else
+			echo "FAIL: $name opendht plugin logged set '$dhtlog', want '$own'"
+			fail=1
+		fi
+		if [ -n "$peer" ] && traced "$E2E_WORK/shleg$slot.jsonl" get | grep -qx "$peer"; then
+			echo "ok: $name file-store leg traced get of the peer's key $peer"
+		else
+			echo "FAIL: $name file-store leg never read the peer's key '$peer'"
+			fail=1
+		fi
+		# The mirror asks opendht only after the file store has no value.
+		last=$(jq -r 'select(.message=="get data from shell plugin" or .message=="get data from builtin opendht plugin")|.message' "$log" | tail -1)
+		if [ "$last" = "get data from shell plugin" ]; then
+			echo "ok: $name last read served by the file store"
+		else
+			echo "FAIL: $name last read not served by the file store (last: '$last')"
+			fail=1
+		fi
+	done
+	want=$(printf '%s\n%s\n' "$own0" "$own1" | grep -v '^$' | sort -u)
+	have=$($SUDO ls "$E2E_STORE" | grep -Ex '[0-9a-f]{40}' | sort)
+	if [ -n "$want" ] && [ "$want" = "$have" ]; then
+		echo "ok: file store holds exactly the published keys"
+	else
+		echo "FAIL: file store holds '$have', published '$want'"
+		fail=1
+	fi
+	for k in $have; do
+		v=$($SUDO cat "$E2E_STORE/$k")
+		case $v in
+		'' | *[!0-9a-f]*) echo "FAIL: $k holds '$v', not hex"; fail=1 ;;
+		*) echo "ok: $k holds a ${#v}-char hex value" ;;
+		esac
+	done
 fi
 
 if [ "$fail" = "0" ]; then

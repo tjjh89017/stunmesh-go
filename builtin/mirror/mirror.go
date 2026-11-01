@@ -1,13 +1,7 @@
-// Package mirror provides the "mirror" built-in, which writes to several
-// plugin instances and reads from the first one that has a value.
-//
-//	plugins:
-//	  both:
-//	    type: builtin
-//	    name: mirror
-//	    stores: [cf, dht]
-//
-// stores is this plugin's own field: the inner instance names, in read order.
+// Package mirror is a working plugin and the reference example for a
+// chaining plugin with several inner instances: Set writes to every instance
+// named in its "stores" config field, and Get returns the first non-empty
+// value in that order.
 package mirror
 
 import (
@@ -39,6 +33,7 @@ type plugin struct {
 // New builds a mirror instance from its config, resolving each entry of
 // stores through the given PluginStores.
 func New(_ context.Context, config pluginapi.PluginConfig, stores pluginapi.PluginStores) (pluginapi.Store, error) {
+	// "stores" is this plugin's own choice of field name; the core reserves none.
 	names, err := pluginconfig.NewConfig(config).GetStringSlice(configKeyStores)
 	if err != nil {
 		return nil, err

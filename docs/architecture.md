@@ -133,10 +133,11 @@ there's a stated reason not to.
   for it. The core reserves only `type`, `name` (which built-in, for
   `type: builtin`) and `dedup` (read for every plugin type).
   `PluginStores` is backed by `Manager.get`, so it builds the inner
-  instance on demand during the factory call. `builtin/passthrough` (field
+  instance on demand during the factory call. `builtin/trace` (field
   `next`) and `builtin/mirror` (field `stores`) are the shipped chaining
-  plugins. Each `PluginStores` is valid only inside its factory call; a
-  retained one returns an error. Names already built are reused, so a later
+  plugins and the reference implementations to start a new one from:
+  trace for one inner instance, mirror for several. Each `PluginStores` is
+  valid only inside its factory call; a retained one returns an error. Names already built are reused, so a later
   `LoadPlugins` ignores a changed definition for an existing name. exec and
   shell instances can be inner instances but never receive `PluginStores`.
 - **Revisit if**: registration needs to be anything other than "always run

@@ -4,11 +4,14 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"os"
 	"os/signal"
 	"runtime/debug"
 	"syscall"
 
 	"github.com/tjjh89017/stunmesh-go/app"
+	// builtin/all is the shipped plugin set. A custom binary imports the
+	// builtin/* packages it wants, or its own plugin package, instead.
 	_ "github.com/tjjh89017/stunmesh-go/builtin/all"
 )
 
@@ -45,23 +48,26 @@ func main() {
 		return
 	}
 
+	if err := run(oneshot, configFile, configDir); err != nil {
+		fmt.Fprintln(os.Stderr, "stunmesh:", err)
+		os.Exit(1)
+	}
+}
+
+// run returns config, plugin and runtime errors to main, which prints them
+// without a stack trace: they are user errors, not bugs.
+func run(oneshot bool, configFile, configDir string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	daemon, err := app.New(app.Options{ConfigFile: configFile, ConfigDir: configDir})
 	if err != nil {
-		panic(err)
+		return err
 	}
 	defer daemon.Close()
 
 	if oneshot {
-		if err := daemon.RunOneshot(ctx); err != nil {
-			panic(err)
-		}
-		return
+		return daemon.RunOneshot(ctx)
 	}
-
-	if err := daemon.Run(ctx); err != nil {
-		panic(err)
-	}
+	return daemon.Run(ctx)
 }

@@ -3,6 +3,12 @@
 # other's peer, runs `stunmesh --oneshot` on both against a shared opendht
 # store, and hands the logs to assert.sh.
 #
+# Outside Windows the peers publish through a plugin chain, a mirror over two
+# traced legs: trace -> shell file store (filestore.sh, read first) and
+# trace -> opendht. Each trace writes $WORK/<leg><slot>.jsonl for assert.sh.
+# The shell plugin execs /bin/sh, which a native Windows binary does not
+# have, so Windows runs the plain scenario with opendht alone.
+#
 # stunmesh attaches to an existing device (it never creates one), so the wg
 # interface, keys, listen port and peer must be in place before it runs. Only
 # the interface *creation* differs per OS; `wg set`/`wg show` are identical
@@ -33,6 +39,9 @@ ENDPOINTS=${ENDPOINTS:-'https://dhtproxy2.jami.net https://dhtproxy3.jami.net'}
 PORT0=51820; PORT1=51821
 ALLOWED0=10.66.0.1/32; ALLOWED1=10.66.0.2/32  # placeholder allowed-ips per peer
 IF0=""; IF1=""   # resolved names (utunN on macOS)
+CHAIN=1
+[ "$OS" = Windows ] && CHAIN=0
+STORE=$WORK/store
 
 log() { echo "[e2e] $*"; }
 
@@ -168,8 +177,13 @@ create_iface() {
 	eval "IF$slot=\$name"
 }
 
-write_config() { # IF PEER_PUB > FILE
-	name=$1; peer=$2; out=$3
+write_config() { # IF PEER_PUB FILE SLOT [cycle|undefined]
+	name=$1; peer=$2; out=$3; slot=$4; mode=${5:-}
+	use=dht
+	[ "$CHAIN" = 1 ] && use=chain
+	shnext=files; dhtnext=dht
+	[ "$mode" = cycle ] && dhtnext=chain
+	[ "$mode" = undefined ] && shnext=missing
 	# Windows asserts on the proxy's debug-level endpoint-substitution log
 	# line (see assert.sh check 3), so it needs the lower level.
 	lvl=info
@@ -183,13 +197,33 @@ write_config() { # IF PEER_PUB > FILE
 		echo "    name: opendht"
 		echo "    endpoints:"
 		for url in $ENDPOINTS; do echo "      - $url"; done
+		if [ "$CHAIN" = 1 ]; then
+			echo "  chain:"
+			echo "    type: builtin"
+			echo "    name: mirror"
+			echo "    stores: [shleg, dhtleg]"
+			echo "  shleg:"
+			echo "    type: builtin"
+			echo "    name: trace"
+			echo "    next: $shnext"
+			echo "    file: \"$WORK/shleg$slot.jsonl\""
+			echo "  dhtleg:"
+			echo "    type: builtin"
+			echo "    name: trace"
+			echo "    next: $dhtnext"
+			echo "    file: \"$WORK/dhtleg$slot.jsonl\""
+			echo "  files:"
+			echo "    type: shell"
+			echo "    command: /bin/sh"
+			echo "    args: [\"$HERE/filestore.sh\", \"$STORE\"]"
+		fi
 		echo "interfaces:"
 		echo "  $name:"
 		echo "    protocol: ipv4"
 		echo "    peers:"
 		echo "      peer:"
 		echo "        public_key: \"$peer\""
-		echo "        plugin: dht"
+		echo "        plugin: $use"
 		echo "        protocol: ipv4"
 	} > "$out"
 }
@@ -204,8 +238,34 @@ create_iface 0 "$Apriv" "$PORT0" "$Bpub" "$ALLOWED1"
 create_iface 1 "$Bpriv" "$PORT1" "$Apub" "$ALLOWED0"
 log "interfaces up: $IF0 (peer $Bpub), $IF1 (peer $Apub)"
 
-write_config "$IF0" "$Bpub" "$WORK/cfg0.yaml"
-write_config "$IF1" "$Apub" "$WORK/cfg1.yaml"
+write_config "$IF0" "$Bpub" "$WORK/cfg0.yaml" 0
+write_config "$IF1" "$Apub" "$WORK/cfg1.yaml" 1
+
+if [ "$CHAIN" = 1 ]; then
+	mkdir "$STORE"
+	export E2E_STORE="$STORE"
+	export E2E_WORK="$WORK"
+	# expect_startup_failure MODE TEXT: the broken chain must stop startup
+	# with TEXT on stderr.
+	expect_startup_failure() {
+		mode=$1; text=$2
+		log "negative check: $mode chain must stop startup"
+		write_config "$IF0" "$Bpub" "$WORK/$mode.yaml" 9 "$mode"
+		# shellcheck disable=SC2024
+		if $SUDO "$BIN" --oneshot -c "$WORK/$mode.yaml" > "$WORK/$mode.out" 2> "$WORK/$mode.err"; then
+			echo "FAIL: stunmesh started with a $mode chain" >&2
+			exit 1
+		fi
+		if ! grep -q "$text" "$WORK/$mode.err"; then
+			echo "FAIL: no '$text' in the stderr of the $mode run:" >&2
+			cat "$WORK/$mode.out" "$WORK/$mode.err" >&2
+			exit 1
+		fi
+		log "ok: $(grep -m1 "$text" "$WORK/$mode.err")"
+	}
+	expect_startup_failure cycle 'plugin cycle'
+	expect_startup_failure undefined 'is not defined'
+fi
 
 # The two processes never wait for each other, so when one side's STUN
 # discovery is delayed past the other's last establish round (seen on the
