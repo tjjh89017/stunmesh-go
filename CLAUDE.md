@@ -107,7 +107,7 @@ Downstream repos, in this order (each item: what to change, how to release):
 3. **stunmesh-openwrt-firmware**. Nothing to edit; it installs whatever the stunmesh-openwrt feed serves at build time. Trigger `firmware.yml` with `workflow_dispatch` after the feed build finishes (a push to main also builds, and the weekly cron picks it up otherwise). Every run publishes a `firmware-<build_id>` release.
 4. **stunmesh-opnsense**. Edit `Makefile`: `PLUGIN_VERSION`, reset `PLUGIN_REVISION=1`. Refresh `distinfo` from `gh release view vX.Y.Z --repo tjjh89017/stunmesh-go --json assets --jq '.assets[] | "\(.name) \(.digest)"'`. Push to main; `build.yml` builds the pkg and republishes the feed. There are no tags.
 5. **stunmesh-android**. Edit `gradle.properties`: `stunmeshCoreVersion=vX.Y.Z`. Push a `v*` tag to release.
-6. **stunmesh-docs**. For a new minor version run `pnpm docusaurus docs:version X.Y`, which snapshots `docs/` into `versioned_docs/version-X.Y` and prepends `versions.json`. Check `docs/guides/openwrt.md` for the OpenWrt series in the feed URL. Push to main deploys.
+6. **stunmesh-docs**. `docs/` is the current release, labelled with its version and served at the site root; there is no "Next". For a new minor version, first run `pnpm docusaurus docs:version <previous X.Y>` to freeze the previous version, then update `docs/`, set `versions.current.label` in `docusaurus.config.js` to `X.Y`, and give the frozen version `banner: 'unmaintained'`. Remove any `:::caution Unreleased` admonitions for the released features, check `docs/guides/openwrt.md` for the OpenWrt series in the feed URL, and push to main to deploy.
 
 Each downstream repo has its own copy of its step in its README or CLAUDE.md; keep both in sync.
 
