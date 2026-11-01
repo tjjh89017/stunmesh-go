@@ -1,6 +1,9 @@
 package pluginapi
 
-// PluginConfig holds configuration for a plugin
+// PluginConfig holds one plugin instance's configuration, minus "type".
+// The core reserves "type", "name" (the built-in to use for type builtin)
+// and "dedup" (read for every plugin type); every other key belongs to the
+// plugin.
 type PluginConfig map[string]interface{}
 
 // PluginDefinition defines a plugin configuration from YAML

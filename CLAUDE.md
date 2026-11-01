@@ -147,6 +147,17 @@ The plugin system supports multiple named storage backend instances:
 - `exec`: External process communication via JSON stdin/stdout (for complex plugins)
 - `shell`: Simplified protocol using shell variables via stdin (for simple shell scripts)
 
+**Chaining**: a built-in registered with `pluginapi.RegisterWithStores` gets `PluginStores`, and `stores.Lookup(name)` returns another configured instance (any type). The outer plugin reads the inner instance name from its own config; the core reserves no field for it. `Manager.LoadPlugins` builds inner instances first, rejects cycles and undefined references, closes what it built on any error, and `Close` runs in reverse build order.
+
+**Factory rule**: a factory (`pluginapi.Factory` or `FactoryWithStores`) receives a ctx but must not do network I/O. Open connections lazily on the first `Get`/`Set`. The ctx is for cancellation and the platform dialer.
+```yaml
+plugins:
+  wrapped:
+    type: builtin
+    name: some_wrapper   # hypothetical built-in registered with RegisterWithStores
+    next: cloudflare_builtin  # field name chosen by that plugin, not by the core
+```
+
 **External Plugins**: exec and shell plugins live in the `stunmesh-plugins` repository (https://github.com/tjjh89017/stunmesh-plugins). They implement the exec or shell protocol and have no Go dependency on this module.
 
 **Configuration Structure**:
@@ -470,8 +481,10 @@ Exec and shell plugins live in the `stunmesh-plugins` repository (https://github
 
 ### Adding New Built-in Plugins
 1. Create `internal/plugin/builtin/<name>/<name>.go`, guarded by `//go:build builtin_<name> || builtin_all`
-   - Implement `Store`, plus a constructor matching `registry.Factory`
-   - Register it from `init()`: `registry.Register("<name>", New<Name>Plugin)`
+   - Implement `Store`, plus a constructor matching `pluginapi.Factory` (or `pluginapi.FactoryWithStores` if it wraps another instance)
+   - The constructor receives a ctx but must not do network I/O; open connections lazily on the first `Get`/`Set`. The ctx is for cancellation and the platform dialer
+   - Built-ins in this module read their config through `internal/plugin/builtin.NewConfig`; a third-party plugin parses the `PluginConfig` map itself
+   - Register it from `init()`: `pluginapi.Register("<name>", New<Name>Plugin)` (or `pluginapi.RegisterWithStores`)
    - The `|| builtin_all` is what enrolls it in the `builtin_all` meta-tag, so nothing else (Makefile, `.golangci.yaml`) needs a list entry
 2. Create `internal/plugin/builtin/<name>/stub.go`, guarded by `//go:build !builtin_<name> && !builtin_all`, declaring nothing but `package <name>`
    - **Required, not optional.** `internal/plugin/imports.go` imports every built-in unconditionally, so without a stub a build that omits the tag fails with `build constraints exclude all Go files`

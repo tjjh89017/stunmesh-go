@@ -29,6 +29,12 @@ func (f *fakeCloserStore) Close() error {
 	return f.closeErr
 }
 
+// addPlugin installs store as if LoadPlugins had built it.
+func addPlugin(m *Manager, name string, store pluginapi.Store) {
+	m.plugins[name] = store
+	m.order = append(m.order, name)
+}
+
 // fakePlainStore is a Store without a Close method.
 type fakePlainStore struct{}
 
@@ -260,9 +266,8 @@ func TestIsDedup_UnknownPluginReturnsFalse(t *testing.T) {
 func TestClose_ClosesOnlyClosers(t *testing.T) {
 	m := NewManager()
 	closer := &fakeCloserStore{}
-	plain := &fakePlainStore{}
-	m.plugins["closer"] = closer
-	m.plugins["plain"] = plain
+	addPlugin(m, "closer", closer)
+	addPlugin(m, "plain", &fakePlainStore{})
 
 	if err := m.Close(); err != nil {
 		t.Fatalf("Close() unexpected error: %v", err)
@@ -275,8 +280,8 @@ func TestClose_ClosesOnlyClosers(t *testing.T) {
 
 func TestClose_JoinsAndPrefixesErrors(t *testing.T) {
 	m := NewManager()
-	m.plugins["a"] = &fakeCloserStore{closeErr: errors.New("boom a")}
-	m.plugins["b"] = &fakeCloserStore{closeErr: errors.New("boom b")}
+	addPlugin(m, "a", &fakeCloserStore{closeErr: errors.New("boom a")})
+	addPlugin(m, "b", &fakeCloserStore{closeErr: errors.New("boom b")})
 
 	err := m.Close()
 	if err == nil {
@@ -293,7 +298,7 @@ func TestClose_JoinsAndPrefixesErrors(t *testing.T) {
 func TestClose_IdempotentSecondCallIsNoOp(t *testing.T) {
 	m := NewManager()
 	closer := &fakeCloserStore{}
-	m.plugins["closer"] = closer
+	addPlugin(m, "closer", closer)
 
 	if err := m.Close(); err != nil {
 		t.Fatalf("first Close() unexpected error: %v", err)

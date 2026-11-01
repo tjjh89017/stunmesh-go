@@ -3,6 +3,7 @@
 package cloudflare
 
 import (
+	"context"
 	"io"
 	"testing"
 
@@ -15,14 +16,14 @@ func TestNewCloudflarePlugin_MissingZone(t *testing.T) {
 		// Missing "zone" field
 	}
 
-	_, err := NewCloudflarePlugin(config)
+	_, err := NewCloudflarePlugin(context.Background(), config)
 	if err == nil {
-		t.Error("NewCloudflarePlugin() should return error when zone is missing")
+		t.Error("NewCloudflarePlugin(context.Background(), ) should return error when zone is missing")
 	}
 
 	expectedMsg := "zone is required"
 	if err != nil && err.Error() != expectedMsg {
-		t.Errorf("NewCloudflarePlugin() error = %q, want %q", err.Error(), expectedMsg)
+		t.Errorf("NewCloudflarePlugin(context.Background(), ) error = %q, want %q", err.Error(), expectedMsg)
 	}
 }
 
@@ -32,14 +33,14 @@ func TestNewCloudflarePlugin_MissingToken(t *testing.T) {
 		// Missing "token" field
 	}
 
-	_, err := NewCloudflarePlugin(config)
+	_, err := NewCloudflarePlugin(context.Background(), config)
 	if err == nil {
-		t.Error("NewCloudflarePlugin() should return error when token is missing")
+		t.Error("NewCloudflarePlugin(context.Background(), ) should return error when token is missing")
 	}
 
 	expectedMsg := "token is required"
 	if err != nil && err.Error() != expectedMsg {
-		t.Errorf("NewCloudflarePlugin() error = %q, want %q", err.Error(), expectedMsg)
+		t.Errorf("NewCloudflarePlugin(context.Background(), ) error = %q, want %q", err.Error(), expectedMsg)
 	}
 }
 
@@ -146,12 +147,12 @@ func TestCloudflarePlugin_StructFields(t *testing.T) {
 //   }
 
 func TestCloudflarePlugin_Close(t *testing.T) {
-	store, err := NewCloudflarePlugin(pluginapi.PluginConfig{
+	store, err := NewCloudflarePlugin(context.Background(), pluginapi.PluginConfig{
 		"zone":  "example.com",
 		"token": "test-token",
 	})
 	if err != nil {
-		t.Fatalf("NewCloudflarePlugin() unexpected error: %v", err)
+		t.Fatalf("NewCloudflarePlugin(context.Background(), ) unexpected error: %v", err)
 	}
 
 	closer, ok := store.(io.Closer)

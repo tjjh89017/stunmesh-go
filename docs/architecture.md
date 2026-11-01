@@ -104,26 +104,40 @@ there's a stated reason not to.
 ### Plugin registry: process-global `init()`-time self-registration
 
 - **When to apply**: n/a as a pattern to reuse elsewhere in this codebase —
-  documents why `internal/plugin/registry` exists as its own package and
-  why registration happens in `init()`.
-- **Shape**: `internal/plugin/registry/registry.go` holds a package-level
-  `map[string]Factory` guarded by a `sync.RWMutex`, with `Register` called
-  from each built-in plugin's own `init()` (e.g.
-  `internal/plugin/builtin/cloudflare/cloudflare.go`), and `Get` used by
-  `internal/plugin/manager.go` to look a factory up by name at plugin
-  construction time. `internal/plugin/imports.go` blank-imports every
-  built-in package unconditionally so their `init()` functions always run;
-  build tags on each built-in's implementation/stub pair (see
-  `CLAUDE.md`'s "Adding New Built-in Plugins") control whether that
-  `init()` does anything.
+  documents why the registry lives in `pluginapi` and why registration
+  happens in `init()`.
+- **Shape**: `pluginapi/registry.go` holds a package-level
+  `map[string]FactoryWithStores` guarded by a `sync.RWMutex`. Each built-in
+  calls `pluginapi.Register` (or `RegisterWithStores`) from its own `init()`
+  (e.g. `internal/plugin/builtin/cloudflare/cloudflare.go`); both panic on
+  a duplicate name or a nil factory, and `Register` wraps a plain
+  `Factory` into a `FactoryWithStores` that ignores its `PluginStores`.
+  `internal/plugin/builtin.go` resolves a `type: builtin` instance with
+  `pluginapi.LookupFactory`, and its not-found error lists
+  `pluginapi.Registered()`.
+  `internal/plugin/imports.go` blank-imports every built-in package
+  unconditionally so their `init()` functions always run; build tags on
+  each built-in's implementation/stub pair (see `CLAUDE.md`'s "Adding New
+  Built-in Plugins") control whether that `init()` does anything.
 - **Forces it resolves**: `plugin` (the manager) needs to create a built-in
   `Store` by name without every built-in's package needing to import
   `plugin`, and without `plugin` needing a hand-maintained list of built-ins
-  to import. Splitting `registry` out as its own package breaks what would
+  to import. Keeping the registry out of `plugin` breaks what would
   otherwise be a cycle (`plugin` importing each built-in, each built-in
-  importing `plugin` to register itself) and lets `imports.go` be the only
-  place that lists built-ins, with build tags — not a switch statement —
-  deciding which ones actually register.
+  importing `plugin` to register itself). Putting it in the public
+  `pluginapi` package, next to `Store`, lets a plugin outside this module
+  register itself the same way.
+- **Chaining**: a `FactoryWithStores` receives `PluginStores`, whose
+  `Lookup(name)` returns another configured instance. The outer plugin reads
+  the inner instance name from its own config; the core reserves no field
+  for it. The core reserves only `type`, `name` (which built-in, for
+  `type: builtin`) and `dedup` (read for every plugin type).
+  `PluginStores` is backed by `Manager.get`, so it builds the inner
+  instance on demand during the factory call. Each `PluginStores` is valid
+  only inside its factory call; a retained one returns an error. Names
+  already built are reused, so a later `LoadPlugins` ignores a changed
+  definition for an existing name. exec and shell instances can be inner
+  instances but never receive `PluginStores`.
 - **Revisit if**: registration needs to be anything other than "always run
   once at process start" (e.g. conditional or repeated registration, or
   registration that depends on config read at runtime) — `init()`-time
@@ -131,12 +145,22 @@ there's a stated reason not to.
   tags baked into the binary.
 - **Lifecycle**: plugin instances live for the whole `App` lifetime — a
   plugin owning connections or goroutines implements `io.Closer` to release
-  them. `plugin.Manager.Close` closes every instance that does so and runs
-  from `App.Close` (via the plugin manager provider's cleanup func) and from
-  the mobile controller's `stop`. `App.New` creates the App's own lifetime
-  `context.Context` and passes it into the plugin manager provider (instead
-  of `context.Background()`), so plugin construction is tied to the App
-  rather than to whichever `Run` call happens to be active. `App.Close`
+  them. `Manager.LoadPlugins` builds every instance eagerly, visiting names
+  in sorted order; `get` returns a cached instance, reports a cycle with its
+  path (`plugin cycle: a -> b -> a`) and an undefined reference with both
+  names, and appends each new instance to `order`, so an inner instance
+  always precedes its users. If any build fails, `LoadPlugins` closes the
+  instances it built in reverse order and drops them, so callers that only
+  return the error (the `app` provider) or retry (the mobile controller)
+  leak nothing. `Manager.Close` closes every instance that implements
+  `io.Closer` in reverse `order`, so an outer instance closes before the
+  inner instances it uses; it is idempotent. It runs from `App.Close` (via
+  the plugin manager provider's cleanup func) and from the mobile
+  controller's `stop`. `App.New` creates the App's own lifetime
+  `context.Context` and passes it into the plugin manager provider, which
+  hands it to every factory for cancellation and for the platform dialer it
+  carries. Factories must not do network I/O; a plugin opens connections
+  lazily on its first `Get`/`Set`, with that call's context. `App.Close`
   cancels that context and waits for any in-flight `Run`/`RunOneshot` to
   return before releasing resources, so a plugin is never closed out from
   under a live worker.

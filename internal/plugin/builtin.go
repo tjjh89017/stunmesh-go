@@ -1,15 +1,19 @@
 package plugin
 
 import (
+	"context"
 	"fmt"
+	"strings"
 
-	"github.com/tjjh89017/stunmesh-go/internal/plugin/registry"
 	pluginapi "github.com/tjjh89017/stunmesh-go/pluginapi"
 )
 
 // NewBuiltinPlugin creates a built-in plugin instance
-func NewBuiltinPlugin(config pluginapi.PluginConfig) (pluginapi.Store, error) {
-	// Get the builtin plugin name from config
+func NewBuiltinPlugin(ctx context.Context, config pluginapi.PluginConfig, stores pluginapi.PluginStores) (pluginapi.Store, error) {
+	return newBuiltinPlugin(ctx, config, stores, pluginapi.LookupFactory)
+}
+
+func newBuiltinPlugin(ctx context.Context, config pluginapi.PluginConfig, stores pluginapi.PluginStores, lookup lookupFunc) (pluginapi.Store, error) {
 	nameInterface, ok := config["name"]
 	if !ok {
 		return nil, fmt.Errorf("builtin plugin requires 'name' field")
@@ -20,12 +24,11 @@ func NewBuiltinPlugin(config pluginapi.PluginConfig) (pluginapi.Store, error) {
 		return nil, fmt.Errorf("builtin plugin 'name' must be a string")
 	}
 
-	// Look up the factory
-	factory, exists := registry.Get(name)
+	factory, exists := lookup(name)
 	if !exists {
-		return nil, fmt.Errorf("builtin plugin not found: %s", name)
+		return nil, fmt.Errorf("builtin plugin not found: %s (registered: [%s]; the binary must import the package that registers it)",
+			name, strings.Join(pluginapi.Registered(), ", "))
 	}
 
-	// Create the plugin instance
-	return factory(config)
+	return factory(ctx, config, stores)
 }
