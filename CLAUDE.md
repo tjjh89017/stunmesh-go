@@ -10,16 +10,18 @@ stunmesh-go is a WireGuard helper tool that enables peer-to-peer connections thr
 
 ### Building
 ```bash
-make build          # Build the main binary (includes all built-in plugins by default)
+make build          # Build the main binary (with every built-in in builtin/all)
 make all           # Build everything (clean + build)
 make clean         # Clean build artifacts
 go build -o stunmesh-go  # Direct go build
-
-# Built-in plugin options
-make build BUILTIN=all                    # Build with all built-in plugins (default)
-make build BUILTIN=                       # Build without any built-in plugins (minimal)
-make build BUILTIN=builtin_cloudflare     # Build with specific built-in plugin only
 ```
+
+Built-ins are selected by imports, not build tags. `main.go` and `mobile/`
+blank-import `builtin/all`, the set the release binary ships; `app` imports
+no built-in. A custom binary is your own `main` that imports `app` plus the
+`builtin/*` packages you want, or your own plugin package. Such a `main` may
+also call `pluginapi.Register` before `app.New` to capture runtime values in
+the factory.
 
 ### Testing
 ```bash
@@ -35,15 +37,14 @@ make lint                        # Lint for linux, darwin, freebsd and windows, 
 make lint LINT_PLATFORMS=linux   # Just the host, for a faster loop
 ```
 
-`.golangci.yaml` sets `build-tags: [builtin_all, embedca]`, so a bare
-`golangci-lint run` and CI check the same files — the built-ins and the
-embedded-CA path included, and no list to update when a built-in is added. `GOOS` can't come from the config, so `make lint` loops over the
+`.golangci.yaml` sets `build-tags: [embedca]`, so a bare
+`golangci-lint run` and CI check the same files, the embedded-CA path
+included. `GOOS` can't come from the config, so `make lint` loops over the
 four platforms and CI runs them as a matrix. `mobile/` and `internal/mobilebind`
 sit behind the `mobile` build tag, so the platform loop never sees them; a
 separate `lint-mobile` target (always run as part of `make lint`) covers them
-with `GOOS=linux` and `MOBILE_TAGS` (= `builtin_all mobile`, so the real
-built-in plugin implementations are linted rather than their stubs); CI's
-mobile lint step passes the same two tags.
+with `GOOS=linux` and `MOBILE_TAGS` (= `mobile`); CI's mobile lint step
+passes the same tag.
 
 ### Dependency Management
 ```bash
@@ -100,7 +101,7 @@ Cutting a stunmesh-go release:
 
 Downstream repos, in this order (each item: what to change, how to release):
 
-1. **stunmesh-provisioner**. Dependabot (gomod, daily) opens a PR bumping `github.com/tjjh89017/stunmesh-go` in `go.mod`. To do it by hand: `go get github.com/tjjh89017/stunmesh-go@vX.Y.Z && go mod tidy`. Merge, then push a `v*` tag if a provisioner release is wanted. stunmesh-agent embeds the `app` package, so a provisioner release usually follows a stunmesh-go release.
+1. **stunmesh-provisioner**. Dependabot (gomod, daily) opens a PR bumping `github.com/tjjh89017/stunmesh-go` in `go.mod`. To do it by hand: `go get github.com/tjjh89017/stunmesh-go@vX.Y.Z && go mod tidy`. Merge, then push a `v*` tag if a provisioner release is wanted. stunmesh-agent embeds the `app` package, so a provisioner release usually follows a stunmesh-go release. `app` registers no built-in, so stunmesh-agent must blank-import `github.com/tjjh89017/stunmesh-go/builtin/all` (or the `builtin/*` packages it wants).
 2. **stunmesh-openwrt**. Edit `net/stunmesh-go/Makefile`: `PKG_VERSION`, reset `PKG_RELEASE:=1`, refresh `PKG_HASH` with `curl -sL https://codeload.github.com/tjjh89017/stunmesh-go/tar.gz/vX.Y.Z | sha256sum`. If provisioner released, do the same in `net/stunmesh-provisioner/Makefile`. Push to main; `build.yml` republishes the apk feed. There are no tags.
 3. **stunmesh-openwrt-firmware**. Nothing to edit; it installs whatever the stunmesh-openwrt feed serves at build time. Trigger `firmware.yml` with `workflow_dispatch` after the feed build finishes (a push to main also builds, and the weekly cron picks it up otherwise). Every run publishes a `firmware-<build_id>` release.
 4. **stunmesh-opnsense**. Edit `Makefile`: `PLUGIN_VERSION`, reset `PLUGIN_REVISION=1`. Refresh `distinfo` from `gh release view vX.Y.Z --repo tjjh89017/stunmesh-go --json assets --jq '.assets[] | "\(.name) \(.digest)"'`. Push to main; `build.yml` builds the pkg and republishes the feed. There are no tags.
@@ -143,20 +144,33 @@ The plugin system supports multiple named storage backend instances:
 - Each peer can reference a different plugin instance
 
 **Supported Plugin Types**:
-- `builtin`: Compiled into the binary (default: includes all built-in plugins like cloudflare)
+- `builtin`: Compiled into the binary; the release binary links the set in `builtin/all` (cloudflare, opendht, passthrough, mirror)
 - `exec`: External process communication via JSON stdin/stdout (for complex plugins)
 - `shell`: Simplified protocol using shell variables via stdin (for simple shell scripts)
 
-**Chaining**: a built-in registered with `pluginapi.RegisterWithStores` gets `PluginStores`, and `stores.Lookup(name)` returns another configured instance (any type). The outer plugin reads the inner instance name from its own config; the core reserves no field for it. `Manager.LoadPlugins` builds inner instances first, rejects cycles and undefined references, closes what it built on any error, and `Close` runs in reverse build order.
-
-**Factory rule**: a factory (`pluginapi.Factory` or `FactoryWithStores`) receives a ctx but must not do network I/O. Open connections lazily on the first `Get`/`Set`. The ctx is for cancellation and the platform dialer.
+**Chaining**: a built-in registered with `pluginapi.RegisterWithStores` gets `PluginStores`, and `stores.Lookup(name)` returns another configured instance (any type). The outer plugin reads the inner instance name from its own config; the core reserves no field for it. `Manager.LoadPlugins` builds inner instances first, rejects cycles and undefined references, closes what it built on any error, and `Close` runs in reverse build order. An inner instance is shared, so a chaining plugin does not close it. `builtin/passthrough` (forwards to `next`) and `builtin/mirror` (writes to every entry of `stores`, reads the first non-empty value in list order) are the shipped examples:
 ```yaml
 plugins:
-  wrapped:
+  cf:
     type: builtin
-    name: some_wrapper   # hypothetical built-in registered with RegisterWithStores
-    next: cloudflare_builtin  # field name chosen by that plugin, not by the core
+    name: cloudflare
+    zone: example.com
+    token: "<CLOUDFLARE_API_TOKEN>"
+  dht:
+    type: builtin
+    name: opendht
+    endpoint: "<OPENDHT_PROXY_URL>"
+  front:
+    type: builtin
+    name: passthrough
+    next: dht            # passthrough's own field
+  both:
+    type: builtin
+    name: mirror
+    stores: [cf, dht]    # mirror's own field; read order
 ```
+
+**Factory rule**: a factory (`pluginapi.Factory` or `FactoryWithStores`) receives a ctx but must not do network I/O. Open connections lazily on the first `Get`/`Set`. The ctx is for cancellation and the platform dialer.
 
 **External Plugins**: exec and shell plugins live in the `stunmesh-plugins` repository (https://github.com/tjjh89017/stunmesh-plugins). They implement the exec or shell protocol and have no Go dependency on this module.
 
@@ -213,6 +227,7 @@ of its own.
      - When the peer's plugin instance has `dedup: true` and the plaintext endpoint JSON is unchanged since the last successful publish for that peer, `store.Set` is skipped
      - When `dedup` is `false` (default), every peer is published every refresh cycle, unchanged from prior behavior
      - **Do not enable `dedup` for storage backends with expiring/TTL values** (e.g. a short-TTL DHT) — skipping the write lets the value expire since there is no other mechanism to refresh it; only use `dedup` with persistent backends (e.g. Cloudflare DNS, GitHub Gist) where a written value stays until overwritten
+     - `dedup` on a `mirror` or `passthrough` instance skips the write to every inner store, and the inner instance's own `dedup` setting is not consulted; do not put `dedup: true` on a mirror that contains a TTL backend such as opendht
 
 3. **EstablishController** (`internal/ctrl/establish.go`):
    - Retrieves peer endpoint data from storage plugins
@@ -480,28 +495,22 @@ Common parameters to remember:
 Exec and shell plugins live in the `stunmesh-plugins` repository (https://github.com/tjjh89017/stunmesh-plugins). They implement the exec or shell protocol described in "Exec Plugin Protocol" and "Shell Plugin Protocol" above.
 
 ### Adding New Built-in Plugins
-1. Create `internal/plugin/builtin/<name>/<name>.go`, guarded by `//go:build builtin_<name> || builtin_all`
-   - Implement `Store`, plus a constructor matching `pluginapi.Factory` (or `pluginapi.FactoryWithStores` if it wraps another instance)
+1. Create the package `builtin/<name>`
+   - Implement `Store`, plus a constructor matching `pluginapi.Factory` (or `pluginapi.FactoryWithStores` if it uses another instance)
    - The constructor receives a ctx but must not do network I/O; open connections lazily on the first `Get`/`Set`. The ctx is for cancellation and the platform dialer
-   - Built-ins in this module read their config through `internal/plugin/builtin.NewConfig`; a third-party plugin parses the `PluginConfig` map itself
-   - Register it from `init()`: `pluginapi.Register("<name>", New<Name>Plugin)` (or `pluginapi.RegisterWithStores`)
-   - The `|| builtin_all` is what enrolls it in the `builtin_all` meta-tag, so nothing else (Makefile, `.golangci.yaml`) needs a list entry
-2. Create `internal/plugin/builtin/<name>/stub.go`, guarded by `//go:build !builtin_<name> && !builtin_all`, declaring nothing but `package <name>`
-   - **Required, not optional.** `internal/plugin/imports.go` imports every built-in unconditionally, so without a stub a build that omits the tag fails with `build constraints exclude all Go files`
-   - The `&& !builtin_all` is the mirror of step 1: the stub applies only when this plugin is compiled in via neither its own tag nor `builtin_all`
-3. Add a blank import to `internal/plugin/imports.go`
-   - That file carries no build tag, and must not: a blank import names no symbol, so importing a built-in that is tagged out (leaving only its stub) is fine. The tag belongs on the implementation, once
-4. Update the built-in plugin list and configuration example in the docs site ([tjjh89017/stunmesh-docs](https://github.com/tjjh89017/stunmesh-docs), published at docs.stunmesh.dev), and the `BUILTIN` examples in README.md if affected
-5. If the plugin holds connections or goroutines, implement `Close() error`; `Manager.Close` calls it on shutdown.
+   - Built-ins in this module read their config through `internal/pluginconfig.NewConfig`; a third-party plugin parses the `PluginConfig` map itself
+   - Register it from `init()`: `pluginapi.Register("<name>", New)` (or `pluginapi.RegisterWithStores`)
+   - Return a pointer from the factory: the Manager and other plugins share the instance
+   - Do not call `pluginapi.LookupFactory` from `init()`; registration order across packages is not defined
+2. Add one blank import to `builtin/all/all.go` if the release binary should ship it
+3. Update the built-in plugin list and configuration example in the docs site ([tjjh89017/stunmesh-docs](https://github.com/tjjh89017/stunmesh-docs), published at docs.stunmesh.dev)
+4. If the plugin holds connections or goroutines, implement `Close() error`; `Manager.Close` calls it on shutdown. A chaining plugin must not close its inner instances.
 
-Verify every tag combination, since a built-in must compile alone, under
-`builtin_all`, and alongside the others:
+Verify:
 ```bash
-for t in "" builtin_all builtin_cloudflare builtin_opendht builtin_<name> "builtin_cloudflare builtin_opendht builtin_<name>"; do
-  go build -tags "$t" -o /dev/null . || echo "FAILED: '$t'"
-done
+go build ./... && go vet ./... && go test ./...
+go build -tags mobile ./mobile/... ./internal/mobilebind/...
 ```
-(Include every existing `builtin_*` tag plus yours, individually and together.)
 
 ### Adding New Plugin Types to Core
 1. Implement `Store` interface in new plugin file

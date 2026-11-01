@@ -164,15 +164,14 @@ jobs:
       # mobile/ and internal/mobilebind are excluded from every default build
       # by the mobile tag, so neither the Lint nor the Test job above sees
       # them; lint and test them here instead, under the same tags as `make
-      # lint-mobile` (MOBILE_TAGS = builtin_all + mobile, so the real builtin
-      # implementations are linted, not their stubs). Run via the action
+      # lint-mobile` (MOBILE_TAGS = mobile). Run via the action
       # directly (like the main Lint job) rather than `make lint-mobile`,
       # since this job doesn't otherwise install golangci-lint.
       - name: Lint
         uses: golangci/golangci-lint-action@v9
         with:
           version: latest
-          args: --build-tags=builtin_all,mobile ./mobile/... ./internal/mobilebind/...
+          args: --build-tags=mobile ./mobile/... ./internal/mobilebind/...
 
       - name: Test
         run: make mobile-test

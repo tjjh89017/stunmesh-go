@@ -1,11 +1,5 @@
-// Package builtin holds helpers shared across built-in plugin
-// implementations (internal/plugin/builtin/<name>).
-//
-// This file carries no build tag: unlike each built-in's own
-// implementation, which is compiled in only under its own tag or
-// builtin_all, the config helper must be reachable regardless of which
-// combination of built-ins is compiled in, so it is always compiled.
-package builtin
+// Package pluginconfig gives built-in plugins typed access to their configuration.
+package pluginconfig
 
 import (
 	"fmt"

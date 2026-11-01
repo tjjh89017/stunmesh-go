@@ -13,7 +13,6 @@ STRIP ?= 1
 TRIMPATH ?= 1
 UPX ?= 0
 EXTRA_MIN ?= 0
-BUILTIN ?= all
 # EMBED_CA=1 embeds the Mozilla root bundle (build tag embedca), used only
 # when the system has no CA store. For images without ca-certificates.
 EMBED_CA ?= 0
@@ -57,10 +56,8 @@ ifneq ($(TRIMPATH),0)
 	TRIMPATH_FLAGS := -trimpath
 endif
 
-# builtin_all: every built-in opts in via `|| builtin_all`, no list to maintain.
-# BUILTIN=builtin_<name> picks one, BUILTIN= none.
-ifeq ($(BUILTIN),all)
-	override BUILTIN := builtin_all
+ifneq ($(origin BUILTIN),undefined)
+$(warning BUILTIN is obsolete; built-ins are selected by imports. For a minimal binary, write a main that imports app and only the builtin/* packages you want)
 endif
 
 CA_TAG =
@@ -68,15 +65,15 @@ ifneq ($(EMBED_CA),0)
 	CA_TAG := embedca
 endif
 
-# Combine BUILTIN, BACKEND and EMBED_CA tags. An empty BACKEND adds no tag,
+# Combine BACKEND and EMBED_CA tags. An empty BACKEND adds no tag,
 # leaving the backend choice to the build constraints in internal/wg.
-ALL_TAGS := $(strip $(BUILTIN) $(BACKEND) $(CA_TAG))
+ALL_TAGS := $(strip $(BACKEND) $(CA_TAG))
 TAGS_FLAGS = $(if $(ALL_TAGS),-tags '$(ALL_TAGS)',)
 
 # mobile/ and internal/mobilebind sit behind the mobile build tag, so every
 # mobile target adds it; without the tag those packages are invisible and the
 # desktop build never compiles wireguard-go's device stack.
-MOBILE_TAGS := $(strip $(BUILTIN) mobile)
+MOBILE_TAGS := mobile
 MOBILE_PKG := github.com/tjjh89017/stunmesh-go/mobile
 
 UPX_TARGET =

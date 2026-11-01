@@ -1,5 +1,3 @@
-//go:build builtin_cloudflare || builtin_all
-
 package cloudflare
 
 import (
@@ -10,42 +8,42 @@ import (
 	pluginapi "github.com/tjjh89017/stunmesh-go/pluginapi"
 )
 
-func TestNewCloudflarePlugin_MissingZone(t *testing.T) {
+func TestNew_MissingZone(t *testing.T) {
 	config := pluginapi.PluginConfig{
 		"token": "test-token",
 		// Missing "zone" field
 	}
 
-	_, err := NewCloudflarePlugin(context.Background(), config)
+	_, err := New(context.Background(), config)
 	if err == nil {
-		t.Error("NewCloudflarePlugin(context.Background(), ) should return error when zone is missing")
+		t.Error("New() should return error when zone is missing")
 	}
 
 	expectedMsg := "zone is required"
 	if err != nil && err.Error() != expectedMsg {
-		t.Errorf("NewCloudflarePlugin(context.Background(), ) error = %q, want %q", err.Error(), expectedMsg)
+		t.Errorf("New() error = %q, want %q", err.Error(), expectedMsg)
 	}
 }
 
-func TestNewCloudflarePlugin_MissingToken(t *testing.T) {
+func TestNew_MissingToken(t *testing.T) {
 	config := pluginapi.PluginConfig{
 		"zone": "example.com",
 		// Missing "token" field
 	}
 
-	_, err := NewCloudflarePlugin(context.Background(), config)
+	_, err := New(context.Background(), config)
 	if err == nil {
-		t.Error("NewCloudflarePlugin(context.Background(), ) should return error when token is missing")
+		t.Error("New() should return error when token is missing")
 	}
 
 	expectedMsg := "token is required"
 	if err != nil && err.Error() != expectedMsg {
-		t.Errorf("NewCloudflarePlugin(context.Background(), ) error = %q, want %q", err.Error(), expectedMsg)
+		t.Errorf("New() error = %q, want %q", err.Error(), expectedMsg)
 	}
 }
 
 func TestGetRecordName_WithSubdomain(t *testing.T) {
-	p := &CloudflarePlugin{
+	p := &plugin{
 		zoneName:  "example.com",
 		subdomain: "stunmesh",
 	}
@@ -60,7 +58,7 @@ func TestGetRecordName_WithSubdomain(t *testing.T) {
 }
 
 func TestGetRecordName_WithoutSubdomain(t *testing.T) {
-	p := &CloudflarePlugin{
+	p := &plugin{
 		zoneName:  "example.com",
 		subdomain: "",
 	}
@@ -75,7 +73,7 @@ func TestGetRecordName_WithoutSubdomain(t *testing.T) {
 }
 
 func TestGetRecordName_SpecialCharacters(t *testing.T) {
-	p := &CloudflarePlugin{
+	p := &plugin{
 		zoneName:  "example.com",
 		subdomain: "test",
 	}
@@ -100,8 +98,8 @@ func TestGetRecordName_SpecialCharacters(t *testing.T) {
 }
 
 func TestCloudflarePlugin_StructFields(t *testing.T) {
-	// Test that CloudflarePlugin struct has expected fields
-	p := &CloudflarePlugin{
+	// Test that plugin struct has expected fields
+	p := &plugin{
 		token:     "test-token",
 		zoneID:    "test-zone-id",
 		zoneName:  "example.com",
@@ -110,25 +108,25 @@ func TestCloudflarePlugin_StructFields(t *testing.T) {
 	}
 
 	if p.token != "test-token" {
-		t.Errorf("CloudflarePlugin.token = %q, want %q", p.token, "test-token")
+		t.Errorf("plugin.token = %q, want %q", p.token, "test-token")
 	}
 
 	if p.zoneID != "test-zone-id" {
-		t.Errorf("CloudflarePlugin.zoneID = %q, want %q", p.zoneID, "test-zone-id")
+		t.Errorf("plugin.zoneID = %q, want %q", p.zoneID, "test-zone-id")
 	}
 
 	if p.zoneName != "example.com" {
-		t.Errorf("CloudflarePlugin.zoneName = %q, want %q", p.zoneName, "example.com")
+		t.Errorf("plugin.zoneName = %q, want %q", p.zoneName, "example.com")
 	}
 
 	if p.subdomain != "test" {
-		t.Errorf("CloudflarePlugin.subdomain = %q, want %q", p.subdomain, "test")
+		t.Errorf("plugin.subdomain = %q, want %q", p.subdomain, "test")
 	}
 }
 
 // Note: Full integration tests for Get/Set/doRequest/getZoneID/findRecord
 // require either:
-// 1. Refactoring CloudflarePlugin to accept injected HTTP client and API URL
+// 1. Refactoring plugin to accept injected HTTP client and API URL
 // 2. Setting up actual Cloudflare API credentials (not suitable for unit tests)
 // 3. Using HTTP interceptors (complex setup)
 //
@@ -136,28 +134,28 @@ func TestCloudflarePlugin_StructFields(t *testing.T) {
 // - Configuration validation
 // - Record name generation logic
 //
-// builtin.Config's own helper methods are tested in
-// internal/plugin/builtin/config_test.go.
+// pluginconfig.Config's own helper methods are tested in
+// internal/pluginconfig/config_test.go.
 //
 // For full coverage, consider refactoring to use dependency injection:
-//   type CloudflarePlugin struct {
+//   type plugin struct {
 //       client HTTPClient // interface
 //       apiURL string     // configurable
 //       ...
 //   }
 
 func TestCloudflarePlugin_Close(t *testing.T) {
-	store, err := NewCloudflarePlugin(context.Background(), pluginapi.PluginConfig{
+	store, err := New(context.Background(), pluginapi.PluginConfig{
 		"zone":  "example.com",
 		"token": "test-token",
 	})
 	if err != nil {
-		t.Fatalf("NewCloudflarePlugin(context.Background(), ) unexpected error: %v", err)
+		t.Fatalf("New() unexpected error: %v", err)
 	}
 
 	closer, ok := store.(io.Closer)
 	if !ok {
-		t.Fatal("CloudflarePlugin does not implement io.Closer")
+		t.Fatal("plugin does not implement io.Closer")
 	}
 
 	if err := closer.Close(); err != nil {

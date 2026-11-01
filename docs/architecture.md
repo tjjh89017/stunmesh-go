@@ -109,16 +109,16 @@ there's a stated reason not to.
 - **Shape**: `pluginapi/registry.go` holds a package-level
   `map[string]FactoryWithStores` guarded by a `sync.RWMutex`. Each built-in
   calls `pluginapi.Register` (or `RegisterWithStores`) from its own `init()`
-  (e.g. `internal/plugin/builtin/cloudflare/cloudflare.go`); both panic on
+  (e.g. `builtin/cloudflare/cloudflare.go`); both panic on
   a duplicate name or a nil factory, and `Register` wraps a plain
   `Factory` into a `FactoryWithStores` that ignores its `PluginStores`.
   `internal/plugin/builtin.go` resolves a `type: builtin` instance with
   `pluginapi.LookupFactory`, and its not-found error lists
   `pluginapi.Registered()`.
-  `internal/plugin/imports.go` blank-imports every built-in package
-  unconditionally so their `init()` functions always run; build tags on
-  each built-in's implementation/stub pair (see `CLAUDE.md`'s "Adding New
-  Built-in Plugins") control whether that `init()` does anything.
+  A built-in is linked in, and its `init()` runs, only when the binary
+  imports its package; there are no build tags. `builtin/all` blank-imports
+  the shipped set, and `main.go` and `mobile/` import it. `app` imports no
+  built-in, so an embedder chooses its own set.
 - **Forces it resolves**: `plugin` (the manager) needs to create a built-in
   `Store` by name without every built-in's package needing to import
   `plugin`, and without `plugin` needing a hand-maintained list of built-ins
@@ -133,16 +133,18 @@ there's a stated reason not to.
   for it. The core reserves only `type`, `name` (which built-in, for
   `type: builtin`) and `dedup` (read for every plugin type).
   `PluginStores` is backed by `Manager.get`, so it builds the inner
-  instance on demand during the factory call. Each `PluginStores` is valid
-  only inside its factory call; a retained one returns an error. Names
-  already built are reused, so a later `LoadPlugins` ignores a changed
-  definition for an existing name. exec and shell instances can be inner
-  instances but never receive `PluginStores`.
+  instance on demand during the factory call. `builtin/passthrough` (field
+  `next`) and `builtin/mirror` (field `stores`) are the shipped chaining
+  plugins. Each `PluginStores` is valid only inside its factory call; a
+  retained one returns an error. Names already built are reused, so a later
+  `LoadPlugins` ignores a changed definition for an existing name. exec and
+  shell instances can be inner instances but never receive `PluginStores`.
 - **Revisit if**: registration needs to be anything other than "always run
   once at process start" (e.g. conditional or repeated registration, or
   registration that depends on config read at runtime) — `init()`-time
-  self-registration assumes registration has no inputs beyond the build
-  tags baked into the binary.
+  self-registration assumes registration has no inputs beyond the packages
+  linked into the binary. A custom `main` may still call `pluginapi.Register`
+  before `app.New` to capture runtime values.
 - **Lifecycle**: plugin instances live for the whole `App` lifetime — a
   plugin owning connections or goroutines implements `io.Closer` to release
   them. `Manager.LoadPlugins` builds every instance eagerly, visiting names
