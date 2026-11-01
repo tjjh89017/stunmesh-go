@@ -502,7 +502,7 @@ To write a chaining plugin, start from `builtin/trace` (one inner) or `builtin/m
 1. Create the package `builtin/<name>`
    - Implement `Store`, plus a constructor matching `pluginapi.Factory` (or `pluginapi.FactoryWithStores` if it uses another instance)
    - The constructor receives a ctx but must not do network I/O; open connections lazily on the first `Get`/`Set`. The ctx is for cancellation and the platform dialer
-   - Built-ins in this module read their config through `internal/pluginconfig.NewConfig`; a third-party plugin parses the `PluginConfig` map itself
+   - Declare a config struct with `mapstructure` tags naming the YAML keys and fill it with `pluginapi.DecodeConfig(ctx, config, &cfg)`. A wrong type is an error; an unknown key is logged as a warning. Check required fields for their zero value after decoding
    - Register it from `init()`: `pluginapi.Register("<name>", New)` (or `pluginapi.RegisterWithStores`)
    - Return a pointer from the factory: the Manager and other plugins share the instance
    - Do not call `pluginapi.LookupFactory` from `init()`; registration order across packages is not defined

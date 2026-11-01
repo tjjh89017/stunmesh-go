@@ -8,22 +8,23 @@ package trace
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
-	"github.com/tjjh89017/stunmesh-go/internal/pluginconfig"
 	pluginapi "github.com/tjjh89017/stunmesh-go/pluginapi"
-)
-
-const (
-	configKeyNext = "next"
-	configKeyFile = "file"
 )
 
 func init() {
 	pluginapi.RegisterWithStores("trace", New)
+}
+
+// config is this plugin's own settings; the core reserves none of these names.
+type config struct {
+	Next string `mapstructure:"next"`
+	File string `mapstructure:"file"`
 }
 
 // plugin closes only its own file: the inner instance belongs to the plugin manager.
@@ -49,23 +50,23 @@ type record struct {
 }
 
 // New builds a trace instance from its config, resolving next through stores.
-func New(_ context.Context, config pluginapi.PluginConfig, stores pluginapi.PluginStores) (pluginapi.Store, error) {
-	cfg := pluginconfig.NewConfig(config)
-
-	// "next" and "file" are this plugin's own choice of field names; the core reserves none.
-	name, err := cfg.GetStringRequired(configKeyNext)
-	if err != nil {
+func New(ctx context.Context, raw pluginapi.PluginConfig, stores pluginapi.PluginStores) (pluginapi.Store, error) {
+	var cfg config
+	if err := pluginapi.DecodeConfig(ctx, raw, &cfg); err != nil {
 		return nil, err
 	}
-	next, err := stores.Lookup(name)
+	if cfg.Next == "" {
+		return nil, errors.New("next is required")
+	}
+	next, err := stores.Lookup(cfg.Next)
 	if err != nil {
 		return nil, err
 	}
 
 	p := &plugin{next: next}
-	if path, ok := cfg.GetString(configKeyFile); ok && path != "" {
+	if cfg.File != "" {
 		// Local file I/O only; the factory rule forbids network I/O, not this.
-		p.file, err = os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+		p.file, err = os.OpenFile(cfg.File, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 		if err != nil {
 			return nil, err
 		}

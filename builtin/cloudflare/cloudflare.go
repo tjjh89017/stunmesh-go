@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,7 +13,6 @@ import (
 
 	"time"
 
-	"github.com/tjjh89017/stunmesh-go/internal/pluginconfig"
 	"github.com/tjjh89017/stunmesh-go/pluginapi/dialer"
 
 	"github.com/rs/zerolog"
@@ -25,12 +25,13 @@ func init() {
 
 const (
 	cfAPI = "https://api.cloudflare.com/client/v4"
-
-	// Configuration keys
-	configKeyZoneName  = "zone"
-	configKeyAPIToken  = "token"
-	configKeySubdomain = "subdomain"
 )
+
+type config struct {
+	Zone      string `mapstructure:"zone"`
+	Token     string `mapstructure:"token"`
+	Subdomain string `mapstructure:"subdomain"`
+}
 
 // plugin implements the Store interface
 type plugin struct {
@@ -55,20 +56,17 @@ type cfError struct {
 }
 
 // New creates a new Cloudflare plugin instance
-func New(_ context.Context, config pluginapi.PluginConfig) (pluginapi.Store, error) {
-	cfg := pluginconfig.NewConfig(config)
-
-	zoneName, err := cfg.GetStringRequired(configKeyZoneName)
-	if err != nil {
+func New(ctx context.Context, raw pluginapi.PluginConfig) (pluginapi.Store, error) {
+	var cfg config
+	if err := pluginapi.DecodeConfig(ctx, raw, &cfg); err != nil {
 		return nil, err
 	}
-
-	token, err := cfg.GetStringRequired(configKeyAPIToken)
-	if err != nil {
-		return nil, err
+	if cfg.Zone == "" {
+		return nil, errors.New("zone is required")
 	}
-
-	subdomain, _ := cfg.GetString(configKeySubdomain)
+	if cfg.Token == "" {
+		return nil, errors.New("token is required")
+	}
 
 	client := &http.Client{
 		Timeout: 10 * time.Second,
@@ -79,9 +77,9 @@ func New(_ context.Context, config pluginapi.PluginConfig) (pluginapi.Store, err
 	}
 
 	p := &plugin{
-		token:     token,
-		zoneName:  zoneName,
-		subdomain: subdomain,
+		token:     cfg.Token,
+		zoneName:  cfg.Zone,
+		subdomain: cfg.Subdomain,
 		client:    client,
 	}
 
