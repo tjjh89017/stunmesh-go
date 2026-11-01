@@ -132,6 +132,9 @@ there's a stated reason not to.
   the inner instance name from its own config; the core reserves no field
   for it. The core reserves only `type`, `name` (which built-in, for
   `type: builtin`) and `dedup` (read for every plugin type).
+  A plugin decodes its own fields with `pluginapi.DecodeConfig`, which
+  skips the reserved keys, rejects a wrong type, and logs other unknown
+  keys as a warning.
   `PluginStores` is backed by `Manager.get`, so it builds the inner
   instance on demand during the factory call. `builtin/trace` (field
   `next`) and `builtin/mirror` (field `stores`) are the shipped chaining

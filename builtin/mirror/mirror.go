@@ -10,11 +10,8 @@ import (
 	"fmt"
 
 	"github.com/rs/zerolog"
-	"github.com/tjjh89017/stunmesh-go/internal/pluginconfig"
 	pluginapi "github.com/tjjh89017/stunmesh-go/pluginapi"
 )
-
-const configKeyStores = "stores"
 
 func init() {
 	pluginapi.RegisterWithStores("mirror", New)
@@ -25,6 +22,11 @@ type inner struct {
 	store pluginapi.Store
 }
 
+// config is this plugin's own settings; the core reserves none of these names.
+type config struct {
+	Stores []string `mapstructure:"stores"`
+}
+
 // plugin has no Close: the inner instances belong to the plugin manager.
 type plugin struct {
 	stores []inner
@@ -32,14 +34,14 @@ type plugin struct {
 
 // New builds a mirror instance from its config, resolving each entry of
 // stores through the given PluginStores.
-func New(_ context.Context, config pluginapi.PluginConfig, stores pluginapi.PluginStores) (pluginapi.Store, error) {
-	// "stores" is this plugin's own choice of field name; the core reserves none.
-	names, err := pluginconfig.NewConfig(config).GetStringSlice(configKeyStores)
-	if err != nil {
+func New(ctx context.Context, raw pluginapi.PluginConfig, stores pluginapi.PluginStores) (pluginapi.Store, error) {
+	var cfg config
+	if err := pluginapi.DecodeConfig(ctx, raw, &cfg); err != nil {
 		return nil, err
 	}
+	names := cfg.Stores
 	if len(names) == 0 {
-		return nil, fmt.Errorf("%s is required", configKeyStores)
+		return nil, errors.New("stores is required")
 	}
 
 	p := &plugin{stores: make([]inner, 0, len(names))}

@@ -16,7 +16,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tjjh89017/stunmesh-go/internal/pluginconfig"
 	"github.com/tjjh89017/stunmesh-go/pluginapi/dialer"
 
 	"github.com/rs/zerolog"
@@ -42,6 +41,13 @@ const (
 // keys are SHA1 hex, so they are used as-is -- but reject anything else
 // rather than let the proxy interpret a bad path segment.
 var keyPattern = regexp.MustCompile(`^[0-9a-fA-F]{40}$`)
+
+type config struct {
+	Endpoint  string        `mapstructure:"endpoint"`
+	Endpoints []string      `mapstructure:"endpoints"`
+	Magic     string        `mapstructure:"magic"`
+	Timeout   time.Duration `mapstructure:"timeout"`
+}
 
 // plugin implements the Store interface
 type plugin struct {
@@ -90,14 +96,7 @@ func normalizeEndpoint(endpoint string) (string, error) {
 // and deduplicates preserving order, the same shape as stun.address feeding
 // stun.addresses. Every entry is validated here so a typo in the third one is
 // not discovered only when the first two happen to be down.
-func resolveEndpoints(cfg *pluginconfig.Config) ([]string, error) {
-	list, err := cfg.GetStringSlice(configKeyEndpoints)
-	if err != nil {
-		return nil, err
-	}
-
-	single, _ := cfg.GetString(configKeyEndpoint)
-
+func resolveEndpoints(single string, list []string) ([]string, error) {
 	seen := make(map[string]struct{})
 	endpoints := make([]string, 0, len(list)+1)
 	for _, endpoint := range append([]string{single}, list...) {
@@ -126,27 +125,43 @@ func resolveEndpoints(cfg *pluginconfig.Config) ([]string, error) {
 	return endpoints, nil
 }
 
-// New creates a new OpenDHT plugin instance
-func New(_ context.Context, config pluginapi.PluginConfig) (pluginapi.Store, error) {
-	cfg := pluginconfig.NewConfig(config)
+// secondsAsDuration turns a bare number of seconds into a time.Duration,
+// since a YAML timeout may be written either as "20s" or as 20.
+func secondsAsDuration(raw pluginapi.PluginConfig) pluginapi.PluginConfig {
+	var d time.Duration
+	switch v := raw[configKeyTimeout].(type) {
+	case int:
+		d = time.Duration(v) * time.Second
+	case float64:
+		d = time.Duration(v * float64(time.Second))
+	default:
+		return raw
+	}
+	out := make(pluginapi.PluginConfig, len(raw))
+	for k, v := range raw {
+		out[k] = v
+	}
+	out[configKeyTimeout] = d
+	return out
+}
 
-	endpoints, err := resolveEndpoints(cfg)
+// New creates a new OpenDHT plugin instance
+func New(ctx context.Context, raw pluginapi.PluginConfig) (pluginapi.Store, error) {
+	cfg := config{Timeout: defaultTimeout}
+	if err := pluginapi.DecodeConfig(ctx, secondsAsDuration(raw), &cfg); err != nil {
+		return nil, err
+	}
+
+	endpoints, err := resolveEndpoints(cfg.Endpoint, cfg.Endpoints)
 	if err != nil {
 		return nil, err
 	}
 
-	magic, ok := cfg.GetString(configKeyMagic)
-	if !ok || magic == "" {
+	magic := cfg.Magic
+	if magic == "" {
 		magic = defaultMagic
 	}
-
-	timeout, ok, err := cfg.GetDuration(configKeyTimeout)
-	if err != nil {
-		return nil, err
-	}
-	if !ok {
-		timeout = defaultTimeout
-	}
+	timeout := cfg.Timeout
 
 	client := &http.Client{
 		// A lookup that finds nothing legitimately takes several seconds to

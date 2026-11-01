@@ -134,8 +134,7 @@ func TestCloudflarePlugin_StructFields(t *testing.T) {
 // - Configuration validation
 // - Record name generation logic
 //
-// pluginconfig.Config's own helper methods are tested in
-// internal/pluginconfig/config_test.go.
+// pluginapi.DecodeConfig is tested in pluginapi/config_test.go.
 //
 // For full coverage, consider refactoring to use dependency injection:
 //   type plugin struct {
