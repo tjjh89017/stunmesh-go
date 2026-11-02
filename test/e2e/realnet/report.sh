@@ -11,11 +11,14 @@
 #   * the publish -> store -> establish round-trip propagated real endpoints
 #     in both directions across two independent public IPs
 #   * a fetched canary blob is byte-identical to the one served
-# Everything else (handshake, ping, throughput, escape survival) is recorded
-# for trend-watching only: cloud runners give no NAT-behavior guarantee, so a
-# hard assert there would fail for reasons that are not ours. Promote a check
-# once its observed success rate justifies it. The tunnel acknowledgement
-# fails both peer cells of a pair (see run-peer.sh) but not this verdict.
+#   * for pairs in REALNET_HARD_TRAFFIC_PAIRS only: handshake on both sides,
+#     the tunnel acknowledgement on both sides, and the transfer counter rise
+# Everything else (ping, throughput, escape survival, and the traffic checks
+# above for the other pairs) is recorded for trend-watching only: cloud
+# runners give no NAT-behavior guarantee, so a hard assert there would fail
+# for reasons that are not ours. Promote a pair once its observed success
+# rate justifies it. The tunnel acknowledgement always fails both peer cells
+# of a pair (see run-peer.sh).
 #
 # Usage: report.sh ARTIFACT_DIR
 #   ARTIFACT_DIR holds one directory per uploaded result set, named
@@ -24,11 +27,14 @@
 # Env: REALNET_PAIRS  pairs that were expected to run; a pair listed here but
 #                     missing from ARTIFACT_DIR is a hard failure, which is
 #                     how a job that died before reporting gets caught.
+#      REALNET_HARD_TRAFFIC_PAIRS  space-separated pairs whose handshake,
+#                     acknowledgement and transfer checks gate; default none.
 set -eu
 
 DIR=${1:?usage: report.sh ARTIFACT_DIR}
 SUM=${GITHUB_STEP_SUMMARY:-/dev/stdout}
 fail=0
+HARD_TRAFFIC=$(echo "${REALNET_HARD_TRAFFIC_PAIRS:-}" | tr -s ' ' ',')
 
 # Default to whatever arrived, which cannot notice a wholly missing pair --
 # the workflow always passes the matrix explicitly.
@@ -57,6 +63,16 @@ info() { # PAIR NAME VALUE
 member() { # NEEDLE CSV
 	[ -n "$1" ] && [ "$1" != "(none)" ] && [ "$1" != "(missing)" ] || return 1
 	case ",$2," in *",$1,"*) return 0 ;; *) return 1 ;; esac
+}
+traffic() { # PAIR NAME DETAIL VALUE... -- hard (every VALUE pass) or info
+	_p=$1; _n=$2; _d=$3; shift 3
+	if member "$_p" "$HARD_TRAFFIC"; then
+		_ok=ok
+		for _v in "$@"; do [ "$_v" = pass ] || _ok=bad; done
+		hard "$_p" "$_n" "$_ok" "$_d"
+	else
+		info "$_p" "$_n" "$_d"
+	fi
 }
 
 {
@@ -109,20 +125,23 @@ for pair in $PAIRS; do
 	fi
 
 	info "$pair" "subject platform" "$(get "$s" os)"
-	info "$pair" "tunnel acknowledgement (anchor / subject)" \
-		"$(get "$a" pair_ack) / $(get "$s" pair_ack)"
+	a_ack=$(get "$a" pair_ack); s_ack=$(get "$s" pair_ack)
+	traffic "$pair" "tunnel acknowledgement (anchor / subject)" \
+		"$a_ack / $s_ack" "$a_ack" "$s_ack"
 	info "$pair" "storage preflight (anchor / subject)" \
 		"$(get "$a" dht_preflight) / $(get "$s" dht_preflight)"
-	info "$pair" "handshake (anchor)" \
-		"$(get "$a" split_handshake) after $(get "$a" split_handshake_secs)s"
-	info "$pair" "handshake (subject)" \
-		"$(get "$s" split_handshake) after $(get "$s" split_handshake_secs)s"
+	a_hs=$(get "$a" split_handshake); s_hs=$(get "$s" split_handshake)
+	traffic "$pair" "handshake (anchor)" \
+		"$a_hs after $(get "$a" split_handshake_secs)s" "$a_hs"
+	traffic "$pair" "handshake (subject)" \
+		"$s_hs after $(get "$s" split_handshake_secs)s" "$s_hs"
 	info "$pair" "overlay ping (anchor / subject)" \
 		"$(get "$a" split_ping) / $(get "$s" split_ping)"
 	info "$pair" "full-MTU ping" "$(get "$s" split_ping_mtu)"
 	info "$pair" "iperf3 up / down" \
 		"$(get "$s" split_iperf_up) / $(get "$s" split_iperf_down)"
-	info "$pair" "transfer counters rose" "$(get "$s" split_transfer_rise)"
+	rise=$(get "$s" split_transfer_rise)
+	traffic "$pair" "transfer counters rose" "$rise" "$rise"
 	info "$pair" "ping resumes after 60s idle" "$(get "$s" split_idle_resume)"
 
 	# The full-tunnel scenario needs the Linux crash bunker; elsewhere the
