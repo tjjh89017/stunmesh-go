@@ -289,12 +289,14 @@ jobs:
   # NAT-behavior guarantee -- both sides may land in one region and connect
   # trivially, or SNAT may behave symmetrically and traversal fails through
   # no fault of ours. The report job is the single genuine verdict: it hard-
-  # fails only on what is ours to break (results missing or from different
-  # attempts, endpoint round-trip broken, canary corrupted), and it feeds
-  # e2e-required like every other e2e cell. The peer cells still fail as a
-  # pair: without the subject's acknowledgement through the tunnel both
-  # sides exit nonzero, for any cause including network weather, so "Re-run
-  # failed jobs" reruns anchor and subject together. See test/e2e/realnet/.
+  # fails on what is ours to break (results missing or from different
+  # attempts, endpoint round-trip broken, canary corrupted), plus handshake,
+  # acknowledgement and transfer for the pairs in REALNET_HARD_TRAFFIC_PAIRS,
+  # and it feeds e2e-required like every other e2e cell. The peer cells
+  # still fail as a pair: without the subject's acknowledgement through the
+  # tunnel both sides exit nonzero, for any cause including network weather,
+  # so "Re-run failed jobs" reruns anchor and subject together. See
+  # test/e2e/realnet/.
   e2e-realnet-keys:
     name: E2E realnet (keys)
     runs-on: ubuntu-latest
@@ -430,6 +432,9 @@ jobs:
       - name: Combined verdict
         env:
           REALNET_PAIRS: linux darwin freebsd windows
+          # Windows runners are Azure-only, so their NAT placement is stable;
+          # iperf3 and inbound ping stay informational there.
+          REALNET_HARD_TRAFFIC_PAIRS: windows
         run: sh test/e2e/realnet/report.sh realnet-results
 
   # One stable check aggregating the e2e matrix, the proxy cell and the
