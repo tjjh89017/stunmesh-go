@@ -31,6 +31,9 @@ type Node struct {
 	protector  SocketProtector
 	listener   EventListener
 	dnsServers []string
+	// ownTun, when set, replaces the platform tun fd: see NewNodeWithTun.
+	// Stop closes it, so it is cleared on use and a second Start fails.
+	ownTun tun.Device
 
 	dev     *device.Device
 	bind    *mobilebind.Bind
@@ -57,8 +60,32 @@ func NewNode(configJSON string, tunProvider TunProvider, protector SocketProtect
 	}, nil
 }
 
-// Start brings up the data plane: tun fd from the platform, wireguard-go
-// device on the demuxing bind, config over UAPI, device up.
+// NewNodeWithTun is NewNode for a caller that brings its own tun.Device,
+// such as wireguard-go's tun/netstack, so the node runs entirely in
+// userspace without a platform VPN. No socket protection applies: with no
+// VPN there is no tunnel for the outer sockets to loop through. Start takes
+// dev; Stop, or a Start that fails after taking it, closes it, so a node
+// built this way starts once. A node that never starts leaves dev to the
+// caller. RenewTun does not apply. gomobile skips this constructor; it is
+// for Go callers.
+func NewNodeWithTun(configJSON string, dev tun.Device, listener EventListener) (*Node, error) {
+	if dev == nil || listener == nil {
+		return nil, errors.New("dev and listener are required")
+	}
+	cfg, err := parseConfig(configJSON)
+	if err != nil {
+		return nil, err
+	}
+	return &Node{
+		cfg:       cfg,
+		protector: noProtector{},
+		listener:  listener,
+		ownTun:    dev,
+	}, nil
+}
+
+// Start brings up the data plane: tun from the platform fd or the caller,
+// wireguard-go device on the demuxing bind, config over UAPI, device up.
 func (n *Node) Start() error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -73,13 +100,21 @@ func (n *Node) Start() error {
 		return err
 	}
 
-	fd := n.tunP.OpenTun(int32(n.cfg.Interface.MTU))
-	if fd < 0 {
-		return fail(errors.New("tun fd not available"))
-	}
-	rawTun, _, err := tun.CreateUnmonitoredTUNFromFD(int(fd))
-	if err != nil {
-		return fail(fmt.Errorf("create tun from fd: %w", err))
+	rawTun := n.ownTun
+	n.ownTun = nil
+	if rawTun == nil {
+		if n.tunP == nil {
+			return fail(errors.New("tun already consumed by an earlier Start"))
+		}
+		fd := n.tunP.OpenTun(int32(n.cfg.Interface.MTU))
+		if fd < 0 {
+			return fail(errors.New("tun fd not available"))
+		}
+		var err error
+		rawTun, _, err = tun.CreateUnmonitoredTUNFromFD(int(fd))
+		if err != nil {
+			return fail(fmt.Errorf("create tun from fd: %w", err))
+		}
 	}
 	tunDev := newSwappableTun(rawTun)
 
@@ -186,10 +221,15 @@ func (n *Node) pluginDNSServers() []string {
 }
 
 // RenewTun swaps in a fresh tun fd after a platform network change without
-// restarting the WG device.
+// restarting the WG device. A node on a caller-supplied tun has no platform
+// fd to renew, and swapping one in would close the caller's tun, so it
+// refuses and leaves fd to the caller.
 func (n *Node) RenewTun(fd int32) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
+	if n.tunP == nil {
+		return errors.New("node has no platform tun")
+	}
 	if !n.running {
 		return errors.New("node not running")
 	}
@@ -233,6 +273,11 @@ func (n *Node) IsRunning() bool {
 type protectorAdapter struct{ p SocketProtector }
 
 func (a protectorAdapter) Protect(fd int32) bool { return a.p.Protect(fd) }
+
+// noProtector is the protector of a node without a VPN tunnel.
+type noProtector struct{}
+
+func (noProtector) Protect(int32) bool { return true }
 
 func logLevel(level string) int {
 	switch level {
