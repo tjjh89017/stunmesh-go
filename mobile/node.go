@@ -261,6 +261,19 @@ func (n *Node) SetPeerEndpoint(publicKeyB64, endpoint string) error {
 	return nil
 }
 
+// IpcGet returns the device's UAPI state: endpoints, handshake times, byte
+// counts and keys, including the interface's private_key, as `wg showconf`
+// prints it. Callers that only want status must not log or display the
+// text as is.
+func (n *Node) IpcGet() (string, error) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if !n.running {
+		return "", errors.New("node not running")
+	}
+	return n.dev.IpcGet()
+}
+
 // IsRunning reports whether the data plane is up.
 func (n *Node) IsRunning() bool {
 	n.mu.Lock()
