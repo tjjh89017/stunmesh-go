@@ -3,6 +3,7 @@
 package mobile
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -145,5 +146,31 @@ func TestBuildPeerEndpointUAPI(t *testing.T) {
 func TestBuildPeerEndpointUAPI_InvalidPublicKey(t *testing.T) {
 	if _, err := buildPeerEndpointUAPI("garbage", "1.2.3.4:1"); err == nil {
 		t.Fatal("expected error for invalid public key")
+	}
+}
+
+func TestBuildPeerKeepaliveUAPI(t *testing.T) {
+	pub := validKeyB64(4)
+	pubHex, _ := keyToHex(pub)
+	for _, sec := range []int32{0, 25, 65535} {
+		got, err := buildPeerKeepaliveUAPI(pub, sec)
+		if err != nil {
+			t.Fatalf("buildPeerKeepaliveUAPI(%d) returned error: %v", sec, err)
+		}
+		want := fmt.Sprintf("public_key=%s\nupdate_only=true\npersistent_keepalive_interval=%d\n", pubHex, sec)
+		if got != want {
+			t.Errorf("buildPeerKeepaliveUAPI(%d) = %q, want %q", sec, got, want)
+		}
+	}
+}
+
+func TestBuildPeerKeepaliveUAPI_Invalid(t *testing.T) {
+	if _, err := buildPeerKeepaliveUAPI("garbage", 25); err == nil {
+		t.Error("expected error for invalid public key")
+	}
+	for _, sec := range []int32{-1, 65536} {
+		if _, err := buildPeerKeepaliveUAPI(validKeyB64(4), sec); err == nil {
+			t.Errorf("expected error for keepalive %d", sec)
+		}
 	}
 }

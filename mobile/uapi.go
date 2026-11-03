@@ -4,6 +4,7 @@ package mobile
 
 import (
 	"fmt"
+	"math"
 	"strings"
 )
 
@@ -60,4 +61,17 @@ func buildPeerEndpointUAPI(publicKeyB64, endpoint string) (string, error) {
 		return "", err
 	}
 	return fmt.Sprintf("public_key=%s\nupdate_only=true\nendpoint=%s\n", pubHex, endpoint), nil
+}
+
+// buildPeerKeepaliveUAPI renders the run-time keepalive update for one
+// peer: the interval in seconds, 0 to turn it off.
+func buildPeerKeepaliveUAPI(publicKeyB64 string, seconds int32) (string, error) {
+	if seconds < 0 || seconds > math.MaxUint16 {
+		return "", fmt.Errorf("keepalive %d out of range 0-%d", seconds, math.MaxUint16)
+	}
+	pubHex, err := keyToHex(publicKeyB64)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("public_key=%s\nupdate_only=true\npersistent_keepalive_interval=%d\n", pubHex, seconds), nil
 }

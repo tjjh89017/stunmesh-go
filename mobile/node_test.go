@@ -333,3 +333,26 @@ func TestNodeIpcGet(t *testing.T) {
 		t.Error("IpcGet on a stopped node succeeded")
 	}
 }
+
+// SetPeerKeepalive changes the live device: IpcGet reads the new interval
+// back, and 0 turns it off again.
+func TestNodeSetPeerKeepalive(t *testing.T) {
+	a, b := startTunPair(t, quietListener{})
+	for _, sec := range []int32{25, 0} {
+		if err := a.node.SetPeerKeepalive(b.pub, sec); err != nil {
+			t.Fatalf("SetPeerKeepalive(%d): %v", sec, err)
+		}
+		uapi, err := a.node.IpcGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := uapiPeer(t, uapi, b.pub)["persistent_keepalive_interval"]; got != fmt.Sprint(sec) {
+			t.Errorf("after SetPeerKeepalive(%d): interval = %q", sec, got)
+		}
+	}
+
+	a.node.Stop()
+	if err := a.node.SetPeerKeepalive(b.pub, 25); err == nil {
+		t.Error("SetPeerKeepalive on a stopped node succeeded")
+	}
+}
