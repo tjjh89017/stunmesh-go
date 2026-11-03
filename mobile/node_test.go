@@ -266,3 +266,70 @@ func TestNewNodeWithTunRequiresTunAndListener(t *testing.T) {
 		t.Error("nil listener accepted")
 	}
 }
+
+// uapiPeer returns the keys of the peer with key pubB64 in UAPI state,
+// or nil. A peer's lines run from its public_key line to the next one.
+func uapiPeer(t *testing.T, uapi, pubB64 string) map[string]string {
+	t.Helper()
+	pubHex, err := keyToHex(pubB64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found map[string]string
+	inPeer := false
+	for _, line := range strings.Split(uapi, "\n") {
+		k, v, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		if k == "public_key" {
+			inPeer = v == pubHex
+			if inPeer {
+				found = map[string]string{}
+			}
+			continue
+		}
+		if inPeer {
+			found[k] = v
+		}
+	}
+	return found
+}
+
+// IpcGet reports the live peer state: after traffic, the peer has a
+// handshake, the endpoint it was given and nonzero byte counters.
+func TestNodeIpcGet(t *testing.T) {
+	a, b := startTunPair(t, quietListener{})
+	ping(t, a, b)
+
+	uapi, err := a.node.IpcGet()
+	if err != nil {
+		t.Fatalf("IpcGet: %v", err)
+	}
+	// The private key is part of the state, as documented, in the clamped
+	// form the device stores.
+	priv, _ := keyToBytes(validKeyB64(1))
+	priv[0] &= 248
+	priv[31] = priv[31]&127 | 64
+	if !strings.HasPrefix(uapi, fmt.Sprintf("private_key=%x\n", priv)) {
+		t.Errorf("IpcGet does not lead with the private key:\n%s", uapi)
+	}
+	p := uapiPeer(t, uapi, b.pub)
+	if p == nil {
+		t.Fatalf("peer missing from IpcGet:\n%s", uapi)
+	}
+	if p["last_handshake_time_sec"] == "0" || p["last_handshake_time_sec"] == "" {
+		t.Errorf("no handshake recorded: %v", p)
+	}
+	if p["tx_bytes"] == "0" || p["rx_bytes"] == "0" {
+		t.Errorf("byte counters not moving: %v", p)
+	}
+	if !strings.HasPrefix(p["endpoint"], "127.0.0.1:") {
+		t.Errorf("endpoint = %q, want the static loopback one", p["endpoint"])
+	}
+
+	a.node.Stop()
+	if _, err := a.node.IpcGet(); err == nil {
+		t.Error("IpcGet on a stopped node succeeded")
+	}
+}
