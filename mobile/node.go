@@ -261,6 +261,25 @@ func (n *Node) SetPeerEndpoint(publicKeyB64, endpoint string) error {
 	return nil
 }
 
+// SetPeerKeepalive sets one peer's persistent keepalive interval at run
+// time, in seconds, 0 to turn it off. Like SetPeerEndpoint, the device does
+// not restart.
+func (n *Node) SetPeerKeepalive(publicKeyB64 string, seconds int32) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if !n.running {
+		return errors.New("node not running")
+	}
+	uapi, err := buildPeerKeepaliveUAPI(publicKeyB64, seconds)
+	if err != nil {
+		return err
+	}
+	if err := n.dev.IpcSet(uapi); err != nil {
+		return fmt.Errorf("ipc set keepalive: %w", err)
+	}
+	return nil
+}
+
 // IpcGet returns the device's UAPI state: endpoints, handshake times, byte
 // counts and keys, including the interface's private_key, as `wg showconf`
 // prints it. Callers that only want status must not log or display the
