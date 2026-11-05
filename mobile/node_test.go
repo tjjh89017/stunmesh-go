@@ -4,6 +4,7 @@ package mobile
 
 import (
 	"encoding/base64"
+	"errors"
 	"os"
 	"reflect"
 	"sync"
@@ -184,5 +185,29 @@ func TestNewNodeRequiresHooks(t *testing.T) {
 	}
 	if _, err := NewNode("{", tp, okProtector{}, quietListener{}); err == nil {
 		t.Error("malformed config accepted")
+	}
+}
+
+// fdClosed reports whether fd is no longer open.
+func fdClosed(fd int) bool {
+	_, err := unix.FcntlInt(uintptr(fd), unix.F_GETFD, 0)
+	return errors.Is(err, unix.EBADF)
+}
+
+// The node owns the fd OpenTun returns: when it is not a tun, Start fails
+// and closes it.
+func TestStartClosesBadTunFd(t *testing.T) {
+	var p [2]int
+	if err := unix.Pipe(p[:]); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = unix.Close(p[1]) }()
+	n := newTestNode(t, &fakeTunProvider{fd: int32(p[0])}, quietListener{})
+	if err := n.Start(); err == nil {
+		t.Fatal("Start on a pipe fd succeeded")
+	}
+	if !fdClosed(p[0]) {
+		_ = unix.Close(p[0])
+		t.Error("Start left the bad tun fd open")
 	}
 }
