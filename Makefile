@@ -70,9 +70,10 @@ endif
 ALL_TAGS := $(strip $(BACKEND) $(CA_TAG))
 TAGS_FLAGS = $(if $(ALL_TAGS),-tags '$(ALL_TAGS)',)
 
-# mobile/ and internal/mobilebind sit behind the mobile build tag, so every
-# mobile target adds it; without the tag those packages are invisible and the
-# desktop build never compiles wireguard-go's device stack.
+# mobile/ sits behind the mobile build tag, so every mobile target adds it;
+# without the tag the package is invisible. The userspace core it wraps
+# (userspace, internal/node, internal/udpbind) has no tag and is built,
+# tested and linted with everything else.
 MOBILE_TAGS := mobile
 MOBILE_PKG := github.com/tjjh89017/stunmesh-go/mobile
 
@@ -143,7 +144,7 @@ android:
 
 .PHONY: mobile-test
 mobile-test:
-	go test -cover -v -tags '${MOBILE_TAGS}' ./internal/mobilebind/... ./mobile/...
+	go test -cover -v -tags '${MOBILE_TAGS}' ./mobile/...
 
 .PHONY: android-clean
 android-clean:
@@ -175,13 +176,13 @@ lint:
 	done
 	$(MAKE) lint-mobile
 
-# mobile/ and internal/mobilebind sit behind the mobile tag (see MOBILE_TAGS
-# above), so the platform loop above never sees them; lint them separately
+# mobile/ sits behind the mobile tag (see MOBILE_TAGS above), so the
+# platform loop above never sees it; lint it separately
 # with the same tags mobile-test and the android target use. GOOS=linux
 # matches how the AAR is actually built (gomobile runs on a Linux CI host).
 .PHONY: lint-mobile
 lint-mobile:
-	GOOS=linux golangci-lint run --build-tags '$(MOBILE_TAGS)' ./mobile/... ./internal/mobilebind/...
+	GOOS=linux golangci-lint run --build-tags '$(MOBILE_TAGS)' ./mobile/...
 
 .PHONY: install
 install: build

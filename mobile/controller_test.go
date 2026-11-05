@@ -77,7 +77,7 @@ func TestSelectEndpoint(t *testing.T) {
 
 // fakeDiscoverer is a stunDiscoverer test double keyed by address family
 // ("udp4"/"udp6"), letting tests control per-family success/failure without
-// a real mobilebind.Bind or network access. The family now comes from the
+// a real udpbind.Bind or network access. The family now comes from the
 // destination the controller resolved, which probed also records so tests can
 // assert what was actually aimed at.
 type fakeDiscoverer struct {
@@ -127,7 +127,7 @@ func (f *fakeListener) hasLogContaining(substr string) bool {
 
 // newDiscoverTestController builds a controller wired the same way
 // newController/node.go wire the real one, except bind is a fakeDiscoverer
-// instead of a real *mobilebind.Bind, so discover/discoverFamily can be
+// instead of a real *udpbind.Bind, so discover/discoverFamily can be
 // exercised through the real controller.discover code path (which invokes
 // the shared ctrl.DiscoverEndpoints) without opening a socket.
 // The STUN servers are IP literals of both families: resolveSTUN short-

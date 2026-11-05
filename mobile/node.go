@@ -8,8 +8,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/tjjh89017/stunmesh-go/internal/mobilebind"
 	"github.com/tjjh89017/stunmesh-go/internal/plugin/dialer"
+	"github.com/tjjh89017/stunmesh-go/internal/udpbind"
 	"golang.zx2c4.com/wireguard/device"
 	"golang.zx2c4.com/wireguard/tun"
 )
@@ -36,7 +36,7 @@ type Node struct {
 	ownTun tun.Device
 
 	dev     *device.Device
-	bind    *mobilebind.Bind
+	bind    *udpbind.Bind
 	tunDev  *swappableTun
 	ctrl    *controller
 	running bool
@@ -118,7 +118,7 @@ func (n *Node) Start() error {
 	}
 	tunDev := newSwappableTun(rawTun)
 
-	bind := mobilebind.New(protectorAdapter{n.protector})
+	bind := udpbind.New(protectorAdapter{n.protector})
 	logger := device.NewLogger(logLevel(n.cfg.Log.Level), fmt.Sprintf("(%s) ", n.cfg.Name))
 	dev := device.NewDevice(tunDev, bind, logger)
 

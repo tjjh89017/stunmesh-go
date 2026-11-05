@@ -195,7 +195,7 @@ there's a stated reason not to.
   the pure-Go resolver so its `Dial` hook is consulted; the hook applies the
   platform's escape and, where `Escape.DNSServers` is set (mobile only —
   desktop keeps its resolv.conf nameservers), aims at those servers.
-- **Consequence**: low-level components do not resolve names. `mobilebind`'s
+- **Consequence**: low-level components do not resolve names. `udpbind`'s
   `Discover` takes an already-resolved `netip.AddrPort` so it has nothing to
   resolve with, and the caller — which holds the escape — does the lookup.
   Desktop's `stun.Connect` still takes a `host:port` string (it is the
