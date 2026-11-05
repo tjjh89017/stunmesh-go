@@ -1,8 +1,10 @@
 package node
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 
 	"github.com/tjjh89017/stunmesh-go/internal/udpbind"
@@ -199,6 +201,32 @@ func (n *Core) SetPeerKeepalive(publicKeyB64 string, seconds int) error {
 func (n *Core) IpcGet() (string, error) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
+	return n.ipcGet()
+}
+
+// Status reports the live device state, peers in config order.
+func (n *Core) Status() (Status, error) {
+	n.mu.Lock()
+	uapi, err := n.ipcGet()
+	n.mu.Unlock()
+	if err != nil {
+		return Status{}, err
+	}
+	st, err := parseStatus(uapi)
+	if err != nil {
+		return Status{}, err
+	}
+	rank := func(p PeerStatus) int {
+		i, _ := n.cfg.peerIndex(p.PublicKey)
+		return i
+	}
+	slices.SortStableFunc(st.Peers, func(a, b PeerStatus) int {
+		return cmp.Compare(rank(a), rank(b))
+	})
+	return st, nil
+}
+
+func (n *Core) ipcGet() (string, error) {
 	if !n.running {
 		return "", errors.New("node not running")
 	}
