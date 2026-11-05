@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"sync"
 
 	"github.com/tjjh89017/stunmesh-go/internal/udpbind"
@@ -205,6 +206,7 @@ func (n *Core) SetPeerKeepalive(publicKeyB64 string, seconds int) error {
 	if err := n.dev.IpcSet(uapi); err != nil {
 		return fmt.Errorf("ipc set keepalive: %w", err)
 	}
+	n.listener.OnEvent("peer_keepalive_updated", publicKeyB64, strconv.Itoa(seconds))
 	return nil
 }
 

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/netip"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -25,11 +26,25 @@ func (quietListener) OnStateChanged(string)          {}
 func (quietListener) OnLog(string, string)           {}
 func (quietListener) OnEvent(string, string, string) {}
 
-// recordingListener keeps the state changes, for tests that check them.
+// recordingListener keeps the state changes and events, for tests that
+// check them.
 type recordingListener struct {
 	quietListener
 	mu     sync.Mutex
 	states []string
+	events []string
+}
+
+func (r *recordingListener) OnEvent(kind, peer, detail string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.events = append(r.events, kind+" "+peer+" "+detail)
+}
+
+func (r *recordingListener) hasEvent(e string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return slices.Contains(r.events, e)
 }
 
 func (r *recordingListener) OnStateChanged(state string) {
@@ -265,5 +280,24 @@ func TestNodeUnknownPeer(t *testing.T) {
 	}
 	if len(st.Peers) != 1 {
 		t.Errorf("peers = %+v, want only the configured one", st.Peers)
+	}
+}
+
+// A keepalive change is reported like an endpoint change, and a refused one
+// is not.
+func TestNodeKeepaliveEvent(t *testing.T) {
+	rec := &recordingListener{}
+	a, b := startTunPair(t, rec)
+	if err := a.node.SetPeerKeepalive(b.pub, 30); err != nil {
+		t.Fatal(err)
+	}
+	if !rec.hasEvent("peer_keepalive_updated " + b.pub + " 30") {
+		t.Error("no peer_keepalive_updated event")
+	}
+	if err := a.node.SetPeerKeepalive(b.pub, 70000); err == nil {
+		t.Fatal("out-of-range keepalive accepted")
+	}
+	if rec.hasEvent("peer_keepalive_updated " + b.pub + " 70000") {
+		t.Error("event emitted for a refused keepalive")
 	}
 }
