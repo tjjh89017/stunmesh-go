@@ -82,6 +82,9 @@ func (b *Bind) Open(port uint16) ([]wgconn.ReceiveFunc, uint16, error) {
 func (b *Bind) listen(network string, port uint16) (*net.UDPConn, error) {
 	lc := net.ListenConfig{
 		Control: func(_, _ string, c syscall.RawConn) error {
+			if err := disableConnReset(c); err != nil {
+				return fmt.Errorf("disable connreset: %w", err)
+			}
 			if b.protector == nil {
 				return nil
 			}
