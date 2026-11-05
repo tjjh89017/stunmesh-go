@@ -4,6 +4,8 @@ import (
 	"encoding/base64"
 	"strings"
 	"testing"
+
+	"golang.zx2c4.com/wireguard/tun"
 )
 
 // validKeyB64 returns a syntactically valid base64-encoded 32-byte WG key.
@@ -277,5 +279,36 @@ func TestKeyToHex(t *testing.T) {
 				t.Errorf("keyToHex(%q) = %q, want %q", tt.key, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestNewCopiesPeerAllowedIPsAndPluginConfig(t *testing.T) {
+	cfg := &Config{
+		Interface: InterfaceConfig{PrivateKey: validKeyB64(1)},
+		Peers: []PeerConfig{{
+			PublicKey:  validKeyB64(2),
+			AllowedIPs: []string{"10.0.0.2/32"},
+		}},
+		Plugins: []PluginDef{{
+			Instance: "p",
+			Type:     "builtin",
+			Name:     "trace",
+			Config:   map[string]any{"next": "q"},
+		}},
+	}
+	n, err := New(cfg, func(int) (tun.Device, error) { return nil, nil }, Options{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	cfg.Peers[0].AllowedIPs[0] = "192.0.2.1/32"
+	cfg.Plugins[0].Config["next"] = "changed"
+	cfg.Plugins[0].Config["extra"] = "x"
+
+	if got := n.cfg.Peers[0].AllowedIPs[0]; got != "10.0.0.2/32" {
+		t.Errorf("AllowedIPs[0] = %q, want unchanged", got)
+	}
+	got := n.cfg.Plugins[0].Config
+	if got["next"] != "q" || len(got) != 1 {
+		t.Errorf("plugin config = %v, want unchanged", got)
 	}
 }
