@@ -142,6 +142,21 @@ func (c *Config) normalize() (*Config, error) {
 	return &cfg, nil
 }
 
+// peerIndex returns the index in c.Peers of the peer with public key
+// b64, compared as key bytes, or -1 and false when there is none.
+func (c *Config) peerIndex(b64 string) (int, bool) {
+	key, err := keyToBytes(b64)
+	if err != nil {
+		return -1, false
+	}
+	for i, p := range c.Peers {
+		if k, err := keyToBytes(p.PublicKey); err == nil && k == key {
+			return i, true
+		}
+	}
+	return -1, false
+}
+
 // keyToBytes decodes a base64 WG key into its 32-byte form.
 func keyToBytes(b64 string) ([32]byte, error) {
 	var out [32]byte

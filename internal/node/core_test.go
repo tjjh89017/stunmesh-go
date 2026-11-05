@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/netip"
 	"reflect"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -47,24 +46,17 @@ func (r *recordingListener) take() []string {
 	return s
 }
 
-// listenPort reads the port the node's device bound from its UAPI state.
+// listenPort reads the port the node's device bound.
 func listenPort(t *testing.T, n *Core) int {
 	t.Helper()
-	uapi, err := n.IpcGet()
+	st, err := n.Status()
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, line := range strings.Split(uapi, "\n") {
-		if v, ok := strings.CutPrefix(line, "listen_port="); ok {
-			port, err := strconv.Atoi(v)
-			if err != nil {
-				t.Fatal(err)
-			}
-			return port
-		}
+	if st.ListenPort == 0 {
+		t.Fatal("no listen port in status")
 	}
-	t.Fatalf("no listen_port in UAPI state:\n%s", uapi)
-	return 0
+	return st.ListenPort
 }
 
 func pubKeyB64(t *testing.T, privB64 string) string {
@@ -193,74 +185,46 @@ func TestCoreStartFailsWhenTunFactoryFails(t *testing.T) {
 	}
 }
 
-// uapiPeer returns the keys of the peer with key pubB64 in UAPI state,
-// or nil. A peer's lines run from its public_key line to the next one.
-func uapiPeer(t *testing.T, uapi, pubB64 string) map[string]string {
+// peerStatus returns the status of the peer with key pubB64, or fails.
+func peerStatus(t *testing.T, n *Core, pubB64 string) PeerStatus {
 	t.Helper()
-	pubHex, err := keyToHex(pubB64)
+	st, err := n.Status()
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("Status: %v", err)
 	}
-	var found map[string]string
-	inPeer := false
-	for _, line := range strings.Split(uapi, "\n") {
-		k, v, ok := strings.Cut(line, "=")
-		if !ok {
-			continue
-		}
-		if k == "public_key" {
-			inPeer = v == pubHex
-			if inPeer {
-				found = map[string]string{}
-			}
-			continue
-		}
-		if inPeer {
-			found[k] = v
+	for _, p := range st.Peers {
+		if p.PublicKey == pubB64 {
+			return p
 		}
 	}
-	return found
+	t.Fatalf("peer %s missing from status %+v", pubB64, st)
+	return PeerStatus{}
 }
 
-// IpcGet reports the live peer state: after traffic, the peer has a
+// Status reports the live peer state: after traffic, the peer has a
 // handshake, the endpoint it was given and nonzero byte counters.
-func TestCoreIpcGet(t *testing.T) {
+func TestCoreStatus(t *testing.T) {
 	a, b := startTunPair(t, quietListener{})
 	ping(t, a, b)
 
-	uapi, err := a.node.IpcGet()
-	if err != nil {
-		t.Fatalf("IpcGet: %v", err)
+	p := peerStatus(t, a.node, b.pub)
+	if p.LastHandshake.IsZero() {
+		t.Errorf("no handshake recorded: %+v", p)
 	}
-	// The private key is part of the state, as documented, in the clamped
-	// form the device stores.
-	priv, _ := keyToBytes(validKeyB64(1))
-	priv[0] &= 248
-	priv[31] = priv[31]&127 | 64
-	if !strings.HasPrefix(uapi, fmt.Sprintf("private_key=%x\n", priv)) {
-		t.Errorf("IpcGet does not lead with the private key:\n%s", uapi)
+	if p.TxBytes == 0 || p.RxBytes == 0 {
+		t.Errorf("byte counters not moving: %+v", p)
 	}
-	p := uapiPeer(t, uapi, b.pub)
-	if p == nil {
-		t.Fatalf("peer missing from IpcGet:\n%s", uapi)
-	}
-	if p["last_handshake_time_sec"] == "0" || p["last_handshake_time_sec"] == "" {
-		t.Errorf("no handshake recorded: %v", p)
-	}
-	if p["tx_bytes"] == "0" || p["rx_bytes"] == "0" {
-		t.Errorf("byte counters not moving: %v", p)
-	}
-	if !strings.HasPrefix(p["endpoint"], "127.0.0.1:") {
-		t.Errorf("endpoint = %q, want the static loopback one", p["endpoint"])
+	if !strings.HasPrefix(p.Endpoint, "127.0.0.1:") {
+		t.Errorf("endpoint = %q, want the loopback one", p.Endpoint)
 	}
 
 	a.node.Stop()
-	if _, err := a.node.IpcGet(); err == nil {
-		t.Error("IpcGet on a stopped node succeeded")
+	if _, err := a.node.Status(); err == nil {
+		t.Error("Status on a stopped node succeeded")
 	}
 }
 
-// SetPeerKeepalive changes the live device: IpcGet reads the new interval
+// SetPeerKeepalive changes the live device: Status reads the new interval
 // back, and 0 turns it off again.
 func TestCoreSetPeerKeepalive(t *testing.T) {
 	a, b := startTunPair(t, quietListener{})
@@ -268,12 +232,8 @@ func TestCoreSetPeerKeepalive(t *testing.T) {
 		if err := a.node.SetPeerKeepalive(b.pub, sec); err != nil {
 			t.Fatalf("SetPeerKeepalive(%d): %v", sec, err)
 		}
-		uapi, err := a.node.IpcGet()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if got := uapiPeer(t, uapi, b.pub)["persistent_keepalive_interval"]; got != fmt.Sprint(sec) {
-			t.Errorf("after SetPeerKeepalive(%d): interval = %q", sec, got)
+		if got := peerStatus(t, a.node, b.pub).Keepalive; got != sec {
+			t.Errorf("after SetPeerKeepalive(%d): interval = %d", sec, got)
 		}
 	}
 
