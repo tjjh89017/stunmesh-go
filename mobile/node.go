@@ -4,7 +4,6 @@ package mobile
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 	"sync"
 
@@ -60,13 +59,9 @@ func NewNode(configJSON string, tunProvider TunProvider, protector SocketProtect
 // openTun is the node's tun factory: it takes a fresh fd from the
 // TunProvider and keeps the wrapper so RenewTun can swap it.
 func (n *Node) openTun(mtu int) (tun.Device, error) {
-	fd := n.tunP.OpenTun(int32(mtu))
-	if fd < 0 {
-		return nil, errors.New("tun fd not available")
-	}
-	raw, _, err := tun.CreateUnmonitoredTUNFromFD(int(fd))
+	raw, err := tunFromFD(n.tunP.OpenTun(int32(mtu)))
 	if err != nil {
-		return nil, fmt.Errorf("create tun from fd: %w", err)
+		return nil, err
 	}
 	t := newSwappableTun(raw)
 	n.tunMu.Lock()
@@ -127,9 +122,9 @@ func (n *Node) RenewTun(fd int32) error {
 	if t == nil || !n.node.IsRunning() {
 		return errors.New("node not running")
 	}
-	newTun, _, err := tun.CreateUnmonitoredTUNFromFD(int(fd))
+	newTun, err := tunFromFD(fd)
 	if err != nil {
-		return fmt.Errorf("create tun from fd: %w", err)
+		return err
 	}
 	if err := t.swap(newTun); err != nil {
 		return errors.New("node not running")
