@@ -5,6 +5,8 @@
 // data), int32 (file descriptors), bool, and interfaces built from these.
 package mobile
 
+import "github.com/tjjh89017/stunmesh-go/userspace"
+
 // TunProvider supplies the detached tun fd from the platform VPN service.
 type TunProvider interface {
 	// OpenTun returns a detached tun fd owned by the callee, or -1 on
@@ -32,8 +34,8 @@ type EventListener interface {
 
 // Node states reported through EventListener.OnStateChanged.
 const (
-	StateDown     = "down"
-	StateStarting = "starting"
-	StateUp       = "up"
-	StateStopping = "stopping"
+	StateDown     = userspace.StateDown
+	StateStarting = userspace.StateStarting
+	StateUp       = userspace.StateUp
+	StateStopping = userspace.StateStopping
 )
