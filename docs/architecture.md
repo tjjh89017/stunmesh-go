@@ -117,8 +117,8 @@ there's a stated reason not to.
   `pluginapi.Registered()`.
   A built-in is linked in, and its `init()` runs, only when the binary
   imports its package; there are no build tags. `builtin/all` blank-imports
-  the shipped set, and `main.go` and `mobile/` import it. `app` imports no
-  built-in, so an embedder chooses its own set.
+  the shipped set, and `main.go` and `mobile/` import it. `app` and
+  `userspace` import no built-in, so an embedder chooses its own set.
 - **Forces it resolves**: `plugin` (the manager) needs to create a built-in
   `Store` by name without every built-in's package needing to import
   `plugin`, and without `plugin` needing a hand-maintained list of built-ins
@@ -157,11 +157,12 @@ there's a stated reason not to.
   names, and appends each new instance to `order`, so an inner instance
   always precedes its users. If any build fails, `LoadPlugins` closes the
   instances it built in reverse order and drops them, so callers that only
-  return the error (the `app` provider) or retry (the mobile controller)
+  return the error (the `app` provider) or retry (the `internal/node`
+  controller)
   leak nothing. `Manager.Close` closes every instance that implements
   `io.Closer` in reverse `order`, so an outer instance closes before the
   inner instances it uses; it is idempotent. It runs from `App.Close` (via
-  the plugin manager provider's cleanup func) and from the mobile
+  the plugin manager provider's cleanup func) and from the `internal/node`
   controller's `stop`. `App.New` creates the App's own lifetime
   `context.Context` and passes it into the plugin manager provider, which
   hands it to every factory for cancellation and for the platform dialer it
@@ -176,7 +177,7 @@ there's a stated reason not to.
 - **Where**: `internal/plugin/dialer` (`Escape`, `WithEscape`, `DialContext`,
   `Resolver`, `ResolveAddrPort`), consumed by the built-in plugins' HTTP
   transport, by their hostname lookups, and by STUN discovery's server
-  lookups on every platform — mobile's `controller.resolveSTUN`, and desktop's
+  lookups on every platform — `internal/node`'s `controller.resolveSTUN`, and desktop's
   `stun.Connect` (socket-owning and proxy-backed alike), which read the escape
   `ctrl.PublishController.discoverEndpoints` puts in the discovery context.
 - **Rule**: anything that opens a socket while stunmesh may be managing a
@@ -193,8 +194,9 @@ there's a stated reason not to.
   routed into it. On desktop the socket is unmarked and unbound instead, so a
   covering allowed-IPs route sends it the same way. `dialer.Resolver` forces
   the pure-Go resolver so its `Dial` hook is consulted; the hook applies the
-  platform's escape and, where `Escape.DNSServers` is set (mobile only —
-  desktop keeps its resolv.conf nameservers), aims at those servers.
+  platform's escape and, where `Escape.DNSServers` is set (a userspace node
+  given a list; mobile always gives one — desktop keeps its resolv.conf
+  nameservers), aims at those servers.
 - **Consequence**: low-level components do not resolve names. `udpbind`'s
   `Discover` takes an already-resolved `netip.AddrPort` so it has nothing to
   resolve with, and the caller — which holds the escape — does the lookup.
@@ -209,6 +211,33 @@ there's a stated reason not to.
   internal: only the core knows the device's mark, fib or interface, so a
   plugin passes on the `ctx` it receives from `Store.Get`/`Set` rather than
   building an escape itself.
+
+### Userspace node: one core, thin public and gomobile layers
+
+- **Where**: `internal/udpbind` (the demuxing `conn.Bind` and STUN client),
+  `internal/node` (`Core`: config and validation, UAPI builders, device
+  lifecycle, the discover/publish/establish controller, `Status`),
+  `userspace` (public API: type aliases, `New`, a `Node` that forwards to
+  `node.Core`), `mobile/` (gomobile binding over `userspace`).
+- **Shape**: none of the first three has a build tag, so the normal build,
+  test and lint jobs cover them on every platform. `mobile/` keeps the
+  `mobile` tag and imports only `userspace`; it adds what only a platform VPN
+  needs: the `TunProvider` fd factory, `swappableTun` and `RenewTun`, and the
+  public resolver fallback for a platform with no resolv.conf.
+  `userspace.New` takes a tun factory, not a `tun.Device`, so a stopped node
+  can start again on a fresh tun and mobile uses the same path. Optional
+  hooks (`Options`: socket protector, DNS list, event listener) are nil-safe;
+  nil DNS means the system resolver, never a public fallback.
+- **Forces it resolves**: the node logic is not gomobile code, and a desktop
+  or test caller should not need the gomobile types or build tag. Keeping
+  the implementation in `internal/node` leaves `userspace` free to stay
+  small and stable while the core changes.
+- **Rules**: `userspace` exports no raw UAPI; `Status` is typed and carries
+  no key material. Run-time setters refuse a key not in the config, since
+  wireguard-go ignores an `update_only` set for an unknown peer. Tests use
+  `golang.zx2c4.com/wireguard/tun/tuntest`, so gvisor stays out of `go.mod`.
+- **Revisit if**: the `Config` JSON shape is frozen, at which point
+  `userspace` can drop its experimental mark.
 
 ## CI/e2e coverage narrowing
 
