@@ -1,27 +1,30 @@
-//go:build mobile
-
-package mobile
+package node
 
 import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 )
 
-// Config mirrors the JSON produced by the Android app (TunnelConfig.toJson).
-// Field names follow the stunmesh-go YAML config where a counterpart exists.
-type tunnelConfig struct {
-	Name                   string       `json:"name"`
-	Interface              ifaceConfig  `json:"interface"`
-	Peers                  []peerConfig `json:"peers"`
-	Plugins                []pluginDef  `json:"plugins"`
-	Stun                   stunConfig   `json:"stun"`
-	RefreshIntervalSeconds int          `json:"refresh_interval_seconds"`
-	Log                    logConfig    `json:"log"`
+// Config is one tunnel. Its JSON shape is the one the Android app writes
+// (TunnelConfig.toJson); field names follow the stunmesh-go YAML config
+// where a counterpart exists.
+type Config struct {
+	Name                   string          `json:"name"`
+	Interface              InterfaceConfig `json:"interface"`
+	Peers                  []PeerConfig    `json:"peers"`
+	Plugins                []PluginDef     `json:"plugins"`
+	Stun                   StunConfig      `json:"stun"`
+	RefreshIntervalSeconds int             `json:"refresh_interval_seconds"`
+	Log                    LogConfig       `json:"log"`
 }
 
-type ifaceConfig struct {
+// InterfaceConfig is the local WireGuard interface. Addresses and
+// DNSServers describe the tun, which the caller creates, so the node itself
+// does not apply them.
+type InterfaceConfig struct {
 	PrivateKey string   `json:"private_key"`
 	Addresses  []string `json:"addresses"`
 	DNSServers []string `json:"dns_servers"`
@@ -31,7 +34,9 @@ type ifaceConfig struct {
 	Protocol string `json:"protocol"`
 }
 
-type peerConfig struct {
+// PeerConfig is one WireGuard peer and the plugin instance its endpoint
+// record lives in.
+type PeerConfig struct {
 	Name                string   `json:"name"`
 	Description         string   `json:"description"`
 	PublicKey           string   `json:"public_key"`
@@ -43,7 +48,9 @@ type peerConfig struct {
 	PersistentKeepalive int      `json:"persistent_keepalive"`
 }
 
-type pluginDef struct {
+// PluginDef is one named plugin instance, as under plugins: in the YAML
+// config.
+type PluginDef struct {
 	Instance string `json:"instance"`
 	Type     string `json:"type"`
 	Name     string `json:"name"`
@@ -53,22 +60,41 @@ type pluginDef struct {
 	Config map[string]any `json:"config"`
 }
 
-type stunConfig struct {
+// StunConfig lists the STUN servers, "host:port", tried in order.
+type StunConfig struct {
 	Addresses []string `json:"addresses"`
 }
 
-type logConfig struct {
+// LogConfig sets the wireguard-go log level: "debug"/"trace" is verbose,
+// "silent"/"disabled" is off, anything else logs errors only.
+type LogConfig struct {
 	Level string `json:"level"`
 }
 
 // defaultStunServer matches the stunmesh-go default.
 const defaultStunServer = "stun.l.google.com:19302"
 
-func parseConfig(configJSON string) (*tunnelConfig, error) {
-	var cfg tunnelConfig
-	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
+// ParseConfig decodes a JSON config and checks it as New does.
+func ParseConfig(data []byte) (*Config, error) {
+	var cfg Config
+	if err := json.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("parse config: %w", err)
 	}
+	return cfg.normalize()
+}
+
+// normalize validates c and returns a copy with defaults applied, so the
+// caller's Config is never changed or shared.
+func (c *Config) normalize() (*Config, error) {
+	if c == nil {
+		return nil, errors.New("config is required")
+	}
+	cfg := *c
+	cfg.Peers = slices.Clone(c.Peers)
+	cfg.Plugins = slices.Clone(c.Plugins)
+	cfg.Stun.Addresses = slices.Clone(c.Stun.Addresses)
+	cfg.Interface.Addresses = slices.Clone(c.Interface.Addresses)
+	cfg.Interface.DNSServers = slices.Clone(c.Interface.DNSServers)
 	if cfg.Interface.PrivateKey == "" {
 		return nil, errors.New("interface.private_key is required")
 	}

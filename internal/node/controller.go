@@ -1,6 +1,4 @@
-//go:build mobile && (linux || android)
-
-package mobile
+package node
 
 import (
 	"context"
@@ -40,12 +38,12 @@ const (
 // and store it via each peer's plugin, fetch and decrypt the peers' records,
 // and apply their endpoints over UAPI.
 //
-// This is a compact mobile counterpart of the desktop controllers
+// This is a compact userspace counterpart of the desktop controllers
 // (internal/ctrl); it reuses the same crypto, storage-key derivation, plugin
-// manager and endpoint JSON, so mobile and desktop nodes interoperate.
+// manager and endpoint JSON, so userspace and desktop nodes interoperate.
 type controller struct {
-	node    *Node
-	cfg     *tunnelConfig
+	node    *Core
+	cfg     *Config
 	bind    stunDiscoverer
 	manager *plugin.Manager
 	crypt   *crypto.Endpoint
@@ -63,7 +61,7 @@ type controller struct {
 	done   chan struct{}
 }
 
-func newController(node *Node, bind *udpbind.Bind) (*controller, error) {
+func newController(node *Core, bind *udpbind.Bind) (*controller, error) {
 	cfg := node.cfg
 	priv, err := keyToBytes(cfg.Interface.PrivateKey)
 	if err != nil {
@@ -224,7 +222,7 @@ func (c *controller) probeServer(ctx context.Context, network, server string) (n
 // IP literal) into the address to probe for network ("udp4" or "udp6").
 //
 // The lookup takes the plugin dialer's escaped path -- a protected socket
-// aimed at the underlay's resolvers (Node.SetDNSServers) -- rather than the
+// aimed at the underlay's resolvers (Options.DNSServers) -- rather than the
 // platform's. On android the platform resolver goes through Bionic's
 // getaddrinfo, which resolves over the default network; once the tunnel is up
 // that is the tunnel, so discovery's own lookup gets routed into the very

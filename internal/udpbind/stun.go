@@ -37,7 +37,7 @@ var ErrStunTimeout = errors.New("stun: no response")
 // here would mean the platform resolver, which on android routes over the
 // default network -- the tunnel itself, once up -- and so cannot be relied on
 // to answer while discovery is still trying to establish that tunnel. The
-// caller resolves through the escaped path instead; see mobile's
+// caller resolves through the escaped path instead; see internal/node's
 // controller.resolveSTUN.
 func (b *Bind) Discover(ctx context.Context, dst netip.AddrPort) (netip.AddrPort, error) {
 	if !dst.IsValid() {

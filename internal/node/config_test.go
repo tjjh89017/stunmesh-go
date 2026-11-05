@@ -1,6 +1,4 @@
-//go:build mobile
-
-package mobile
+package node
 
 import (
 	"encoding/base64"
@@ -24,6 +22,8 @@ func minimalConfigJSON(privateKey, peerPublicKey string) string {
 		"peers": [{"name": "peer1", "public_key": "` + peerPublicKey + `"}]
 	}`
 }
+
+func parseConfig(js string) (*Config, error) { return ParseConfig([]byte(js)) }
 
 func TestParseConfig_ValidMinimal(t *testing.T) {
 	priv := validKeyB64(1)

@@ -12,7 +12,7 @@ type FamilyResolver func(ctx context.Context) (string, error)
 
 // DiscoverEndpoints resolves the reflexive endpoint(s) for an interface/
 // device protocol ("ipv4", "ipv6", or "dualstack"), shared by desktop's
-// raw-socket STUN resolver (PublishController) and mobile's
+// raw-socket STUN resolver (PublishController) and internal/node's
 // udpbind.Bind-backed resolver, via resolveIPv4/resolveIPv6.
 //
 // Policy: a single-family protocol hard-fails on that family's error. The

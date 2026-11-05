@@ -1,6 +1,4 @@
-//go:build mobile
-
-package mobile
+package node
 
 import (
 	"fmt"
@@ -9,8 +7,8 @@ import (
 )
 
 func TestBuildUAPI_MinimalInterfaceNoPeers(t *testing.T) {
-	cfg := &tunnelConfig{
-		Interface: ifaceConfig{PrivateKey: validKeyB64(1)},
+	cfg := &Config{
+		Interface: InterfaceConfig{PrivateKey: validKeyB64(1)},
 	}
 
 	got, err := buildUAPI(cfg)
@@ -31,8 +29,8 @@ func TestBuildUAPI_MinimalInterfaceNoPeers(t *testing.T) {
 }
 
 func TestBuildUAPI_ListenPortIncludedWhenSet(t *testing.T) {
-	cfg := &tunnelConfig{
-		Interface: ifaceConfig{PrivateKey: validKeyB64(1), ListenPort: 51820},
+	cfg := &Config{
+		Interface: InterfaceConfig{PrivateKey: validKeyB64(1), ListenPort: 51820},
 	}
 
 	got, err := buildUAPI(cfg)
@@ -47,9 +45,9 @@ func TestBuildUAPI_ListenPortIncludedWhenSet(t *testing.T) {
 func TestBuildUAPI_PeerWithAllOptionalFields(t *testing.T) {
 	pub := validKeyB64(2)
 	psk := validKeyB64(3)
-	cfg := &tunnelConfig{
-		Interface: ifaceConfig{PrivateKey: validKeyB64(1)},
-		Peers: []peerConfig{
+	cfg := &Config{
+		Interface: InterfaceConfig{PrivateKey: validKeyB64(1)},
+		Peers: []PeerConfig{
 			{
 				PublicKey:           pub,
 				PresharedKey:        psk,
@@ -83,9 +81,9 @@ func TestBuildUAPI_PeerWithAllOptionalFields(t *testing.T) {
 }
 
 func TestBuildUAPI_PeerOmitsOptionalFieldsWhenUnset(t *testing.T) {
-	cfg := &tunnelConfig{
-		Interface: ifaceConfig{PrivateKey: validKeyB64(1)},
-		Peers:     []peerConfig{{PublicKey: validKeyB64(2)}},
+	cfg := &Config{
+		Interface: InterfaceConfig{PrivateKey: validKeyB64(1)},
+		Peers:     []PeerConfig{{PublicKey: validKeyB64(2)}},
 	}
 
 	got, err := buildUAPI(cfg)
@@ -104,16 +102,16 @@ func TestBuildUAPI_PeerOmitsOptionalFieldsWhenUnset(t *testing.T) {
 }
 
 func TestBuildUAPI_InvalidInterfacePrivateKey(t *testing.T) {
-	cfg := &tunnelConfig{Interface: ifaceConfig{PrivateKey: "not-base64!!"}}
+	cfg := &Config{Interface: InterfaceConfig{PrivateKey: "not-base64!!"}}
 	if _, err := buildUAPI(cfg); err == nil {
 		t.Fatal("expected error for invalid private key")
 	}
 }
 
 func TestBuildUAPI_InvalidPeerPublicKey(t *testing.T) {
-	cfg := &tunnelConfig{
-		Interface: ifaceConfig{PrivateKey: validKeyB64(1)},
-		Peers:     []peerConfig{{PublicKey: "garbage"}},
+	cfg := &Config{
+		Interface: InterfaceConfig{PrivateKey: validKeyB64(1)},
+		Peers:     []PeerConfig{{PublicKey: "garbage"}},
 	}
 	if _, err := buildUAPI(cfg); err == nil {
 		t.Fatal("expected error for invalid peer public key")
@@ -121,9 +119,9 @@ func TestBuildUAPI_InvalidPeerPublicKey(t *testing.T) {
 }
 
 func TestBuildUAPI_InvalidPeerPresharedKey(t *testing.T) {
-	cfg := &tunnelConfig{
-		Interface: ifaceConfig{PrivateKey: validKeyB64(1)},
-		Peers:     []peerConfig{{PublicKey: validKeyB64(2), PresharedKey: "garbage"}},
+	cfg := &Config{
+		Interface: InterfaceConfig{PrivateKey: validKeyB64(1)},
+		Peers:     []PeerConfig{{PublicKey: validKeyB64(2), PresharedKey: "garbage"}},
 	}
 	if _, err := buildUAPI(cfg); err == nil {
 		t.Fatal("expected error for invalid peer preshared key")
@@ -152,7 +150,7 @@ func TestBuildPeerEndpointUAPI_InvalidPublicKey(t *testing.T) {
 func TestBuildPeerKeepaliveUAPI(t *testing.T) {
 	pub := validKeyB64(4)
 	pubHex, _ := keyToHex(pub)
-	for _, sec := range []int32{0, 25, 65535} {
+	for _, sec := range []int{0, 25, 65535} {
 		got, err := buildPeerKeepaliveUAPI(pub, sec)
 		if err != nil {
 			t.Fatalf("buildPeerKeepaliveUAPI(%d) returned error: %v", sec, err)
@@ -168,7 +166,7 @@ func TestBuildPeerKeepaliveUAPI_Invalid(t *testing.T) {
 	if _, err := buildPeerKeepaliveUAPI("garbage", 25); err == nil {
 		t.Error("expected error for invalid public key")
 	}
-	for _, sec := range []int32{-1, 65536} {
+	for _, sec := range []int{-1, 65536} {
 		if _, err := buildPeerKeepaliveUAPI(validKeyB64(4), sec); err == nil {
 			t.Errorf("expected error for keepalive %d", sec)
 		}

@@ -94,7 +94,9 @@ func TestSwappableTun_ReadRetriesOnSwapWhileBlocked(t *testing.T) {
 	// closes first (unblocking the Read with an error) and installs
 	// second. The blocked Read must notice the generation changed and
 	// retry against second instead of surfacing first's close error.
-	s.swap(second)
+	if err := s.swap(second); err != nil {
+		t.Fatalf("swap: %v", err)
+	}
 
 	select {
 	case r := <-resultCh:
@@ -177,7 +179,9 @@ func TestSwappableTun_ConcurrentReadDuringRepeatedSwaps(t *testing.T) {
 	}
 
 	for i := 0; i < swaps; i++ {
-		s.swap(newFakeTun(fmt.Sprintf("gen%d", i+1), false))
+		if err := s.swap(newFakeTun(fmt.Sprintf("gen%d", i+1), false)); err != nil {
+			t.Fatalf("swap: %v", err)
+		}
 	}
 	close(stop)
 
@@ -216,7 +220,9 @@ func TestSwappableTun_PassthroughMethodsUseCurrentDeviceAfterSwap(t *testing.T) 
 	s := newSwappableTun(newFakeTun("before", false))
 	defer func() { _ = s.Close() }()
 
-	s.swap(newFakeTun("after", false))
+	if err := s.swap(newFakeTun("after", false)); err != nil {
+		t.Fatalf("swap: %v", err)
+	}
 
 	if name, err := s.Name(); err != nil || name != "after" {
 		t.Errorf("Name() after swap = (%q, %v), want (%q, nil)", name, err, "after")
@@ -250,7 +256,9 @@ func TestSwappableTun_SwapEventRacingClose(t *testing.T) {
 		s := newSwappableTun(newFakeTun("first", false))
 		replacement := newFakeTun("second", false)
 		replacement.events <- tun.EventUp
-		s.swap(replacement)
+		if err := s.swap(replacement); err != nil {
+			t.Fatalf("swap: %v", err)
+		}
 		if err := s.Close(); err != nil {
 			t.Fatalf("Close returned error: %v", err)
 		}
@@ -265,5 +273,23 @@ func TestSwappableTun_CloseIsIdempotent(t *testing.T) {
 	}
 	if err := s.Close(); err != nil {
 		t.Fatalf("second Close returned error: %v", err)
+	}
+}
+
+// A swap after Close must not install the new device: it closes it and
+// reports the swap failed, so the fd it wraps does not leak.
+func TestSwappableTun_SwapAfterCloseClosesNewDevice(t *testing.T) {
+	s := newSwappableTun(newFakeTun("first", false))
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	late := newFakeTun("late", false)
+	if err := s.swap(late); !errors.Is(err, errTunClosed) {
+		t.Fatalf("swap after Close = %v, want errTunClosed", err)
+	}
+	select {
+	case <-late.closed:
+	default:
+		t.Error("swap after Close left the new device open")
 	}
 }

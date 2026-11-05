@@ -1,6 +1,4 @@
-//go:build mobile
-
-package mobile
+package node
 
 import (
 	"fmt"
@@ -11,7 +9,7 @@ import (
 // buildUAPI renders the config as a wireguard-go IpcSet string. Peer
 // endpoints set here are only the optional static initial endpoints; the
 // STUNMESH controllers overwrite them at run time with discovered ones.
-func buildUAPI(cfg *tunnelConfig) (string, error) {
+func buildUAPI(cfg *Config) (string, error) {
 	var b strings.Builder
 
 	privHex, err := keyToHex(cfg.Interface.PrivateKey)
@@ -65,7 +63,7 @@ func buildPeerEndpointUAPI(publicKeyB64, endpoint string) (string, error) {
 
 // buildPeerKeepaliveUAPI renders the run-time keepalive update for one
 // peer: the interval in seconds, 0 to turn it off.
-func buildPeerKeepaliveUAPI(publicKeyB64 string, seconds int32) (string, error) {
+func buildPeerKeepaliveUAPI(publicKeyB64 string, seconds int) (string, error) {
 	if seconds < 0 || seconds > math.MaxUint16 {
 		return "", fmt.Errorf("keepalive %d out of range 0-%d", seconds, math.MaxUint16)
 	}

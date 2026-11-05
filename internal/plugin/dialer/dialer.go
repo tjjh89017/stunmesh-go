@@ -42,7 +42,8 @@ type Escape struct {
 	TunnelIfaces routeprobe.TunnelInterfaces
 	// Protector excludes a socket from the tunnel via Android's
 	// VpnService.protect, for platforms with no mark/fib/interface primitive.
-	// Nil means nothing to call, which is every caller except mobile.
+	// Nil means nothing to call, which is every caller except a userspace node
+	// given a protector.
 	Protector Protector
 	// DNSServers lists the nameservers ("host" or "host:port", port
 	// defaulting to 53) hostname lookups dial instead of the ones Go reads
@@ -54,8 +55,8 @@ type Escape struct {
 }
 
 // Protector is the fd-level escape Android provides in place of a
-// mark/fib/interface primitive: mobile/api.go's SocketProtector, structurally,
-// kept as its own type here so this package does not import mobile.
+// mark/fib/interface primitive: internal/node's SocketProtector, structurally,
+// kept as its own type here so this package does not import it.
 type Protector interface {
 	// Protect returns true when the socket was excluded from the tunnel.
 	Protect(fd int32) bool
