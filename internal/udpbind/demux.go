@@ -1,6 +1,4 @@
-//go:build mobile
-
-package mobilebind
+package udpbind
 
 import (
 	"encoding/binary"

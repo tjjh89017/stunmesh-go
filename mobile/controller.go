@@ -12,15 +12,15 @@ import (
 	"github.com/tjjh89017/stunmesh-go/internal/crypto"
 	"github.com/tjjh89017/stunmesh-go/internal/ctrl"
 	"github.com/tjjh89017/stunmesh-go/internal/entity"
-	"github.com/tjjh89017/stunmesh-go/internal/mobilebind"
 	"github.com/tjjh89017/stunmesh-go/internal/plugin"
 	"github.com/tjjh89017/stunmesh-go/internal/plugin/dialer"
+	"github.com/tjjh89017/stunmesh-go/internal/udpbind"
 	pluginapi "github.com/tjjh89017/stunmesh-go/pluginapi"
 	"golang.org/x/crypto/curve25519"
 )
 
 // stunDiscoverer resolves a reflexive address for one address family via
-// STUN. *mobilebind.Bind implements it in production over the shared WG
+// STUN. *udpbind.Bind implements it in production over the shared WG
 // socket; tests substitute a fake to exercise discover/discoverFamily
 // without a real network.
 type stunDiscoverer interface {
@@ -63,7 +63,7 @@ type controller struct {
 	done   chan struct{}
 }
 
-func newController(node *Node, bind *mobilebind.Bind) (*controller, error) {
+func newController(node *Node, bind *udpbind.Bind) (*controller, error) {
 	cfg := node.cfg
 	priv, err := keyToBytes(cfg.Interface.PrivateKey)
 	if err != nil {

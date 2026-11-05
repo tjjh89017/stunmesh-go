@@ -31,7 +31,7 @@ func mustNotBeCalledResolver(t *testing.T) ctrl.FamilyResolver {
 // TestDiscoverEndpoints_SharedPolicy exercises the single DiscoverEndpoints
 // policy used by both PublishController.discoverEndpoints (desktop,
 // raw-socket STUN) and the mobile controller's discover
-// (mobilebind.Bind.Discover) since they were unified: single-family
+// (udpbind.Bind.Discover) since they were unified: single-family
 // protocols hard-fail on that family's error, dualstack soft-fails per
 // family (only warning) and hard-fails only when both are empty. This is
 // the one deliberate behavior change mobile picked up — it previously used
