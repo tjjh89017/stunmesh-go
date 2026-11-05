@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 )
 
@@ -91,7 +92,13 @@ func (c *Config) normalize() (*Config, error) {
 	}
 	cfg := *c
 	cfg.Peers = slices.Clone(c.Peers)
+	for i := range cfg.Peers {
+		cfg.Peers[i].AllowedIPs = slices.Clone(cfg.Peers[i].AllowedIPs)
+	}
 	cfg.Plugins = slices.Clone(c.Plugins)
+	for i := range cfg.Plugins {
+		cfg.Plugins[i].Config = maps.Clone(cfg.Plugins[i].Config)
+	}
 	cfg.Stun.Addresses = slices.Clone(c.Stun.Addresses)
 	cfg.Interface.Addresses = slices.Clone(c.Interface.Addresses)
 	cfg.Interface.DNSServers = slices.Clone(c.Interface.DNSServers)
