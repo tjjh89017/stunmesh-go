@@ -6,10 +6,10 @@ import (
 	"encoding/base64"
 	"os"
 	"reflect"
+	"sync"
 	"testing"
 
 	"golang.org/x/sys/unix"
-	"golang.zx2c4.com/wireguard/tun/tuntest"
 )
 
 func validKeyB64(fill byte) string {
@@ -79,14 +79,79 @@ func TestPluginDNSServersFallback(t *testing.T) {
 	}
 }
 
-// RenewTun would close the caller's tun to install a platform fd, so a
-// node without a TunProvider refuses it before touching the fd (an
-// unguarded call would first make it nonblocking).
-func TestNewNodeWithTunRefusesRenewTun(t *testing.T) {
-	n, err := NewNodeWithTun(minimalConfigJSON(validKeyB64(1), validKeyB64(2)), tuntest.NewChannelTUN().TUN(), quietListener{})
+// fakeTunProvider hands out fd on every OpenTun and counts the calls.
+type fakeTunProvider struct {
+	mu    sync.Mutex
+	fd    int32
+	calls int
+}
+
+func (p *fakeTunProvider) OpenTun(int32) int32 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.calls++
+	return p.fd
+}
+
+type okProtector struct{}
+
+func (okProtector) Protect(int32) bool { return true }
+
+// recordingListener keeps the state changes.
+type recordingListener struct {
+	quietListener
+	mu     sync.Mutex
+	states []string
+}
+
+func (r *recordingListener) OnStateChanged(state string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.states = append(r.states, state)
+}
+
+func (r *recordingListener) take() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	s := r.states
+	r.states = nil
+	return s
+}
+
+func newTestNode(t *testing.T, tp TunProvider, l EventListener) *Node {
+	t.Helper()
+	n, err := NewNode(minimalConfigJSON(validKeyB64(1), validKeyB64(2)), tp, okProtector{}, l)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("NewNode: %v", err)
 	}
+	t.Cleanup(n.Stop)
+	return n
+}
+
+// A platform with no tun fd fails Start cleanly: starting, then down, and
+// the node stays stopped.
+func TestStartWithoutTunFd(t *testing.T) {
+	rec := &recordingListener{}
+	tp := &fakeTunProvider{fd: -1}
+	n := newTestNode(t, tp, rec)
+	if err := n.Start(); err == nil {
+		t.Fatal("Start without a tun fd succeeded")
+	}
+	if n.IsRunning() {
+		t.Error("node running after a failed Start")
+	}
+	if got, want := rec.take(), []string{StateStarting, StateDown}; !reflect.DeepEqual(got, want) {
+		t.Errorf("states = %v, want %v", got, want)
+	}
+	if tp.calls != 1 {
+		t.Errorf("OpenTun calls = %d, want 1", tp.calls)
+	}
+}
+
+// RenewTun on a node that is not running refuses before touching the fd
+// (a tun wrapper would first make it nonblocking).
+func TestRenewTunNotRunning(t *testing.T) {
+	n := newTestNode(t, &fakeTunProvider{fd: -1}, quietListener{})
 	r, w, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
@@ -94,23 +159,30 @@ func TestNewNodeWithTunRefusesRenewTun(t *testing.T) {
 	defer func() { _ = r.Close(); _ = w.Close() }()
 	fd := int(r.Fd()) // Fd leaves the pipe blocking
 	if err := n.RenewTun(int32(fd)); err == nil {
-		t.Fatal("RenewTun on a caller-supplied tun succeeded")
+		t.Fatal("RenewTun on a stopped node succeeded")
 	}
 	flags, err := unix.FcntlInt(uintptr(fd), unix.F_GETFL, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if flags&unix.O_NONBLOCK != 0 {
-		t.Error("RenewTun changed the caller's fd")
+		t.Error("RenewTun changed the fd")
 	}
 }
 
-func TestNewNodeWithTunRequiresTunAndListener(t *testing.T) {
+func TestNewNodeRequiresHooks(t *testing.T) {
 	js := minimalConfigJSON(validKeyB64(1), validKeyB64(2))
-	if _, err := NewNodeWithTun(js, nil, quietListener{}); err == nil {
-		t.Error("nil tun accepted")
+	tp := &fakeTunProvider{fd: -1}
+	if _, err := NewNode(js, nil, okProtector{}, quietListener{}); err == nil {
+		t.Error("nil tun provider accepted")
 	}
-	if _, err := NewNodeWithTun(js, tuntest.NewChannelTUN().TUN(), nil); err == nil {
+	if _, err := NewNode(js, tp, nil, quietListener{}); err == nil {
+		t.Error("nil protector accepted")
+	}
+	if _, err := NewNode(js, tp, okProtector{}, nil); err == nil {
 		t.Error("nil listener accepted")
+	}
+	if _, err := NewNode("{", tp, okProtector{}, quietListener{}); err == nil {
+		t.Error("malformed config accepted")
 	}
 }

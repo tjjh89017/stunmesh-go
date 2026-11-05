@@ -8,8 +8,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/tjjh89017/stunmesh-go/internal/node"
 	"github.com/tjjh89017/stunmesh-go/internal/plugin/dialer"
+	"github.com/tjjh89017/stunmesh-go/userspace"
 	"golang.zx2c4.com/wireguard/tun"
 )
 
@@ -24,7 +24,7 @@ var defaultPluginDNSServers = []string{"8.8.8.8:53", "1.1.1.1:53", "[2001:4860:4
 // a demuxing bind, plus the STUNMESH controller for discovery, publish and
 // establish.
 type Node struct {
-	core     *node.Core
+	node     *userspace.Node
 	tunP     TunProvider
 	listener EventListener
 
@@ -41,12 +41,12 @@ func NewNode(configJSON string, tunProvider TunProvider, protector SocketProtect
 	if tunProvider == nil || protector == nil || listener == nil {
 		return nil, errors.New("tunProvider, protector and listener are required")
 	}
-	cfg, err := node.ParseConfig([]byte(configJSON))
+	cfg, err := userspace.ParseConfig([]byte(configJSON))
 	if err != nil {
 		return nil, err
 	}
 	n := &Node{tunP: tunProvider, listener: listener}
-	n.core, err = node.New(cfg, n.openTun, node.Options{
+	n.node, err = userspace.New(cfg, n.openTun, userspace.Options{
 		Protector:  protector,
 		DNSServers: n.pluginDNSServers,
 		Listener:   listener,
@@ -57,46 +57,8 @@ func NewNode(configJSON string, tunProvider TunProvider, protector SocketProtect
 	return n, nil
 }
 
-// NewNodeWithTun is NewNode for a caller that brings its own tun.Device,
-// such as wireguard-go's tun/netstack, so the node runs entirely in
-// userspace without a platform VPN. No socket protection applies: with no
-// VPN there is no tunnel for the outer sockets to loop through. Start takes
-// dev; Stop, or a Start that fails after taking it, closes it, so a node
-// built this way starts once. A node that never starts leaves dev to the
-// caller. RenewTun does not apply. gomobile skips this constructor; it is
-// for Go callers.
-func NewNodeWithTun(configJSON string, dev tun.Device, listener EventListener) (*Node, error) {
-	if dev == nil || listener == nil {
-		return nil, errors.New("dev and listener are required")
-	}
-	cfg, err := node.ParseConfig([]byte(configJSON))
-	if err != nil {
-		return nil, err
-	}
-	var once sync.Mutex
-	newTun := func(int) (tun.Device, error) {
-		once.Lock()
-		defer once.Unlock()
-		if dev == nil {
-			return nil, errors.New("tun already consumed by an earlier Start")
-		}
-		d := dev
-		dev = nil
-		return d, nil
-	}
-	n := &Node{listener: listener}
-	n.core, err = node.New(cfg, newTun, node.Options{
-		DNSServers: n.pluginDNSServers,
-		Listener:   listener,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return n, nil
-}
-
-// openTun is the tun factory of a node on a platform VPN: it takes a fresh
-// fd from the TunProvider and keeps the wrapper so RenewTun can swap it.
+// openTun is the node's tun factory: it takes a fresh fd from the
+// TunProvider and keeps the wrapper so RenewTun can swap it.
 func (n *Node) openTun(mtu int) (tun.Device, error) {
 	fd := n.tunP.OpenTun(int32(mtu))
 	if fd < 0 {
@@ -113,12 +75,12 @@ func (n *Node) openTun(mtu int) (tun.Device, error) {
 	return t, nil
 }
 
-// Start brings up the data plane: tun from the platform fd or the caller,
-// wireguard-go device on the demuxing bind, config over UAPI, device up.
-func (n *Node) Start() error { return n.core.Start() }
+// Start brings up the data plane: tun from the platform fd, wireguard-go
+// device on the demuxing bind, config over UAPI, device up.
+func (n *Node) Start() error { return n.node.Start() }
 
 // Stop tears down the controller, device and sockets. Idempotent.
-func (n *Node) Stop() { n.core.Stop() }
+func (n *Node) Stop() { n.node.Stop() }
 
 // SetDNSServers sets the nameservers plugin hostname lookups use, as a
 // comma-separated list of "host" or "host:port" entries (port defaults to
@@ -157,17 +119,12 @@ func (n *Node) pluginDNSServers() []string {
 }
 
 // RenewTun swaps in a fresh tun fd after a platform network change without
-// restarting the WG device. A node on a caller-supplied tun has no platform
-// fd to renew, and swapping one in would close the caller's tun, so it
-// refuses and leaves fd to the caller.
+// restarting the WG device.
 func (n *Node) RenewTun(fd int32) error {
-	if n.tunP == nil {
-		return errors.New("node has no platform tun")
-	}
 	n.tunMu.Lock()
 	t := n.tun
 	n.tunMu.Unlock()
-	if t == nil || !n.core.IsRunning() {
+	if t == nil || !n.node.IsRunning() {
 		return errors.New("node not running")
 	}
 	newTun, _, err := tun.CreateUnmonitoredTUNFromFD(int(fd))
@@ -184,21 +141,15 @@ func (n *Node) RenewTun(fd int32) error {
 // SetPeerEndpoint applies a discovered endpoint to one peer at run time.
 // The device does not restart.
 func (n *Node) SetPeerEndpoint(publicKeyB64, endpoint string) error {
-	return n.core.SetPeerEndpoint(publicKeyB64, endpoint)
+	return n.node.SetPeerEndpoint(publicKeyB64, endpoint)
 }
 
 // SetPeerKeepalive sets one peer's persistent keepalive interval at run
 // time, in seconds, 0 to turn it off. Like SetPeerEndpoint, the device does
 // not restart.
 func (n *Node) SetPeerKeepalive(publicKeyB64 string, seconds int32) error {
-	return n.core.SetPeerKeepalive(publicKeyB64, int(seconds))
+	return n.node.SetPeerKeepalive(publicKeyB64, int(seconds))
 }
 
-// IpcGet returns the device's UAPI state: endpoints, handshake times, byte
-// counts and keys, including the interface's private_key, as `wg showconf`
-// prints it. Callers that only want status must not log or display the
-// text as is.
-func (n *Node) IpcGet() (string, error) { return n.core.IpcGet() }
-
 // IsRunning reports whether the data plane is up.
-func (n *Node) IsRunning() bool { return n.core.IsRunning() }
+func (n *Node) IsRunning() bool { return n.node.IsRunning() }

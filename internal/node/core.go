@@ -197,20 +197,17 @@ func (n *Core) SetPeerKeepalive(publicKeyB64 string, seconds int) error {
 	return nil
 }
 
-// IpcGet returns the device's UAPI state, private_key included.
-func (n *Core) IpcGet() (string, error) {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	return n.ipcGet()
-}
-
 // Status reports the live device state, peers in config order.
 func (n *Core) Status() (Status, error) {
 	n.mu.Lock()
-	uapi, err := n.ipcGet()
+	if !n.running {
+		n.mu.Unlock()
+		return Status{}, errors.New("node not running")
+	}
+	uapi, err := n.dev.IpcGet()
 	n.mu.Unlock()
 	if err != nil {
-		return Status{}, err
+		return Status{}, fmt.Errorf("ipc get: %w", err)
 	}
 	st, err := parseStatus(uapi)
 	if err != nil {
@@ -224,13 +221,6 @@ func (n *Core) Status() (Status, error) {
 		return cmp.Compare(rank(a), rank(b))
 	})
 	return st, nil
-}
-
-func (n *Core) ipcGet() (string, error) {
-	if !n.running {
-		return "", errors.New("node not running")
-	}
-	return n.dev.IpcGet()
 }
 
 // pluginDNSServers is the nameserver list handed to the plugin dialer.
