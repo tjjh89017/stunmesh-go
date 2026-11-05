@@ -17,8 +17,8 @@ go build -o stunmesh-go  # Direct go build
 ```
 
 Built-ins are selected by imports. `main.go` and `mobile/`
-blank-import `builtin/all`, the set the release binary ships; `app` imports
-no built-in. A custom binary is your own `main` that imports `app` plus the
+blank-import `builtin/all`, the set the release binary ships; `app` and
+`userspace` import no built-in. A custom binary is your own `main` that imports `app` plus the
 `builtin/*` packages you want, or your own plugin package. Such a `main` may
 also call `pluginapi.Register` before `app.New` to capture runtime values in
 the factory. Building with `-tags no_<name>` drops that plugin from
@@ -41,11 +41,13 @@ make lint LINT_PLATFORMS=linux   # Just the host, for a faster loop
 `.golangci.yaml` sets `build-tags: [embedca]`, so a bare
 `golangci-lint run` and CI check the same files, the embedded-CA path
 included. `GOOS` can't come from the config, so `make lint` loops over the
-four platforms and CI runs them as a matrix. `mobile/` and `internal/mobilebind`
-sit behind the `mobile` build tag, so the platform loop never sees them; a
-separate `lint-mobile` target (always run as part of `make lint`) covers them
+four platforms and CI runs them as a matrix. The userspace node packages
+(`userspace`, `internal/node`, `internal/udpbind`) have no build tag, so the
+platform loop and the normal test jobs cover them. Only `mobile/` sits
+behind the `mobile` build tag, so the platform loop never sees it; a
+separate `lint-mobile` target (always run as part of `make lint`) covers it
 with `GOOS=linux` and `MOBILE_TAGS` (= `mobile`); CI's mobile lint step
-passes the same tag.
+passes the same tag, and `make mobile-test` tests it.
 
 ### Dependency Management
 ```bash
@@ -136,6 +138,14 @@ The application uses Google Wire for dependency injection. The setup is in `app/
 - `app/wire_gen.go`: Generated dependency injection code (do not edit manually)
 - Run `go generate ./app` after changing dependencies (the generate directive lives in `app/wire_gen.go`)
 
+### Userspace Node: `userspace`, `internal/node`, `mobile/`
+A userspace node runs an embedded wireguard-go device on a caller-supplied
+tun, without the daemon controllers. See `docs/architecture.md` for the split.
+- `internal/udpbind`: the demuxing `conn.Bind`; STUN shares the WireGuard socket. On windows it disables `SIO_UDP_CONNRESET`
+- `internal/node`: the implementation (`node.Core`): `Config` parsing and validation, UAPI builders, device lifecycle, the discover/publish/establish controller, typed `Status`
+- `userspace`: the public, experimental API. `New(cfg, newTun func(mtu int) (tun.Device, error), Options)`, `Node` with `Start`, `Stop`, `IsRunning`, `SetPeerEndpoint`, `SetPeerKeepalive`, `Status`. It exports no raw UAPI. Like `app`, it imports no built-in
+- `mobile/` (build tag `mobile`): the gomobile binding. It imports only `userspace` and adds the `TunProvider` fd factory, `RenewTun`, and the public DNS fallback (android has no resolv.conf)
+
 ### Plugin System Architecture
 The plugin system supports multiple named storage backend instances:
 
@@ -218,7 +228,7 @@ of its own.
 2. **PublishController** (`internal/ctrl/publish.go`):
    - Performs STUN discovery to get public IP/port based on device protocol
    - Supports three modes: `ipv4` (IPv4 only), `ipv6` (IPv6 only), `dualstack` (both)
-   - Uses the shared `ctrl.DiscoverEndpoints` (`internal/ctrl/discover.go`) for protocol-aware STUN discovery — also used by `mobile/`, so policy changes there affect both platforms. Dualstack soft-fails per family (warn and continue; error only when both families come back empty); single-family modes hard-fail
+   - Uses the shared `ctrl.DiscoverEndpoints` (`internal/ctrl/discover.go`) for protocol-aware STUN discovery — also used by `internal/node`, so policy changes there affect the userspace node and mobile too. Dualstack soft-fails per family (warn and continue; error only when both families come back empty); single-family modes hard-fail
    - **Validation**: `Resolver.Resolve()` validates endpoints (port != 0 and host != "")
      - Invalid endpoints are not published to storage
      - Logs warning when STUN returns invalid endpoint
@@ -233,7 +243,7 @@ of its own.
 
 3. **EstablishController** (`internal/ctrl/establish.go`):
    - Retrieves peer endpoint data from storage plugins
-   - Decrypts endpoint JSON and selects the endpoint via the shared `ctrl.SelectEndpoint` (`internal/ctrl/endpoint_select.go`, also used by `mobile/`) based on peer protocol:
+   - Decrypts endpoint JSON and selects the endpoint via the shared `ctrl.SelectEndpoint` (`internal/ctrl/endpoint_select.go`, also used by `internal/node`) based on peer protocol:
      - `ipv4`: Use IPv4 endpoint only (returns error if empty)
      - `ipv6`: Use IPv6 endpoint only (returns error if empty)
      - `prefer_ipv4`: Prefer IPv4, fallback to IPv6 if unavailable
@@ -513,7 +523,7 @@ To write a chaining plugin, start from `builtin/trace` (one inner) or `builtin/m
 Verify:
 ```bash
 go build ./... && go vet ./... && go test ./...
-go build -tags mobile ./mobile/... ./internal/mobilebind/...
+go build -tags mobile ./mobile/...
 ```
 
 ### Adding New Plugin Types to Core
