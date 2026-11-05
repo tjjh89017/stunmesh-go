@@ -3,6 +3,7 @@
 package mobile
 
 import (
+	"errors"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -58,15 +59,25 @@ func (s *swappableTun) current() (tun.Device, uint64) {
 	return s.inner, s.gen
 }
 
-// swap installs a new inner device and closes the old one.
-func (s *swappableTun) swap(newDev tun.Device) {
+// errTunClosed is swap's error once the device has been closed.
+var errTunClosed = errors.New("tun closed")
+
+// swap installs a new inner device and closes the old one. Once Close has
+// run it closes newDev instead and returns errTunClosed.
+func (s *swappableTun) swap(newDev tun.Device) error {
 	s.mu.Lock()
+	if s.closed.Load() {
+		s.mu.Unlock()
+		_ = newDev.Close()
+		return errTunClosed
+	}
 	old := s.inner
 	s.inner = newDev
 	s.gen++
 	s.mu.Unlock()
 	go s.forwardEvents(newDev)
 	_ = old.Close()
+	return nil
 }
 
 func (s *swappableTun) Read(bufs [][]byte, sizes []int, offset int) (int, error) {

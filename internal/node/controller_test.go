@@ -1,6 +1,4 @@
-//go:build mobile && (linux || android)
-
-package mobile
+package node
 
 import (
 	"context"
@@ -11,6 +9,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -23,7 +22,7 @@ import (
 
 // TestSelectEndpoint mirrors the four-protocol matrix covered by
 // internal/ctrl/establish_test.go's Execute_*Selection tests, since the
-// mobile controller calls the same shared ctrl.SelectEndpoint the desktop
+// node controller calls the same shared ctrl.SelectEndpoint the desktop
 // EstablishController uses (see internal/ctrl/endpoint_select.go).
 func TestSelectEndpoint(t *testing.T) {
 	both := ctrl.EndpointData{IPv4: "1.2.3.4:51820", IPv6: "[2001:db8::1]:51820"}
@@ -126,7 +125,7 @@ func (f *fakeListener) hasLogContaining(substr string) bool {
 }
 
 // newDiscoverTestController builds a controller wired the same way
-// newController/node.go wire the real one, except bind is a fakeDiscoverer
+// newController/core.go wire the real one, except bind is a fakeDiscoverer
 // instead of a real *udpbind.Bind, so discover/discoverFamily can be
 // exercised through the real controller.discover code path (which invokes
 // the shared ctrl.DiscoverEndpoints) without opening a socket.
@@ -136,10 +135,10 @@ func (f *fakeListener) hasLogContaining(substr string) bool {
 // that do not apply to the family it is resolving for.
 func newDiscoverTestController(protocol string, disc *fakeDiscoverer, lst *fakeListener) *controller {
 	return &controller{
-		node: &Node{listener: lst},
-		cfg: &tunnelConfig{
-			Interface: ifaceConfig{Protocol: protocol},
-			Stun: stunConfig{Addresses: []string{
+		node: &Core{listener: lst},
+		cfg: &Config{
+			Interface: InterfaceConfig{Protocol: protocol},
+			Stun: StunConfig{Addresses: []string{
 				"192.0.2.1:19302",
 				"[2001:db8:5747::1]:19302",
 			}},
@@ -150,7 +149,7 @@ func newDiscoverTestController(protocol string, disc *fakeDiscoverer, lst *fakeL
 
 // TestControllerDiscover_DualstackBothSucceed proves controller.discover
 // wires the shared ctrl.DiscoverEndpoints to the real discoverFamily/bind
-// call path for the mobile happy-path dualstack case: both families
+// call path for the happy-path dualstack case: both families
 // resolve, and both come back in the result with no warnings logged.
 func TestControllerDiscover_DualstackBothSucceed(t *testing.T) {
 	disc := &fakeDiscoverer{
@@ -283,14 +282,14 @@ func TestControllerResolveSTUN_RejectsMalformedServer(t *testing.T) {
 // TestControllerResolveSTUN_UsesEscapedResolver is the regression test for
 // the bug this path exists to avoid. The name resolved here exists in no real
 // zone, and the only nameserver that can answer it is the one this test puts
-// in Node.dnsServers -- which is reachable only if the lookup goes through
+// in Core.dnsServers -- which is reachable only if the lookup goes through
 // dialer.Resolver()'s Dial hook (the escaped, protected path) rather than the
 // platform resolver. A regression to net.Resolve*/net.DefaultResolver fails
 // here with a lookup error instead of the fake server's answer.
 func TestControllerResolveSTUN_UsesEscapedResolver(t *testing.T) {
 	dns := startFakeDNS(t, netip.MustParseAddr("203.0.113.7"), netip.MustParseAddr("2001:db8::7"))
 	c := newDiscoverTestController("dualstack", &fakeDiscoverer{}, &fakeListener{})
-	c.node.dnsServers = []string{dns.addr()}
+	c.node.dnsServers = func() []string { return []string{dns.addr()} }
 
 	for _, tt := range []struct {
 		network string
@@ -310,7 +309,7 @@ func TestControllerResolveSTUN_UsesEscapedResolver(t *testing.T) {
 }
 
 // fakeDNS is a minimal UDP nameserver that answers every A/AAAA question with
-// one fixed address, whatever the name. Tests point Node.dnsServers at it to
+// one fixed address, whatever the name. Tests point Core.dnsServers at it to
 // prove a lookup travelled the escaped path: nothing else routes a query here.
 type fakeDNS struct {
 	conn *net.UDPConn
@@ -403,6 +402,9 @@ const (
 // newCaptureController wires an exec plugin that saves its request to out.
 func newCaptureController(t *testing.T, out string) (*controller, wgtypes.Key) {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("the capture plugin is a /bin/sh script")
+	}
 	manager := plugin.NewManager()
 	if err := manager.LoadPlugins(context.Background(), map[string]pluginapi.PluginDefinition{
 		"capture": {Type: "exec", Config: pluginapi.PluginConfig{
@@ -423,10 +425,10 @@ func newCaptureController(t *testing.T, out string) (*controller, wgtypes.Key) {
 	}
 
 	return &controller{
-		node: &Node{listener: &fakeListener{}},
-		cfg: &tunnelConfig{
+		node: &Core{listener: &fakeListener{}},
+		cfg: &Config{
 			Name:  "Home's tunnel",
-			Peers: []peerConfig{{Name: "p", PublicKey: peerPriv.PublicKey().String(), Plugin: "capture"}},
+			Peers: []PeerConfig{{Name: "p", PublicKey: peerPriv.PublicKey().String(), Plugin: "capture"}},
 		},
 		manager:       manager,
 		crypt:         crypto.NewEndpoint(),

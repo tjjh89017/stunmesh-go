@@ -10,8 +10,8 @@ import (
 
 // control calls VpnService.protect on the socket via Escape.Protector, the
 // escape Android provides in place of SO_MARK -- an app has no CAP_NET_ADMIN,
-// so setsockopt is not an option. Only mobile/controller.go sets a Protector
-// (see mobile/transport.go); everything else leaves it nil, in which case this
+// so setsockopt is not an option. Only internal/node sets a Protector
+// (see internal/node/transport.go); everything else leaves it nil, in which case this
 // is a no-op and plugin HTTP traffic stays in a covering tunnel's route. That
 // is still this platform's default for any caller that never sets one.
 func control(ctx context.Context, _, _ string, c syscall.RawConn) error {

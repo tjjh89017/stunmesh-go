@@ -1,6 +1,4 @@
-//go:build mobile && (linux || android)
-
-package mobile
+package node
 
 import (
 	"context"
@@ -38,7 +36,7 @@ func TestProtectedContextCarriesProtector(t *testing.T) {
 
 	// Exercise it the same way dialer/control_default.go would: call Protect
 	// with the fd it observed on the raw socket, and expect it to reach our
-	// fake, proving the plumbing from mobile's SocketProtector down to
+	// fake, proving the plumbing from the node's SocketProtector down to
 	// dialer.Protector is intact.
 	if ok := got.Protect(42); !ok {
 		t.Errorf("Protect(42) = false, want true")
