@@ -247,3 +247,23 @@ func TestNodeSetPeerKeepalive(t *testing.T) {
 		t.Error("SetPeerKeepalive on a stopped node succeeded")
 	}
 }
+
+// The device ignores an update for a key it does not know, so the node
+// must refuse one itself instead of reporting success.
+func TestNodeUnknownPeer(t *testing.T) {
+	a, _ := startTunPair(t, quietListener{})
+	stranger := pubKeyB64(t, validKeyB64(9))
+	if err := a.node.SetPeerEndpoint(stranger, "127.0.0.1:1"); !errors.Is(err, ErrUnknownPeer) {
+		t.Errorf("SetPeerEndpoint(unknown) = %v, want ErrUnknownPeer", err)
+	}
+	if err := a.node.SetPeerKeepalive(stranger, 25); !errors.Is(err, ErrUnknownPeer) {
+		t.Errorf("SetPeerKeepalive(unknown) = %v, want ErrUnknownPeer", err)
+	}
+	st, err := a.node.Status()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(st.Peers) != 1 {
+		t.Errorf("peers = %+v, want only the configured one", st.Peers)
+	}
+}

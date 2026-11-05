@@ -29,6 +29,10 @@ type Options struct {
 	Listener EventListener
 }
 
+// ErrUnknownPeer is returned for a public key that is not in Config.Peers.
+// The device would silently ignore an update for it.
+var ErrUnknownPeer = errors.New("peer not in config")
+
 // Core is one STUNMESH node: a wireguard-go device on a demuxing bind and
 // the controller that keeps its peer endpoints current.
 type Core struct {
@@ -161,7 +165,7 @@ func (n *Core) IsRunning() bool {
 }
 
 // SetPeerEndpoint applies an endpoint to one peer at run time. The device
-// does not restart.
+// does not restart. A key not in the config is ErrUnknownPeer.
 func (n *Core) SetPeerEndpoint(publicKeyB64, endpoint string) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -172,6 +176,9 @@ func (n *Core) SetPeerEndpoint(publicKeyB64, endpoint string) error {
 	if err != nil {
 		return err
 	}
+	if _, ok := n.cfg.peerIndex(publicKeyB64); !ok {
+		return fmt.Errorf("peer %s: %w", publicKeyB64, ErrUnknownPeer)
+	}
 	if err := n.dev.IpcSet(uapi); err != nil {
 		return fmt.Errorf("ipc set endpoint: %w", err)
 	}
@@ -180,7 +187,8 @@ func (n *Core) SetPeerEndpoint(publicKeyB64, endpoint string) error {
 }
 
 // SetPeerKeepalive sets one peer's persistent keepalive interval at run
-// time, in seconds, 0 to turn it off. The device does not restart.
+// time, in seconds, 0 to turn it off. The device does not restart. A key
+// not in the config is ErrUnknownPeer.
 func (n *Core) SetPeerKeepalive(publicKeyB64 string, seconds int) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -190,6 +198,9 @@ func (n *Core) SetPeerKeepalive(publicKeyB64 string, seconds int) error {
 	uapi, err := buildPeerKeepaliveUAPI(publicKeyB64, seconds)
 	if err != nil {
 		return err
+	}
+	if _, ok := n.cfg.peerIndex(publicKeyB64); !ok {
+		return fmt.Errorf("peer %s: %w", publicKeyB64, ErrUnknownPeer)
 	}
 	if err := n.dev.IpcSet(uapi); err != nil {
 		return fmt.Errorf("ipc set keepalive: %w", err)

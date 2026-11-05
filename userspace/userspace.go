@@ -50,6 +50,10 @@ const (
 	StateStopping = node.StateStopping
 )
 
+// ErrUnknownPeer is returned by SetPeerEndpoint and SetPeerKeepalive for a
+// public key that is not in Config.Peers.
+var ErrUnknownPeer = node.ErrUnknownPeer
+
 // ParseConfig decodes a JSON config and checks it as New does.
 func ParseConfig(data []byte) (*Config, error) {
 	return node.ParseConfig(data)
@@ -86,13 +90,15 @@ func (n *Node) IsRunning() bool { return n.core.IsRunning() }
 
 // SetPeerEndpoint sets one peer's endpoint ("host:port") at run time,
 // without restarting the device. The STUNMESH cycle overwrites it when the
-// peer publishes a different one.
+// peer publishes a different one. A key not in the config is
+// ErrUnknownPeer.
 func (n *Node) SetPeerEndpoint(publicKeyB64, endpoint string) error {
 	return n.core.SetPeerEndpoint(publicKeyB64, endpoint)
 }
 
 // SetPeerKeepalive sets one peer's persistent keepalive interval at run
-// time, in seconds from 0 (off) to 65535, without restarting the device.
+// time, in seconds from 0 (off) to 65535, without restarting the device. A
+// key not in the config is ErrUnknownPeer.
 func (n *Node) SetPeerKeepalive(publicKeyB64 string, seconds int) error {
 	return n.core.SetPeerKeepalive(publicKeyB64, seconds)
 }
