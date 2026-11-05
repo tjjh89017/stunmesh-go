@@ -1,10 +1,8 @@
 package node
 
 import (
-	"cmp"
 	"errors"
 	"fmt"
-	"slices"
 	"strconv"
 	"sync"
 
@@ -226,13 +224,7 @@ func (n *Core) Status() (Status, error) {
 	if err != nil {
 		return Status{}, err
 	}
-	rank := func(p PeerStatus) int {
-		i, _ := n.cfg.peerIndex(p.PublicKey)
-		return i
-	}
-	slices.SortStableFunc(st.Peers, func(a, b PeerStatus) int {
-		return cmp.Compare(rank(a), rank(b))
-	})
+	n.cfg.sortPeers(st.Peers)
 	return st, nil
 }
 

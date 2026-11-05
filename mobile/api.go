@@ -27,8 +27,9 @@ type EventListener interface {
 	OnStateChanged(state string)
 	// OnLog reports one log line; level is "debug", "info", "warn" or "error".
 	OnLog(level string, message string)
-	// OnEvent reports a STUNMESH event such as "endpoint_discovered" or
-	// "peer_endpoint_updated". peerPublicKey may be empty.
+	// OnEvent reports a STUNMESH event such as "endpoint_discovered",
+	// "peer_endpoint_updated" or "peer_keepalive_updated". peerPublicKey may be
+	// empty.
 	OnEvent(kind string, peerPublicKey string, detail string)
 }
 

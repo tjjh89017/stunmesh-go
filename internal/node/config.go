@@ -1,6 +1,7 @@
 package node
 
 import (
+	"cmp"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -147,6 +148,17 @@ func (c *Config) normalize() (*Config, error) {
 		cfg.RefreshIntervalSeconds = 600
 	}
 	return &cfg, nil
+}
+
+// sortPeers orders peers as they appear in c.Peers, unknown keys first.
+func (c *Config) sortPeers(peers []PeerStatus) {
+	rank := func(p PeerStatus) int {
+		i, _ := c.peerIndex(p.PublicKey)
+		return i
+	}
+	slices.SortStableFunc(peers, func(a, b PeerStatus) int {
+		return cmp.Compare(rank(a), rank(b))
+	})
 }
 
 // peerIndex returns the index in c.Peers of the peer with public key
