@@ -69,3 +69,35 @@ func TestParseStatusRejectsMalformed(t *testing.T) {
 		}
 	}
 }
+
+func TestParseStatusIPv6Endpoint(t *testing.T) {
+	k := validKeyB64(1)
+	h, _ := keyToHex(k)
+	got, err := parseStatus("public_key=" + h + "\nendpoint=[2001:db8::1]:51820\n")
+	if err != nil {
+		t.Fatalf("parseStatus: %v", err)
+	}
+	if len(got.Peers) != 1 || got.Peers[0].Endpoint != "[2001:db8::1]:51820" {
+		t.Errorf("peers = %+v", got.Peers)
+	}
+}
+
+func TestSortPeersFollowsConfigOrder(t *testing.T) {
+	k1, k2, k3 := validKeyB64(1), validKeyB64(2), validKeyB64(3)
+	cfg := &Config{Peers: []PeerConfig{{PublicKey: k1}, {PublicKey: k2}, {PublicKey: k3}}}
+	var uapi string
+	for _, k := range []string{k3, k1, k2} {
+		h, _ := keyToHex(k)
+		uapi += "public_key=" + h + "\n"
+	}
+	st, err := parseStatus(uapi)
+	if err != nil {
+		t.Fatalf("parseStatus: %v", err)
+	}
+	cfg.sortPeers(st.Peers)
+	for i, want := range []string{k1, k2, k3} {
+		if st.Peers[i].PublicKey != want {
+			t.Errorf("peer %d = %s, want %s", i, st.Peers[i].PublicKey, want)
+		}
+	}
+}

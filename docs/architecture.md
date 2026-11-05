@@ -221,7 +221,8 @@ there's a stated reason not to.
   `node.Core`), `mobile/` (gomobile binding over `userspace`).
 - **Shape**: none of the first three has a build tag, so the normal build,
   test and lint jobs cover them on every platform. `mobile/` keeps the
-  `mobile` tag and imports only `userspace`; it adds what only a platform VPN
+  `mobile` tag and imports `userspace`, `internal/plugin/dialer` (for
+  `ValidNameserver`) and `builtin/all`, never `internal/node`; it adds what only a platform VPN
   needs: the `TunProvider` fd factory, `swappableTun` and `RenewTun`, and the
   public resolver fallback for a platform with no resolv.conf.
   `userspace.New` takes a tun factory, not a `tun.Device`, so a stopped node

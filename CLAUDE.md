@@ -144,7 +144,7 @@ tun, without the daemon controllers. See `docs/architecture.md` for the split.
 - `internal/udpbind`: the demuxing `conn.Bind`; STUN shares the WireGuard socket. On windows it disables `SIO_UDP_CONNRESET`
 - `internal/node`: the implementation (`node.Core`): `Config` parsing and validation, UAPI builders, device lifecycle, the discover/publish/establish controller, typed `Status`
 - `userspace`: the public, experimental API. `New(cfg, newTun func(mtu int) (tun.Device, error), Options)`, `Node` with `Start`, `Stop`, `IsRunning`, `SetPeerEndpoint`, `SetPeerKeepalive`, `Status`. It exports no raw UAPI. Like `app`, it imports no built-in
-- `mobile/` (build tag `mobile`): the gomobile binding. It imports only `userspace` and adds the `TunProvider` fd factory, `RenewTun`, and the public DNS fallback (android has no resolv.conf)
+- `mobile/` (build tag `mobile`): the gomobile binding. It imports `userspace`, `internal/plugin/dialer` (for `ValidNameserver`) and `builtin/all`, never `internal/node`, and adds the `TunProvider` fd factory, `RenewTun`, and the public DNS fallback (android has no resolv.conf)
 
 ### Plugin System Architecture
 The plugin system supports multiple named storage backend instances:

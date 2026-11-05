@@ -114,7 +114,9 @@ func (n *Node) pluginDNSServers() []string {
 }
 
 // RenewTun swaps in a fresh tun fd after a platform network change without
-// restarting the WG device.
+// restarting the WG device. When it returns "node not running" before using
+// the fd, the caller still owns the fd; if a concurrent Stop closed the tun
+// first, the fd has been closed.
 func (n *Node) RenewTun(fd int32) error {
 	n.tunMu.Lock()
 	t := n.tun
