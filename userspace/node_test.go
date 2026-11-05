@@ -1,4 +1,4 @@
-package node
+package userspace
 
 import (
 	"bytes"
@@ -47,7 +47,7 @@ func (r *recordingListener) take() []string {
 }
 
 // listenPort reads the port the node's device bound.
-func listenPort(t *testing.T, n *Core) int {
+func listenPort(t *testing.T, n *Node) int {
 	t.Helper()
 	st, err := n.Status()
 	if err != nil {
@@ -61,11 +61,11 @@ func listenPort(t *testing.T, n *Core) int {
 
 func pubKeyB64(t *testing.T, privB64 string) string {
 	t.Helper()
-	priv, err := keyToBytes(privB64)
+	priv, err := base64.StdEncoding.DecodeString(privB64)
 	if err != nil {
 		t.Fatal(err)
 	}
-	pub, err := curve25519.X25519(priv[:], curve25519.Basepoint)
+	pub, err := curve25519.X25519(priv, curve25519.Basepoint)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,7 @@ func pubKeyB64(t *testing.T, privB64 string) string {
 
 // onceTun is a factory that hands out dev on the first call only: a
 // channel tun cannot be reopened once the device closes it.
-func onceTun(dev tun.Device) TunFactory {
+func onceTun(dev tun.Device) func(int) (tun.Device, error) {
 	var mu sync.Mutex
 	return func(int) (tun.Device, error) {
 		mu.Lock()
@@ -88,9 +88,14 @@ func onceTun(dev tun.Device) TunFactory {
 	}
 }
 
+// validKeyB64 returns a base64 32-byte key with every byte set to fill.
+func validKeyB64(fill byte) string {
+	return base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{fill}, 32))
+}
+
 // tunPeer is one side of a two-node tunnel over loopback.
 type tunPeer struct {
-	node *Core
+	node *Node
 	tun  *tuntest.ChannelTUN
 	ip   netip.Addr
 	pub  string
@@ -161,7 +166,7 @@ func ping(t *testing.T, a, b *tunPeer) {
 
 // A packet written into one node's tun comes out of the other's, through a
 // real handshake on the loopback WireGuard sockets.
-func TestCoreCarriesTraffic(t *testing.T) {
+func TestNodeCarriesTraffic(t *testing.T) {
 	a, b := startTunPair(t, quietListener{})
 	ping(t, a, b)
 	ping(t, b, a)
@@ -169,7 +174,7 @@ func TestCoreCarriesTraffic(t *testing.T) {
 
 // Stop closes the tun; when the factory cannot open another, the second
 // Start reports starting then down and leaves the node stopped.
-func TestCoreStartFailsWhenTunFactoryFails(t *testing.T) {
+func TestNodeStartFailsWhenTunFactoryFails(t *testing.T) {
 	rec := &recordingListener{}
 	a, _ := startTunPair(t, rec)
 	a.node.Stop()
@@ -186,7 +191,7 @@ func TestCoreStartFailsWhenTunFactoryFails(t *testing.T) {
 }
 
 // peerStatus returns the status of the peer with key pubB64, or fails.
-func peerStatus(t *testing.T, n *Core, pubB64 string) PeerStatus {
+func peerStatus(t *testing.T, n *Node, pubB64 string) PeerStatus {
 	t.Helper()
 	st, err := n.Status()
 	if err != nil {
@@ -203,7 +208,7 @@ func peerStatus(t *testing.T, n *Core, pubB64 string) PeerStatus {
 
 // Status reports the live peer state: after traffic, the peer has a
 // handshake, the endpoint it was given and nonzero byte counters.
-func TestCoreStatus(t *testing.T) {
+func TestNodeStatus(t *testing.T) {
 	a, b := startTunPair(t, quietListener{})
 	ping(t, a, b)
 
@@ -226,7 +231,7 @@ func TestCoreStatus(t *testing.T) {
 
 // SetPeerKeepalive changes the live device: Status reads the new interval
 // back, and 0 turns it off again.
-func TestCoreSetPeerKeepalive(t *testing.T) {
+func TestNodeSetPeerKeepalive(t *testing.T) {
 	a, b := startTunPair(t, quietListener{})
 	for _, sec := range []int{25, 0} {
 		if err := a.node.SetPeerKeepalive(b.pub, sec); err != nil {
