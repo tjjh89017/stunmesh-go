@@ -2,9 +2,11 @@ package node
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	"github.com/tjjh89017/stunmesh-go/internal/plugin/dialer"
+	"golang.zx2c4.com/wireguard/tun"
 )
 
 // fakeProtector records every Protect call so tests can assert the plugin
@@ -70,5 +72,24 @@ func TestProtectedContextCarriesDNSServers(t *testing.T) {
 		if got[i] != want[i] {
 			t.Errorf("Escape.DNSServers[%d] = %q, want %q", i, got[i], want[i])
 		}
+	}
+}
+
+// Without a DNSServers hook the node hands the dialer no list, so lookups
+// use the system resolver configuration; it never substitutes public
+// resolvers of its own.
+func TestPluginDNSServersDefault(t *testing.T) {
+	c, err := New(&Config{Interface: InterfaceConfig{PrivateKey: validKeyB64(1)}}, func(int) (tun.Device, error) { return nil, nil }, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := c.pluginDNSServers(); got != nil {
+		t.Errorf("pluginDNSServers() = %v, want nil", got)
+	}
+
+	want := []string{"192.0.2.53"}
+	c.dnsServers = func() []string { return want }
+	if got := c.pluginDNSServers(); !slices.Equal(got, want) {
+		t.Errorf("pluginDNSServers() = %v, want %v", got, want)
 	}
 }
