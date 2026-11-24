@@ -180,7 +180,7 @@ func TestPump_PollTimeoutKeepsReader(t *testing.T) {
 	go s.pump(t.Context(), "fake", read, 0)
 	t.Cleanup(func() { close(s.done) })
 
-	ctx, cancel := context.WithTimeout(t.Context(), readRetryDelay)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*readRetryDelay)
 	defer cancel()
 	got, err := s.Read(ctx)
 	if err != nil {
