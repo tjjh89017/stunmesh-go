@@ -117,6 +117,7 @@ TCPDUMP_PID=''
 cleanup() {
 	stop_daemon 2>/dev/null || true
 	[ -n "$TCPDUMP_PID" ] && $SUDO kill "$TCPDUMP_PID" 2>/dev/null || true
+	hostcap_stop
 	sleep 1
 	device_down
 	[ "$HAS_BUNKER" = 1 ] && netns_down
@@ -250,6 +251,12 @@ Darwin | FreeBSD)
 	fi
 	;;
 esac
+# The Darwin and FreeBSD captures above already sit on the outer interface of
+# the machine this script controls; the Linux one sits inside the namespace,
+# before the host's NAT, so Linux adds a host-side one (see netns.sh).
+if [ "$HAS_BUNKER" = 1 ]; then
+	hostcap_start
+fi
 
 if [ -z "${NATPROBE_BIN:-}" ] && command -v go >/dev/null 2>&1; then
 	NATPROBE_BIN=$WORK/natprobe
@@ -360,6 +367,10 @@ ns_exec wg show "$WG_IF" > "$WORK/wg-final.log" 2>&1 || true
 ns_exec wg show "$WG_IF" dump >> "$WORK/wg-final.log" 2>&1 || true
 wgep=$(peer_endpoint)
 rec wg_endpoint "${wgep:-(none)}"
+if [ "$HAS_BUNKER" = 1 ]; then
+	hostcap_stop
+	hostcap_summary "$wgep"
+fi
 
 # The report decides the skip from both sides' probes; this is the cell's own
 # view, which is enough to keep a skipped pair's cells green.

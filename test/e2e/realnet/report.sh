@@ -127,6 +127,19 @@ natprobe() {
 		"before {$(get "$_f" natprobe_before_mapped)} after {$(get "$_f" natprobe_after_mapped)}"
 }
 
+# hostcap PAIR ROLE FILE -- what the host-side capture of a Linux role saw of
+# the peer, outside its namespace; other platforms record none of it.
+hostcap() {
+	_f=$3
+	[ "$(get "$_f" hostcap)" != "(missing)" ] || return 0
+	info "$1" "host capture interface ($2)" "$(get "$_f" hostcap)"
+	info "$1" "in at host from peer IP / from peer endpoint ($2)" \
+		"$(get "$_f" hostcap_in_peer_ip) / $(get "$_f" hostcap_in_peer_endpoint), sport>dport {$(get "$_f" hostcap_in_peer_ip_ports)}"
+	info "$1" "out at host to peer endpoint ($2)" \
+		"$(get "$_f" hostcap_out_peer_endpoint), host sports {$(get "$_f" hostcap_out_peer_sports)}"
+	info "$1" "host sports toward STUN ($2)" "{$(get "$_f" hostcap_out_stun_sports)}"
+}
+
 {
 	echo "## realnet verdict"
 	echo ""
@@ -196,6 +209,7 @@ for pair in $PAIRS; do
 		"$(get "$a" dht_preflight) / $(get "$s" dht_preflight)"
 	for role in anchor subject; do
 		natprobe "$pair" "$role" "$(results "$pair" "$role")"
+		hostcap "$pair" "$role" "$(results "$pair" "$role")"
 	done
 	a_hs=$(get "$a" split_handshake); s_hs=$(get "$s" split_handshake)
 	traffic "$pair" "handshake (anchor)" \
