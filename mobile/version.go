@@ -44,3 +44,34 @@ func Version() string {
 	}
 	return revision
 }
+
+const wireGuardModule = "golang.zx2c4.com/wireguard"
+
+// WireGuardVersion reports the wireguard-go module version the app is linked
+// against, as Go writes it (for example "v0.0.0-20250521234502-f333402bd9cb").
+// It returns "unknown" when the build carries no module information.
+func WireGuardVersion() string {
+	info, _ := debug.ReadBuildInfo()
+	return wireGuardVersion(info)
+}
+
+func wireGuardVersion(info *debug.BuildInfo) string {
+	if info == nil {
+		return "unknown"
+	}
+	for _, dep := range info.Deps {
+		if dep.Path != wireGuardModule {
+			continue
+		}
+		// A local-path replace has no version; the required one is still the
+		// closest description of the code.
+		if dep.Replace != nil && dep.Replace.Version != "" {
+			return dep.Replace.Version
+		}
+		if dep.Version != "" {
+			return dep.Version
+		}
+		break
+	}
+	return "unknown"
+}
