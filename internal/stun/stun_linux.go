@@ -4,11 +4,10 @@ package stun
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"net"
 	"sync"
 	"syscall"
-	"time"
 
 	stun "github.com/pion/stun/v3"
 	"github.com/rs/zerolog"
@@ -19,17 +18,19 @@ import (
 
 const PacketSize = 1500
 
+// udpHeaderSize is where the STUN payload starts: the kernel strips the IP
+// header from raw-socket reads for both families, leaving the UDP header.
+const udpHeaderSize = 8
+
 type Stun struct {
 	port       uint16
 	protocol   string
 	conn4      *ipv4.PacketConn
 	conn6      *ipv6.PacketConn
 	once       sync.Once
-	packetChan chan []byte
-	// done is closed by Stop to release a listener goroutine that is parked
-	// trying to hand off a packet nobody is waiting for any more (a reply that
-	// arrived after Read already timed out). Without it Stop's close of
-	// packetChan would race that send and panic.
+	packetChan chan *stun.Message
+	// done is closed by Stop to end the reader goroutine, including one parked
+	// handing off a packet nobody reads any more.
 	done     chan struct{}
 	stopOnce sync.Once
 }
@@ -122,7 +123,7 @@ func New(ctx context.Context, excludeInterface string, port uint16, protocol str
 	s := &Stun{
 		port:       port,
 		protocol:   protocol,
-		packetChan: make(chan []byte),
+		packetChan: make(chan *stun.Message),
 		done:       make(chan struct{}),
 	}
 
@@ -133,10 +134,9 @@ func New(ctx context.Context, excludeInterface string, port uint16, protocol str
 	return s, nil
 }
 
-// Stop releases the listener goroutine and closes the socket. packetChan is
-// deliberately left open: Read already selects with a timeout, so closing it
-// buys nothing and only opens a send-on-closed-channel race with a listener
-// still holding a late reply. The channel is garbage collected with the Stun.
+// Stop releases the reader goroutine and closes the socket, which unblocks a
+// pending read. packetChan is deliberately left open: closing it would race a
+// reader still holding a late reply.
 func (s *Stun) Stop() error {
 	s.stopOnce.Do(func() { close(s.done) })
 	if s.protocol == "ipv6" {
@@ -156,40 +156,14 @@ func (s *Stun) readFrom(buf []byte) (int, error) {
 
 func (s *Stun) Start(ctx context.Context) {
 	s.once.Do(func() {
-		go func() {
-			timeout := time.After(StunTimeout + 5*time.Second)
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-s.done:
-					return
-				case <-timeout:
-					return
-				default:
-					buf := make([]byte, PacketSize)
-					n, err := s.readFrom(buf)
-					if err != nil {
-						// Stop closed the socket out from under us; leave
-						// rather than spin on a dead fd until timeout.
-						select {
-						case <-s.done:
-							return
-						default:
-						}
-						continue
-					}
-					select {
-					case s.packetChan <- buf[:n]:
-						return
-					case <-ctx.Done():
-						return
-					case <-s.done:
-						return
-					}
-				}
+		go s.pump(ctx, "raw socket", func() ([]byte, error) {
+			buf := make([]byte, PacketSize)
+			n, err := s.readFrom(buf)
+			if errors.Is(err, net.ErrClosed) {
+				return nil, errReaderClosed
 			}
-		}()
+			return buf[:n], err
+		}, udpHeaderSize)
 	})
 }
 
@@ -208,31 +182,6 @@ func (s *Stun) writeTo(packet []byte, addr net.Addr) (int, error) {
 		return s.conn6.WriteTo(packet, nil, destAddr)
 	}
 	return s.conn4.WriteTo(packet, nil, destAddr)
-}
-
-func (s *Stun) Read(ctx context.Context) (*stun.Message, error) {
-	select {
-	case buf := <-s.packetChan:
-		// Linux kernel strips IP headers for both IPv4 and IPv6 raw sockets
-		// We only receive: UDP header (8 bytes) + STUN payload
-		// Note: BPF filter runs before IP header stripping, so it needs different offsets
-		if len(buf) < 8 {
-			return nil, fmt.Errorf("short packet: %d bytes, need at least a UDP header", len(buf))
-		}
-		m := &stun.Message{
-			Raw: buf[8:], // Skip UDP header
-		}
-
-		if err := m.Decode(); err != nil {
-			return nil, err
-		}
-
-		return m, nil
-	case <-time.After(StunTimeout):
-		return nil, ErrTimeout
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
 }
 
 func stunBpfFilter(ctx context.Context, port uint16, protocol string) ([]bpf.RawInstruction, error) {

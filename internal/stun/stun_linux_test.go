@@ -148,37 +148,6 @@ func buildIPv6StunPacket(dstPort uint16, magic uint32) []byte {
 	return buf
 }
 
-// TestStun_Read_ShortPacket covers Read's guard against a packet shorter
-// than the 8-byte UDP header it always tries to skip. This is the
-// application-layer counterpart to TestStunBpfFilter's "truncated before
-// magic cookie" cases: those prove the BPF filter drops such packets before
-// they ever reach userspace, this proves Read itself does not panic slicing
-// past the buffer if one arrives anyway.
-func TestStun_Read_ShortPacket(t *testing.T) {
-	s := &Stun{packetChan: make(chan []byte, 1)}
-	s.packetChan <- []byte{1, 2, 3, 4, 5, 6, 7} // 7 bytes, one short of the UDP header
-
-	_, err := s.Read(t.Context())
-	if err == nil {
-		t.Fatal("expected an error for a packet shorter than the UDP header")
-	}
-}
-
-// TestStun_Read_DecodeFailure covers the branch where a packet clears the
-// 8-byte UDP-header skip but what follows is not a valid STUN message.
-func TestStun_Read_DecodeFailure(t *testing.T) {
-	s := &Stun{packetChan: make(chan []byte, 1)}
-	// 8-byte UDP header + 4 bytes of garbage: long enough to pass the short-
-	// packet guard, far short of STUN's 20-byte message header.
-	buf := append(make([]byte, 8), 0xff, 0xff, 0xff, 0xff)
-	s.packetChan <- buf
-
-	_, err := s.Read(t.Context())
-	if err == nil {
-		t.Fatal("expected a STUN decode error")
-	}
-}
-
 func TestStunBpfFilter(t *testing.T) {
 	const (
 		port  = uint16(51820)

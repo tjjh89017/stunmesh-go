@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	pcap "github.com/packetcap/go-pcap"
-	stun "github.com/pion/stun/v3"
 	"github.com/rs/zerolog"
 	"golang.org/x/net/bpf"
 )
@@ -225,59 +224,6 @@ func TestDefaultRouteInterface_Smoke(t *testing.T) {
 		if _, err := net.InterfaceByName(name); err != nil {
 			t.Errorf("defaultRouteInterface(%q) returned %q which is not a real interface: %v", protocol, name, err)
 		}
-	}
-}
-
-// TestDecodeStunPacket_ShortPacket covers the guard against a buffer shorter
-// than the payload offset. On darwin/bsd this replaces what Read itself does
-// on Linux: Read here only receives an already-decoded *stun.Message off
-// packetChan (see TestStun_Read_ReceivesDecodedMessage), so the short-packet
-// and decode-failure logic lives in the per-interface Start goroutine instead
-// -- decodeStunPacket is that logic, pulled out so it is testable without a
-// real pcap handle.
-func TestDecodeStunPacket_ShortPacket(t *testing.T) {
-	buf := []byte{1, 2, 3, 4, 5, 6, 7} // shorter than the smallest realistic payloadOff (Null+IPv4: 4+20+8=32)
-
-	_, err := decodeStunPacket(buf, 32)
-	if err == nil {
-		t.Fatal("expected an error for a packet shorter than the payload offset")
-	}
-	if !errors.Is(err, errShortPacket) {
-		t.Errorf("expected errShortPacket, got %v", err)
-	}
-}
-
-// TestDecodeStunPacket_DecodeFailure covers the branch where buf clears the
-// payload-offset guard but what follows is not a valid STUN message.
-func TestDecodeStunPacket_DecodeFailure(t *testing.T) {
-	const payloadOff = 32 // Null header + IPv4 header + UDP header
-	// payloadOff bytes of leading header + 4 bytes of garbage: long enough to
-	// pass the short-packet guard, far short of STUN's 20-byte message header.
-	buf := append(make([]byte, payloadOff), 0xff, 0xff, 0xff, 0xff)
-
-	_, err := decodeStunPacket(buf, payloadOff)
-	if err == nil {
-		t.Fatal("expected a STUN decode error")
-	}
-	if errors.Is(err, errShortPacket) {
-		t.Errorf("expected a decode error distinct from errShortPacket, got %v", err)
-	}
-}
-
-// TestStun_Read_ReceivesDecodedMessage documents that, unlike Linux,
-// packetChan here carries an already-decoded *stun.Message: Read is a plain
-// passthrough with no parsing of its own to test.
-func TestStun_Read_ReceivesDecodedMessage(t *testing.T) {
-	s := &Stun{packetChan: make(chan *stun.Message, 1)}
-	want := &stun.Message{}
-	s.packetChan <- want
-
-	got, err := s.Read(t.Context())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got != want {
-		t.Errorf("Read returned %p, want the exact message sent on packetChan (%p)", got, want)
 	}
 }
 

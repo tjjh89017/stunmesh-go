@@ -336,6 +336,8 @@ The protocol configuration operates at two distinct levels:
 - `resolver.Resolve(ctx, deviceName, port, protocol, firewallMark)`: Performs STUN discovery and returns endpoint
   - Returns error if port == 0 or host == "" (validates endpoint before returning)
 - `stun.Connect(ctx, stunAddr)` (shared, `helper_socket.go`): Sends STUN request and receives response, returning `(host, port, err)`
+  - Waits up to `StunTimeout` for a reply with its own transaction ID and drops any other message (a late reply to an earlier server, a stray packet)
+  - One reader per `Start` lives until `Stop` (or ctx end) and feeds every decoded message through the shared `pump`, so each server in `Resolve`'s list gets a reader; undecodable packets are skipped
   - The platform `writeTo` converts `net.UDPAddr` to `net.IPAddr` for raw-socket transmission on Linux
 
 ### Encryption and Storage Format
