@@ -93,7 +93,7 @@ func configureBPFFilter(ctx context.Context, linkType uint32, port uint16, proto
 // listenInterfaces and listenDefaultRoute restrict which underlay interfaces to
 // open (see resolveListenInterfaces). Empty list + false keeps the historical
 // "open every eligible interface" behavior.
-func New(ctx context.Context, excludeInterface string, port uint16, protocol string, firewallMark int, listenInterfaces []string, listenDefaultRoute bool) (*Stun, error) {
+func New(ctx context.Context, excludeInterface string, port uint16, protocol string, firewallMark int, listenInterfaces []string, listenDefaultRoute bool) (_ *Stun, err error) {
 	logger := zerolog.Ctx(ctx)
 
 	interfaceNames, required, err := resolveListenInterfaces(logger, protocol, excludeInterface, listenInterfaces, listenDefaultRoute, net.Interfaces, defaultRouteInterface)
@@ -105,7 +105,20 @@ func New(ctx context.Context, excludeInterface string, port uint16, protocol str
 
 	var handles []interfaceHandle
 
+	var c net.PacketConn
 	handleCtx, stopHandles := context.WithCancel(ctx)
+	defer func() {
+		if err == nil {
+			return
+		}
+		stopHandles()
+		for _, ih := range handles {
+			ih.handle.Close()
+		}
+		if c != nil {
+			_ = c.Close()
+		}
+	}()
 
 	// Create pcap handle for each selected interface
 	for _, ifaceName := range interfaceNames {
@@ -146,16 +159,14 @@ func New(ctx context.Context, excludeInterface string, port uint16, protocol str
 	}
 
 	if len(handles) == 0 {
-		stopHandles()
 		logger.Error().Msg("no usable interfaces found after attempting to open all eligible interfaces")
 		return nil, errors.New("no usable interfaces found")
 	}
 
 	logger.Info().Msgf("successfully registered OpenLive for %d interfaces", len(handles))
 
-	c, err := createRawSocket(protocol, handles, *logger)
+	c, err = createRawSocket(protocol, *logger)
 	if err != nil {
-		stopHandles()
 		return nil, err
 	}
 
@@ -169,15 +180,14 @@ func New(ctx context.Context, excludeInterface string, port uint16, protocol str
 		stopHandles: stopHandles,
 	}
 
-	if err := setPacketConn(s, c); err != nil {
-		stopHandles()
+	if err = setPacketConn(s, c); err != nil {
 		return nil, err
 	}
 
 	return s, nil
 }
 
-func createRawSocket(protocol string, handles []interfaceHandle, logger zerolog.Logger) (net.PacketConn, error) {
+func createRawSocket(protocol string, logger zerolog.Logger) (net.PacketConn, error) {
 	network := "ip4:17"
 	bindAddr := "0.0.0.0"
 	if protocol == "ipv6" {
@@ -188,15 +198,7 @@ func createRawSocket(protocol string, handles []interfaceHandle, logger zerolog.
 		logger.Debug().Msg("creating IPv4 raw socket")
 	}
 
-	c, err := net.ListenPacket(network, bindAddr)
-	if err != nil {
-		// Close all handles on error
-		for _, ih := range handles {
-			ih.handle.Close()
-		}
-		return nil, err
-	}
-	return c, nil
+	return net.ListenPacket(network, bindAddr)
 }
 
 func setPacketConn(s *Stun, c net.PacketConn) error {
