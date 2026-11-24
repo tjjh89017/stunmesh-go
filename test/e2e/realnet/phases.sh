@@ -17,6 +17,8 @@
 # proxies the daemon uses. A role that knows the pair is skipped stops its
 # handshake wait, and a missing acknowledgement then fails neither cell. The
 # skip is annotated with one ::warning:: per job, which changes no exit status.
+# Before its final snapshot the role still waits for the peer's endpoint
+# (wait_peer_endpoint), since the endpoint round-trip check is never skipped.
 
 # wait_handshake KEY -- poll until the peer's latest-handshake is nonzero.
 wait_handshake() {
@@ -150,6 +152,30 @@ nat_reason() {
 	'' | unknown | '(missing)') echo "$1 NAT is symmetric" ;;
 	*) echo "$1 NAT is symmetric (egress $2)" ;;
 	esac
+}
+
+# peer_endpoint -- the peer's endpoint on the device, empty while none is set.
+peer_endpoint() {
+	ns_exec wg show "$WG_IF" endpoints | awk 'NR==1 && $2 != "(none)" {print $2}'
+}
+
+# wait_peer_endpoint -- poll until the daemon has applied the peer's endpoint.
+# A skipped pair has no handshake wait to keep the daemon up that long, and
+# the final snapshot feeds the hard endpoint round-trip check. The deadline
+# is the one wait_handshake would have had, counted from DAEMON_TS, so a
+# skipped role never runs longer than an unskipped one.
+wait_peer_endpoint() {
+	_ep_deadline=$((DAEMON_TS + HANDSHAKE_TIMEOUT))
+	while [ -z "$(peer_endpoint)" ]; do
+		if [ "$(date +%s)" -ge "$_ep_deadline" ]; then
+			log "no peer endpoint within ${HANDSHAKE_TIMEOUT}s of the daemon start"
+			rec skip_endpoint_wait fail
+			return 1
+		fi
+		sleep 5
+	done
+	rec skip_endpoint_wait "pass after $(($(date +%s) - DAEMON_TS))s"
+	return 0
 }
 
 # store_count -- successful publishes so far, per the daemon log.

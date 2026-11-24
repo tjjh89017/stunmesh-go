@@ -583,7 +583,10 @@ go build -tags mobile ./mobile/...
       acknowledgement fails neither cell; the cells and the report print a
       `::warning::` naming the symmetric role. The roles share that fact through
       the OpenDHT proxies. Symmetric NAT is the only skip reason; the other
-      hard checks stay hard.
+      hard checks stay hard. A skipped role still keeps its daemon up until
+      the peer's endpoint is on the device (bounded by `HANDSHAKE_TIMEOUT`
+      from the daemon start), so the endpoint round-trip check sees a real
+      snapshot.
       The full-tunnel escape scenario runs only on the Linux subject (the
       netns crash bunker exists nowhere else)
 
