@@ -9,6 +9,9 @@
 # The shell plugin execs /bin/sh, which a native Windows binary does not
 # have, so Windows runs the plain scenario with opendht alone.
 #
+# The STUN list puts a server that never answers ahead of the real one, so
+# every discovery times out once and falls back to the second entry.
+#
 # stunmesh attaches to an existing device (it never creates one), so the wg
 # interface, keys, listen port and peer must be in place before it runs. Only
 # the interface *creation* differs per OS; `wg set`/`wg show` are identical
@@ -37,6 +40,11 @@ export E2E_OS="$OS"
 ENDPOINTS=${ENDPOINTS:-'https://dhtproxy2.jami.net https://dhtproxy3.jami.net'}
 
 PORT0=51820; PORT1=51821
+# Loopback discard port: nothing answers, so the probe times out instead of
+# failing fast. It must differ from PORT0/PORT1, or the request sent to it
+# would pass the BPF filter of the other daemon's raw socket.
+DEAD_STUN=127.0.0.1:9
+export E2E_DEAD_STUN="$DEAD_STUN"
 ALLOWED0=10.66.0.1/32; ALLOWED1=10.66.0.2/32  # placeholder allowed-ips per peer
 IF0=""; IF1=""   # resolved names (utunN on macOS)
 CHAIN=1
@@ -156,7 +164,7 @@ write_config() { # IF PEER_PUB FILE SLOT [cycle|undefined]
 	[ "$OS" = Windows ] && lvl=debug
 	{
 		echo "log: {level: $lvl, format: json}"
-		echo "stun: {addresses: [\"stun.l.google.com:19302\"]}"
+		echo "stun: {addresses: [\"$DEAD_STUN\", \"stun.l.google.com:19302\"]}"
 		echo "plugins:"
 		echo "  dht:"
 		echo "    type: builtin"

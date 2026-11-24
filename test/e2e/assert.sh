@@ -14,6 +14,8 @@
 #   4. only with E2E_STORE set (the chain scenario, see run.sh): both traced
 #      legs of the mirror stored each side's key, the file store in E2E_STORE
 #      holds it, and each side read the other's key back from the file store
+#   5. only with E2E_DEAD_STUN set: each run timed out on that silent first
+#      STUN server and fell back; checks 2 and 3 prove the fallback worked
 #
 # Args: IF0 LOG0 IF1 LOG1
 set -eu
@@ -190,6 +192,27 @@ if [ -n "${E2E_STORE-}" ]; then
 		'' | *[!0-9a-f]*) echo "FAIL: $k holds '$v', not hex"; fail=1 ;;
 		*) echo "ok: $k holds a ${#v}-char hex value" ;;
 		esac
+	done
+fi
+
+if [ -n "${E2E_DEAD_STUN-}" ]; then
+	echo "== 5. STUN fallback past the silent server $E2E_DEAD_STUN =="
+	# A timeout, not a fast send or resolve error: only a silent server makes
+	# the next server depend on the reader that outlived the first probe.
+	timeout_text='timed out waiting for response'
+	[ "${E2E_OS-}" = "Windows" ] && timeout_text='STUN exchange timed out'
+	for pair in "$IF0:$LOG0" "$IF1:$LOG1"; do
+		log=${pair#*:}
+		n=$(jq -c --arg s "$E2E_DEAD_STUN" --arg e "$timeout_text" \
+			'select(.message=="STUN server failed, trying next" and .server==$s and ((.error // "") | contains($e)))' \
+			"$log" | wc -l | tr -d ' ')
+		if [ "$n" != "0" ]; then
+			echo "ok: ${pair%%:*} timed out on $E2E_DEAD_STUN $n time(s) and fell back"
+		else
+			echo "FAIL: ${pair%%:*} logged no '$timeout_text' fallback for $E2E_DEAD_STUN:"
+			jq -c 'select(.message=="STUN server failed, trying next")|{server,error}' "$log"
+			fail=1
+		fi
 	done
 fi
 
