@@ -5,6 +5,7 @@ package stun
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -132,5 +133,60 @@ func TestPump_ReturnsOnDone(t *testing.T) {
 	case <-exited:
 	case <-time.After(time.Second):
 		t.Fatal("pump did not return after done was closed")
+	}
+}
+
+func TestPump_FailingSourceDoesNotSpin(t *testing.T) {
+	const period = 300 * time.Millisecond
+	s := &Stun{packetChan: make(chan *stun.Message), done: make(chan struct{})}
+	var reads atomic.Int64
+	read := func() ([]byte, error) {
+		reads.Add(1)
+		return nil, errors.New("device not configured")
+	}
+
+	exited := make(chan struct{})
+	go func() {
+		s.pump(t.Context(), "fake", read, 0)
+		close(exited)
+	}()
+
+	time.Sleep(period)
+	stopAt := time.Now()
+	close(s.done)
+	select {
+	case <-exited:
+	case <-time.After(time.Second):
+		t.Fatal("pump did not return after done was closed")
+	}
+	if d := time.Since(stopAt); d > readRetryDelay+200*time.Millisecond {
+		t.Errorf("pump took %v to see done", d)
+	}
+	if n, limit := reads.Load(), int64(period/readRetryDelay)+2; n > limit {
+		t.Errorf("failing source read %d times in %v, want at most %d", n, period, limit)
+	}
+}
+
+func TestPump_PollTimeoutKeepsReader(t *testing.T) {
+	s := &Stun{packetChan: make(chan *stun.Message), done: make(chan struct{})}
+	m := buildMessage(t, stun.TransactionID, stun.BindingSuccess)
+	var calls atomic.Int64
+	read := func() ([]byte, error) {
+		if calls.Add(1) <= 3 {
+			return nil, context.DeadlineExceeded
+		}
+		return m.Raw, nil
+	}
+	go s.pump(t.Context(), "fake", read, 0)
+	t.Cleanup(func() { close(s.done) })
+
+	ctx, cancel := context.WithTimeout(t.Context(), readRetryDelay)
+	defer cancel()
+	got, err := s.Read(ctx)
+	if err != nil {
+		t.Fatalf("reply after poll timeouts: %v", err)
+	}
+	if got.TransactionID != m.TransactionID {
+		t.Fatal("wrong message")
 	}
 }

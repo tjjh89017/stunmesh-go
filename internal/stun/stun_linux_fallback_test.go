@@ -5,6 +5,7 @@ package stun
 import (
 	"errors"
 	"net"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -17,6 +18,14 @@ import (
 // the reader runs without root. A UDP socket returns only the payload, so
 // deliver prepends the 8-byte UDP header a raw socket would return.
 func newLoopbackStun(t *testing.T) (*Stun, *net.UDPConn) {
+	t.Helper()
+	s, sc := newIdleLoopbackStun(t)
+	s.Start(zerolog.Nop().WithContext(t.Context()))
+	return s, sc
+}
+
+// newIdleLoopbackStun is newLoopbackStun without Start.
+func newIdleLoopbackStun(t *testing.T) (*Stun, *net.UDPConn) {
 	t.Helper()
 	rc, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	if err != nil {
@@ -35,7 +44,6 @@ func newLoopbackStun(t *testing.T) (*Stun, *net.UDPConn) {
 		done:       make(chan struct{}),
 	}
 	t.Cleanup(func() { _ = s.Stop() })
-	s.Start(zerolog.Nop().WithContext(t.Context()))
 	return s, sc
 }
 
@@ -139,23 +147,52 @@ func TestFallback_UndecodablePacketIsSkipped(t *testing.T) {
 	wantHealthy(t, a, err)
 }
 
-func TestStop_EndsLinuxReader(t *testing.T) {
-	s, _ := newLoopbackStun(t)
+// runPump runs the Linux reader loop on s and counts its reads. The
+// returned channel closes when pump returns.
+func runPump(t *testing.T, s *Stun) (<-chan struct{}, *atomic.Int64) {
+	t.Helper()
+	var reads atomic.Int64
+	exited := make(chan struct{})
+	go func() {
+		defer close(exited)
+		s.pump(zerolog.Nop().WithContext(t.Context()), "raw socket", func() ([]byte, error) {
+			reads.Add(1)
+			return s.readPacket()
+		}, udpHeaderSize)
+	}()
+	return exited, &reads
+}
 
-	stopped := make(chan error, 1)
-	go func() { stopped <- s.Stop() }()
+func waitExit(t *testing.T, exited <-chan struct{}) {
+	t.Helper()
 	select {
-	case err := <-stopped:
-		if err != nil {
-			t.Fatalf("Stop: %v", err)
-		}
+	case <-exited:
 	case <-time.After(time.Second):
-		t.Fatal("Stop did not return")
+		t.Fatal("reader did not return")
 	}
+}
 
-	// A closed socket must not leave the reader spinning: with done closed and
-	// the fd gone, pump returns instead of retrying.
-	if _, err := s.readFrom(make([]byte, 1)); !errors.Is(err, net.ErrClosed) {
-		t.Fatalf("read after Stop: want net.ErrClosed, got %v", err)
+// TestLinuxReader_EndsOnClosedSocket closes the socket without closing done,
+// so only the closed-socket path can end the reader.
+func TestLinuxReader_EndsOnClosedSocket(t *testing.T) {
+	s, _ := newIdleLoopbackStun(t)
+	exited, reads := runPump(t, s)
+
+	if err := s.conn4.Close(); err != nil {
+		t.Fatal(err)
 	}
+	waitExit(t, exited)
+	if n := reads.Load(); n > 2 {
+		t.Fatalf("reader read %d times on a closed socket", n)
+	}
+}
+
+func TestLinuxReader_EndsOnStop(t *testing.T) {
+	s, _ := newIdleLoopbackStun(t)
+	exited, _ := runPump(t, s)
+
+	if err := s.Stop(); err != nil {
+		t.Fatalf("Stop: %v", err)
+	}
+	waitExit(t, exited)
 }
