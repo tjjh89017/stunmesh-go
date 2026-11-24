@@ -573,7 +573,8 @@ go build -tags mobile ./mobile/...
       Skip rule: both roles run a NAT probe (`natprobe`); if either role
       reports `mapping=dependent` (symmetric NAT), the pair's traffic checks
       (windows hard ones included) print as skipped and a missing
-      acknowledgement fails neither cell. The roles share that fact through
+      acknowledgement fails neither cell; the cells and the report print a
+      `::warning::` naming the symmetric role. The roles share that fact through
       the OpenDHT proxies. Symmetric NAT is the only skip reason; the other
       hard checks stay hard.
       The full-tunnel escape scenario runs only on the Linux subject (the

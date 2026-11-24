@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 )
 
@@ -21,8 +22,9 @@ func signalKeyHash(seed string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// signal stores put, or checks for has, under the key derived from seed. The
-// first endpoint that answers decides; a failed request moves to the next.
+// signal stores put, or looks for a value starting with has and prints it,
+// under the key derived from seed. The first endpoint that answers decides; a
+// failed request moves to the next.
 func signal(ctx context.Context, seed string, endpoints []string, put, has string) error {
 	if (put == "") == (has == "") {
 		return errors.New("need exactly one of -signal-put and -signal-has")
@@ -41,7 +43,8 @@ func signal(ctx context.Context, seed string, endpoints []string, put, has strin
 			var body []byte
 			body, err = signalGet(ctx, url)
 			if err == nil {
-				if signalContains(body, has) {
+				if v, ok := signalFind(body, has); ok {
+					logf(os.Stdout, "%s\n", v)
 					return nil
 				}
 				return errNotFound
@@ -89,9 +92,9 @@ func signalDo(ctx context.Context, method, url string, body []byte) ([]byte, err
 	return data, nil
 }
 
-// signalContains reports whether the proxy's newline-delimited JSON values
-// hold want. Anything that does not decode is ignored.
-func signalContains(body []byte, want string) bool {
+// signalFind returns the first of the proxy's newline-delimited JSON values
+// that starts with prefix. Anything that does not decode is ignored.
+func signalFind(body []byte, prefix string) (string, bool) {
 	for _, line := range bytes.Split(body, []byte("\n")) {
 		var v struct {
 			Data string `json:"data"`
@@ -100,9 +103,9 @@ func signalContains(body []byte, want string) bool {
 			continue
 		}
 		raw, err := base64.StdEncoding.DecodeString(v.Data)
-		if err == nil && string(raw) == want {
-			return true
+		if err == nil && strings.HasPrefix(string(raw), prefix) {
+			return string(raw), true
 		}
 	}
-	return false
+	return "", false
 }

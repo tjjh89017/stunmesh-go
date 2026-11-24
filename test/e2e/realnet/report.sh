@@ -24,7 +24,8 @@
 # mapping=dependent (before or after the tunnel phase), the pair's traffic
 # checks -- handshake, acknowledgement, transfer counters, ping and iperf3,
 # hard ones included -- are printed as skipped with their raw values, and
-# never fail. It is the only skip reason. The hard checks listed above that
+# never fail; the pair also gets one ::warning:: annotation, which changes no
+# exit status. It is the only skip reason. The hard checks listed above that
 # are not traffic checks stay hard for every pair.
 #
 # Usage: report.sh ARTIFACT_DIR
@@ -93,6 +94,19 @@ traffic() { # PAIR NAME DETAIL VALUE...
 # Informational traffic checks: skipped when the pair is, else info.
 soft() { # PAIR NAME DETAIL
 	if [ -n "$SKIP" ]; then skipped "$@"; else info "$@"; fi
+}
+sym_egress() { # FILE -> egress IP of the first probe that reported dependent
+	if [ "$(get "$1" natprobe_before_mapping)" = dependent ]; then
+		get "$1" egress_ip_before
+	else
+		get "$1" egress_ip_after
+	fi
+}
+nat_reason() { # ROLE EGRESS -- same text as phases.sh
+	case "$2" in
+	'' | unknown | '(missing)') echo "$1 NAT is symmetric" ;;
+	*) echo "$1 NAT is symmetric (egress $2)" ;;
+	esac
 }
 symmetric() { # FILE -> success when either probe reported dependent mapping
 	[ "$(get "$1" natprobe_before_mapping)" = dependent ] ||
@@ -164,13 +178,13 @@ for pair in $PAIRS; do
 
 	SKIP=''
 	if symmetric "$a"; then
-		SKIP="anchor NAT is symmetric"
+		SKIP=$(nat_reason anchor "$(sym_egress "$a")")
 	elif symmetric "$s"; then
-		SKIP="subject NAT is symmetric"
+		SKIP=$(nat_reason subject "$(sym_egress "$s")")
 	fi
 	if [ -n "$SKIP" ]; then
 		echo "skip[$pair]: $SKIP"
-		echo "::notice title=realnet $pair::pair skipped: $SKIP; traffic checks not evaluated"
+		echo "::warning title=realnet $pair skipped::$SKIP; traffic checks skipped"
 		echo "| $pair | traffic checks | skipped | $SKIP |" >> "$SUM"
 	fi
 
