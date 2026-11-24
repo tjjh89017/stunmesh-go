@@ -110,12 +110,12 @@ func New(ctx context.Context, excludeInterface string, port uint16, protocol str
 		})
 	}
 
-	c, err := createRawSocket(ctx, protocol, firewallMark, *logger)
+	filter, err := stunBpfFilter(ctx, port, protocol)
 	if err != nil {
 		return nil, err
 	}
 
-	filter, err := stunBpfFilter(ctx, port, protocol)
+	c, err := createRawSocket(ctx, protocol, firewallMark, *logger)
 	if err != nil {
 		return nil, err
 	}
@@ -128,6 +128,7 @@ func New(ctx context.Context, excludeInterface string, port uint16, protocol str
 	}
 
 	if err := setPacketConn(s, c, filter); err != nil {
+		_ = c.Close()
 		return nil, err
 	}
 
