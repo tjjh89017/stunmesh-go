@@ -216,9 +216,10 @@ runs:
     # Evidence for post-mortem only: logs, natprobe output and captures. The
     # captures are header-only (the payload is encrypted and useless) and
     # ring-buffered, so the upload stays a few MB outside the throughput
-    # window and 100MB at worst. The attempt in the name keeps a failed
-    # attempt's evidence after a rerun of the pair; the name must not match
-    # the report job's realnet-results-* pattern.
+    # window and 100MB at worst; a Linux role adds the host-side
+    # pcap/host-outer.pcap* ring, 10MB at most. The attempt in the name
+    # keeps a failed attempt's evidence after a rerun of the pair; the name
+    # must not match the report job's realnet-results-* pattern.
     - uses: actions/upload-artifact@v7
       if: always()
       with:
