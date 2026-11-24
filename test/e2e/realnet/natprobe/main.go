@@ -11,7 +11,8 @@
 //
 // With -signal-key it instead passes one fact between the two jobs of a pair
 // through the OpenDHT proxies in -signal-endpoints: -signal-put stores a value
-// under the key, and -signal-has exits 0 only if that exact value is stored.
+// under the key, and -signal-has exits 0 and prints the stored value only if
+// one starts with the given prefix.
 // Both jobs derive the key from values they share, such as the run id.
 package main
 
@@ -51,7 +52,7 @@ func main() {
 	signalKey := flag.String("signal-key", "", "seed of the signal key; selects the signal mode")
 	signalEndpoints := flag.String("signal-endpoints", "", "whitespace-separated OpenDHT proxy URLs")
 	signalPut := flag.String("signal-put", "", "value to store under the signal key")
-	signalHas := flag.String("signal-has", "", "value to look for under the signal key")
+	signalHas := flag.String("signal-has", "", "value prefix to look for under the signal key")
 	flag.Parse()
 
 	if *signalKey != "" {

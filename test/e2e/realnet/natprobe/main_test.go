@@ -64,12 +64,13 @@ func TestClassifyNeedsSamePort(t *testing.T) {
 	}
 }
 
-func TestSignalContains(t *testing.T) {
-	body := []byte("{\"data\":\"cm9sZT1hbmNob3IgbmF0PWRlcGVuZGVudA==\"}\nnot json\n{\"data\":\"!!\"}\n")
-	if !signalContains(body, "role=anchor nat=dependent") {
-		t.Error("stored value not found")
+func TestSignalFind(t *testing.T) {
+	// "role=anchor nat=dependent egress=203.0.113.1"
+	body := []byte("not json\n{\"data\":\"!!\"}\n{\"data\":\"cm9sZT1hbmNob3IgbmF0PWRlcGVuZGVudCBlZ3Jlc3M9MjAzLjAuMTEzLjE=\"}\n")
+	if v, ok := signalFind(body, "role=anchor nat=dependent"); !ok || v != "role=anchor nat=dependent egress=203.0.113.1" {
+		t.Errorf("got %q %v, want the stored value", v, ok)
 	}
-	if signalContains(body, "role=subject nat=dependent") {
+	if _, ok := signalFind(body, "role=subject nat=dependent"); ok {
 		t.Error("value found that was not stored")
 	}
 }

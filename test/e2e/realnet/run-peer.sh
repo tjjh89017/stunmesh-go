@@ -26,8 +26,8 @@
 #
 # Symmetric NAT is the one reason a pair is skipped: when a probe on either
 # role reports endpoint-dependent mapping, no traversal is expected, so the
-# report prints the traffic checks as skipped and a missing acknowledgement
-# fails neither cell. See phases.sh for how the two jobs share that fact.
+# report prints the traffic checks as skipped, a missing acknowledgement
+# fails neither cell, and both the cell and the report print a ::warning::. See phases.sh for how the two jobs share that fact.
 #
 # Usage: run-peer.sh /path/to/stunmesh
 # Env:
@@ -85,6 +85,8 @@ RUN_ATTEMPT=${GITHUB_RUN_ATTEMPT:-local}
 PAIR_ACK=fail
 OWN_SYMMETRIC=0
 PEER_SYMMETRIC=0
+OWN_EGRESS=''
+PEER_EGRESS=''
 NAT_SKIP_REASON=''
 
 case "$ROLE" in
@@ -356,7 +358,7 @@ rec wg_endpoint "${wgep:-(none)}"
 # view, which is enough to keep a skipped pair's cells green.
 if nat_skip; then
 	rec nat_skip "$NAT_SKIP_REASON"
-	echo "::notice title=realnet ${REALNET_PAIR:-local} $ROLE::pair skipped: $NAT_SKIP_REASON; traffic checks not evaluated"
+	echo "::warning title=realnet ${REALNET_PAIR:-local} skipped::$NAT_SKIP_REASON; traffic checks skipped"
 else
 	rec nat_skip no
 fi

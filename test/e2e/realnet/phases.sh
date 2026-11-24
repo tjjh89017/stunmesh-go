@@ -15,7 +15,8 @@
 # makes the pair skipped. The role stores that fact under a signal key shared
 # by both jobs of the pair (run id, attempt, pair), through the same OpenDHT
 # proxies the daemon uses. A role that knows the pair is skipped stops its
-# handshake wait, and a missing acknowledgement then fails neither cell.
+# handshake wait, and a missing acknowledgement then fails neither cell. The
+# skip is annotated with one ::warning:: per job, which changes no exit status.
 
 # wait_handshake KEY -- poll until the peer's latest-handshake is nonzero.
 wait_handshake() {
@@ -99,9 +100,10 @@ nat_probe() {
 	done
 	_np_v=$(sed -n 's/^public_ip=//p' "$_np_out" | tail -n 1)
 	rec "egress_ip_$1" "${_np_v:-unknown}"
-	if grep -qx 'mapping=dependent' "$_np_out"; then
+	if grep -qx 'mapping=dependent' "$_np_out" && [ "${OWN_SYMMETRIC:-0}" != 1 ]; then
 		OWN_SYMMETRIC=1
-		nat_signal put "role=$ROLE nat=dependent" || true
+		OWN_EGRESS=${_np_v:-unknown}
+		nat_signal put "role=$ROLE nat=dependent egress=$OWN_EGRESS" >/dev/null || true
 	fi
 	if [ -z "${NP_PORT:-}" ]; then
 		NP_PORT=$(sed -n 's/^local_port=//p' "$_np_out" | tail -n 1)
@@ -112,8 +114,9 @@ nat_probe() {
 }
 
 # nat_signal put|has VALUE -- store VALUE under this pair's signal key, or
-# succeed only if the other job stored it. CI-only: without a run id there is
-# no key both jobs share, so it always fails.
+# print a value the other job stored that starts with VALUE, failing when
+# there is none. CI-only: without a run id there is no key both jobs share,
+# so it always fails.
 nat_signal() {
 	[ -n "${GITHUB_RUN_ID:-}" ] && [ -n "${NATPROBE_BIN:-}" ] && [ -x "$NATPROBE_BIN" ] || return 1
 	"$NATPROBE_BIN" -signal-key "stunmesh-realnet-nat|${GITHUB_REPOSITORY:-}|$GITHUB_RUN_ID|$RUN_ATTEMPT|${REALNET_PAIR:-local}" \
@@ -121,22 +124,32 @@ nat_signal() {
 }
 
 # nat_skip -- succeed when either role's NAT is known to be symmetric, and set
-# NAT_SKIP_REASON. The peer's fact is sticky once seen: its stored value
-# expires with the DHT entry.
+# NAT_SKIP_REASON (with that role's egress IP when known). The peer's fact is
+# sticky once seen: its stored value expires with the DHT entry.
 nat_skip() {
 	if [ "${OWN_SYMMETRIC:-0}" = 1 ]; then
-		NAT_SKIP_REASON="$ROLE NAT is symmetric"
+		NAT_SKIP_REASON=$(nat_reason "$ROLE" "${OWN_EGRESS:-}")
 		return 0
 	fi
 	_peer_role=anchor; [ "$ROLE" = anchor ] && _peer_role=subject
-	if [ "${PEER_SYMMETRIC:-0}" != 1 ] && nat_signal has "role=$_peer_role nat=dependent"; then
+	if [ "${PEER_SYMMETRIC:-0}" != 1 ] &&
+		_ns_v=$(nat_signal has "role=$_peer_role nat=dependent"); then
 		PEER_SYMMETRIC=1
+		PEER_EGRESS=$(echo "$_ns_v" | sed -n 's/.* egress=\([^ ]*\).*/\1/p' | head -n 1)
 	fi
 	if [ "${PEER_SYMMETRIC:-0}" = 1 ]; then
-		NAT_SKIP_REASON="$_peer_role NAT is symmetric"
+		NAT_SKIP_REASON=$(nat_reason "$_peer_role" "${PEER_EGRESS:-}")
 		return 0
 	fi
 	return 1
+}
+
+# nat_reason ROLE EGRESS -- the skip reason text shared with report.sh.
+nat_reason() {
+	case "$2" in
+	'' | unknown | '(missing)') echo "$1 NAT is symmetric" ;;
+	*) echo "$1 NAT is symmetric (egress $2)" ;;
+	esac
 }
 
 # store_count -- successful publishes so far, per the daemon log.
