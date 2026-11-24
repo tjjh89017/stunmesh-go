@@ -279,6 +279,7 @@ if [ "$ROLE" = anchor ]; then
 fi
 
 log "starting stunmesh daemon"
+DAEMON_TS=$(date +%s)
 start_daemon
 
 case "$ROLE" in
@@ -347,11 +348,17 @@ subject)
 	;;
 esac
 
+# A skipped role returned from its handshake wait at once, possibly before
+# the peer published; the endpoint round-trip stays hard for it.
+if nat_skip; then
+	wait_peer_endpoint || true
+fi
+
 # Final snapshot while the device still exists. assert.sh turns this into the
 # peer_endpoint the report checks, accounting for proxy mode.
 ns_exec wg show "$WG_IF" > "$WORK/wg-final.log" 2>&1 || true
 ns_exec wg show "$WG_IF" dump >> "$WORK/wg-final.log" 2>&1 || true
-wgep=$(ns_exec wg show "$WG_IF" endpoints | awk 'NR==1{print $2}')
+wgep=$(peer_endpoint)
 rec wg_endpoint "${wgep:-(none)}"
 
 # The report decides the skip from both sides' probes; this is the cell's own
