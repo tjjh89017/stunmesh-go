@@ -64,6 +64,35 @@ mtu_ping() {
 	fi
 }
 
+# nat_probe PHASE -- informational: classify this runner's NAT mapping with
+# natprobe and record natprobe_PHASE_* plus egress_ip_PHASE. A later phase
+# reuses the first probe's local port, so it can tell whether the mapping
+# changed. Every key falls back to unknown; nothing here can fail the job.
+nat_probe() {
+	_np_out=$WORK/natprobe-$1.log
+	if [ -n "${NATPROBE_BIN:-}" ] && [ -x "$NATPROBE_BIN" ]; then
+		if [ -n "${NP_PORT:-}" ]; then
+			ns_exec "$NATPROBE_BIN" -port "$NP_PORT" -previous "$NP_MAPPED" >"$_np_out" 2>&1 || true
+		else
+			ns_exec "$NATPROBE_BIN" >"$_np_out" 2>&1 || true
+		fi
+	else
+		echo "natprobe binary unavailable" >"$_np_out"
+	fi
+	for _np_k in mapping mapped local_port same_port changed; do
+		_np_v=$(sed -n "s/^$_np_k=//p" "$_np_out" | tail -n 1)
+		rec "natprobe_$1_$_np_k" "${_np_v:-unknown}"
+	done
+	_np_v=$(sed -n 's/^public_ip=//p' "$_np_out" | tail -n 1)
+	rec "egress_ip_$1" "${_np_v:-unknown}"
+	if [ -z "${NP_PORT:-}" ]; then
+		NP_PORT=$(sed -n 's/^local_port=//p' "$_np_out" | tail -n 1)
+		[ "$NP_PORT" = unknown ] && NP_PORT=''
+		NP_MAPPED=$(sed -n 's/^mapped=//p' "$_np_out" | tail -n 1)
+	fi
+	return 0
+}
+
 # store_count -- successful publishes so far, per the daemon log.
 store_count() {
 	jq -c 'select(.message=="store endpoint")' "$DAEMON_LOG" 2>/dev/null | wc -l | tr -d ' '

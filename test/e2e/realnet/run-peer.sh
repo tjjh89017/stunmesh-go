@@ -18,6 +18,12 @@
 # assert.sh when it did not arrive, so both cells of a pair fail together
 # (whatever the cause) and "Re-run failed jobs" reruns the pair.
 #
+# Both roles also run natprobe (informational, never gating) once before the
+# daemon starts and once after the split-tunnel phase, pass or fail. It
+# records whether this runner's NAT maps one socket to one public endpoint
+# for every destination, and the egress IP. One run is one sample of one
+# runner pair, so the values mean something only across many runs.
+#
 # Usage: run-peer.sh /path/to/stunmesh
 # Env:
 #   ROLE               anchor | subject (required)
@@ -26,6 +32,8 @@
 #   RESULT_DIR         logs/results directory (default: mktemp -d, kept)
 #   ENDPOINTS          opendht proxy URLs (default: dhtproxy2/3.jami.net)
 #   CANARY_BIN         prebuilt canary server (anchor; default: go build)
+#   NATPROBE_BIN       prebuilt NAT mapping probe (default: go build if go is
+#                      in PATH, else the probe records unknown)
 #   ANCHOR_HOLD_SECS   anchor lifetime from script start (default 600)
 #   HANDSHAKE_TIMEOUT  seconds to wait for the first handshake (default 300)
 #   REALNET_PAIR       pair name, carried in the acknowledgement (default local)
@@ -209,14 +217,35 @@ rec dht_preflight "${preflight%,}"
 # lives in the iperf log and transfer counters, and letting it flood the
 # ring would rotate away the split-phase handshake/STUN packets, the only
 # part of the capture with diagnostic value. 2x10MB ring as the hard cap.
-# Linux only: the '-i any' pseudo-interface exists nowhere else, and the
-# capture is post-mortem evidence, never part of any assert.
-if [ "$OS" = Linux ]; then
+# The capture is post-mortem evidence, never part of any assert. Linux has
+# the '-i any' pseudo-interface; Darwin and FreeBSD capture UDP on the
+# default-route interface, which carries only the outer packets. Windows
+# has no tcpdump.
+case "$OS" in
+Linux)
 	# shellcheck disable=SC2024
 	ns_exec tcpdump -i any -s 160 -U -C 10 -W 2 -Z root \
 		-w "$WORK/pcap/realnet.pcap" 'not tcp port 5201' >"$WORK/tcpdump.log" 2>&1 &
 	TCPDUMP_PID=$!
+	;;
+Darwin | FreeBSD)
+	cap_if=$(route -n get default 2>/dev/null | awk '/interface:/{print $2}')
+	if [ -n "$cap_if" ] && command -v tcpdump >/dev/null 2>&1; then
+		# shellcheck disable=SC2024
+		ns_exec tcpdump -i "$cap_if" -s 160 -U -C 10 -W 2 \
+			-w "$WORK/pcap/realnet.pcap" udp >"$WORK/tcpdump.log" 2>&1 &
+		TCPDUMP_PID=$!
+	else
+		log "no capture: default-route interface '${cap_if}' or tcpdump missing"
+	fi
+	;;
+esac
+
+if [ -z "${NATPROBE_BIN:-}" ] && command -v go >/dev/null 2>&1; then
+	NATPROBE_BIN=$WORK/natprobe
+	go build -o "$NATPROBE_BIN" "$HERE/natprobe" 2>>"$WORK/natprobe-build.log" || NATPROBE_BIN=''
 fi
+nat_probe before
 
 if [ "$ROLE" = anchor ]; then
 	# Off-overlay canary: static from job start, reachable only once a
@@ -245,6 +274,7 @@ start_daemon
 case "$ROLE" in
 anchor)
 	split_tunnel_anchor || true
+	nat_probe after
 	# Hold as the far end until the subject's run is over. SUBJECT_DONE_CMD
 	# (CI: subject-done.sh) turns the fixed window into a cap: the anchor
 	# releases as soon as the subject completes, and only a dead subject or
@@ -281,6 +311,9 @@ subject)
 	split_ok=1
 	split_tunnel_subject || split_ok=0
 	send_ack
+	# Before the full-tunnel scenario: its covering route would carry the
+	# probe through the tunnel.
+	nat_probe after
 	# The full-tunnel checks are relative to the split-tunnel baseline: they
 	# run only if it handshook, so network weather can never masquerade as a
 	# routing or escape regression.

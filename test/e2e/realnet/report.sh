@@ -75,6 +75,20 @@ traffic() { # PAIR NAME DETAIL VALUE... -- hard (every VALUE pass) or info
 	fi
 }
 
+# natprobe PAIR ROLE FILE -- the NAT mapping class this runner showed before
+# and after the tunnel phase, from a separate socket through the same NAT.
+natprobe() {
+	_f=$3
+	info "$1" "NAT mapping before / after ($2)" \
+		"$(get "$_f" natprobe_before_mapping) / $(get "$_f" natprobe_after_mapping)"
+	info "$1" "NAT mapping changed ($2)" \
+		"$(get "$_f" natprobe_after_changed) (same local port: $(get "$_f" natprobe_after_same_port))"
+	info "$1" "egress IP before / after ($2)" \
+		"$(get "$_f" egress_ip_before) / $(get "$_f" egress_ip_after)"
+	info "$1" "NAT probe mappings ($2)" \
+		"before {$(get "$_f" natprobe_before_mapped)} after {$(get "$_f" natprobe_after_mapped)}"
+}
+
 {
 	echo "## realnet verdict"
 	echo ""
@@ -130,6 +144,9 @@ for pair in $PAIRS; do
 		"$a_ack / $s_ack" "$a_ack" "$s_ack"
 	info "$pair" "storage preflight (anchor / subject)" \
 		"$(get "$a" dht_preflight) / $(get "$s" dht_preflight)"
+	for role in anchor subject; do
+		natprobe "$pair" "$role" "$(results "$pair" "$role")"
+	done
 	a_hs=$(get "$a" split_handshake); s_hs=$(get "$s" split_handshake)
 	traffic "$pair" "handshake (anchor)" \
 		"$a_hs after $(get "$a" split_handshake_secs)s" "$a_hs"
