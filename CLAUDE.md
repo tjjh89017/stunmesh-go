@@ -337,7 +337,8 @@ The protocol configuration operates at two distinct levels:
   - Returns error if port == 0 or host == "" (validates endpoint before returning)
 - `stun.Connect(ctx, stunAddr)` (shared, `helper_socket.go`): Sends STUN request and receives response, returning `(host, port, err)`
   - Waits up to `StunTimeout` for a reply with its own transaction ID and drops any other message (a late reply to an earlier server, a stray packet)
-  - One reader per `Start` lives until `Stop` (or ctx end) and feeds every decoded message through the shared `pump`, so each server in `Resolve`'s list gets a reader; undecodable packets are skipped
+  - `Start` runs one reader on Linux and one per opened pcap handle on darwin/bsd. Each lives until `Stop` (or ctx end) and feeds every decoded message through the shared `pump`, so each server in `Resolve`'s list gets a reader; undecodable packets are skipped, and a read error other than a poll timeout waits `readRetryDelay` before the next read
+  - darwin/bsd pcap handles poll for `pcapPollTimeout` (250 ms) on a context that never ends, so `Stop` returns within one poll period
   - The platform `writeTo` converts `net.UDPAddr` to `net.IPAddr` for raw-socket transmission on Linux
 
 ### Encryption and Storage Format
@@ -559,7 +560,8 @@ go build -tags mobile ./mobile/...
       the plain opendht scenario. On every OS the STUN list starts with a
       silent loopback server (`127.0.0.1:9`), so each discovery times out once
       and falls back to the real server; `assert.sh` checks the timeout
-      warning. This is the only test of the darwin/bsd pcap reader
+      warning. This is the only test of the darwin/bsd pcap reader across a
+      server fallback
     - `e2e-proxy`: deterministic netns test of the wgproxy relay
       (`test/e2e/proxy/`), merge-gating, no internet dependency
     - `e2e-realnet-*`: two-VM real-NAT smoke layer (`test/e2e/realnet/`) —
