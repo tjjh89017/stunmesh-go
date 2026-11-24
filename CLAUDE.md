@@ -556,7 +556,10 @@ go build -tags mobile ./mobile/...
       build-stage artifact. Outside Windows it publishes through a plugin
       chain (mirror over trace -> shell file store and trace -> opendht) and
       checks that a cycle or an undefined `next` stops startup; Windows runs
-      the plain opendht scenario
+      the plain opendht scenario. On every OS the STUN list starts with a
+      silent loopback server (`127.0.0.1:9`), so each discovery times out once
+      and falls back to the real server; `assert.sh` checks the timeout
+      warning. This is the only test of the darwin/bsd pcap reader
     - `e2e-proxy`: deterministic netns test of the wgproxy relay
       (`test/e2e/proxy/`), merge-gating, no internet dependency
     - `e2e-realnet-*`: two-VM real-NAT smoke layer (`test/e2e/realnet/`) —
