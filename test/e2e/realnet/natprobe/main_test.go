@@ -63,3 +63,13 @@ func TestClassifyNeedsSamePort(t *testing.T) {
 		t.Errorf("changed=%s with a different local port, want unknown", r.changed)
 	}
 }
+
+func TestSignalContains(t *testing.T) {
+	body := []byte("{\"data\":\"cm9sZT1hbmNob3IgbmF0PWRlcGVuZGVudA==\"}\nnot json\n{\"data\":\"!!\"}\n")
+	if !signalContains(body, "role=anchor nat=dependent") {
+		t.Error("stored value not found")
+	}
+	if signalContains(body, "role=subject nat=dependent") {
+		t.Error("value found that was not stored")
+	}
+}

@@ -160,7 +160,7 @@ runs:
       with:
         arch: amd64
         sync: sshfs
-        envs: 'ROLE WG_PRIVATE_KEY PEER_PUBLIC_KEY REALNET_PAIR GITHUB_RUN_ATTEMPT'
+        envs: 'ROLE WG_PRIVATE_KEY PEER_PUBLIC_KEY REALNET_PAIR GITHUB_RUN_ATTEMPT GITHUB_RUN_ID GITHUB_REPOSITORY'
         prepare: |
           pkg install -y wireguard-tools jq curl iperf3
           kldload if_wg
