@@ -9,7 +9,6 @@ import (
 	"net"
 	"sync"
 	"syscall"
-	"time"
 
 	pcap "github.com/packetcap/go-pcap"
 	stun "github.com/pion/stun/v3"
@@ -37,12 +36,15 @@ type Stun struct {
 	once       sync.Once
 	packetChan chan *stun.Message
 	waitGroup  sync.WaitGroup
-	// done is closed by Stop to release a listener goroutine parked trying to
-	// hand off a packet nobody is waiting for any more. Without it Stop's
-	// waitGroup.Wait blocks until the context is cancelled, hanging Resolve's
-	// deferred cleanup.
+	// done is closed by Stop to end the per-interface readers, including one
+	// parked handing off a packet nobody reads any more.
 	done     chan struct{}
 	stopOnce sync.Once
+	// handleCtx is the context the pcap handles poll on. Stop cancels it so
+	// it does not wait out a poll timeout. Closing a handle instead would free
+	// its fd while its reader still polls and reads it.
+	handleCtx   context.Context
+	stopHandles context.CancelFunc
 }
 
 func calculatePayloadOffset(linkType uint32, protocol string) uint32 {
@@ -103,10 +105,12 @@ func New(ctx context.Context, excludeInterface string, port uint16, protocol str
 
 	var handles []interfaceHandle
 
+	handleCtx, stopHandles := context.WithCancel(ctx)
+
 	// Create pcap handle for each selected interface
 	for _, ifaceName := range interfaceNames {
 		logger.Debug().Msgf("attempting to register OpenLive for interface: %s", ifaceName)
-		handle, err := pcap.OpenLive(ctx, ifaceName, PacketSize, false, StunTimeout, pcap.DefaultSyscalls)
+		handle, err := pcap.OpenLive(handleCtx, ifaceName, PacketSize, false, StunTimeout, pcap.DefaultSyscalls)
 		if err != nil {
 			// Tolerate open failures and move on; the daemon retries every
 			// refresh cycle, so a transiently-down interface heals itself. An
@@ -142,6 +146,7 @@ func New(ctx context.Context, excludeInterface string, port uint16, protocol str
 	}
 
 	if len(handles) == 0 {
+		stopHandles()
 		logger.Error().Msg("no usable interfaces found after attempting to open all eligible interfaces")
 		return nil, errors.New("no usable interfaces found")
 	}
@@ -150,18 +155,22 @@ func New(ctx context.Context, excludeInterface string, port uint16, protocol str
 
 	c, err := createRawSocket(protocol, handles, *logger)
 	if err != nil {
+		stopHandles()
 		return nil, err
 	}
 
 	s := &Stun{
-		port:       port,
-		protocol:   protocol,
-		handles:    handles,
-		packetChan: make(chan *stun.Message),
-		done:       make(chan struct{}),
+		port:        port,
+		protocol:    protocol,
+		handles:     handles,
+		packetChan:  make(chan *stun.Message),
+		done:        make(chan struct{}),
+		handleCtx:   handleCtx,
+		stopHandles: stopHandles,
 	}
 
 	if err := setPacketConn(s, c); err != nil {
+		stopHandles()
 		return nil, err
 	}
 
@@ -204,12 +213,16 @@ func setPacketConn(s *Stun, c net.PacketConn) error {
 	return nil
 }
 
-// Stop signals the per-interface listeners, waits for them, then closes the
-// socket. packetChan is deliberately left open: Read already selects with a
-// timeout, so closing it buys nothing and only opens a send-on-closed-channel
-// race. The channel is garbage collected along with the Stun.
+// Stop signals the per-interface readers, wakes their pcap polls, waits for
+// them, then closes the socket. packetChan is deliberately left open: closing
+// it would race a reader still holding a late reply.
 func (s *Stun) Stop() error {
-	s.stopOnce.Do(func() { close(s.done) })
+	s.stopOnce.Do(func() {
+		close(s.done)
+		if s.stopHandles != nil {
+			s.stopHandles()
+		}
+	})
 	s.waitGroup.Wait()
 	if s.protocol == "ipv6" {
 		return s.conn6.Close()
@@ -222,81 +235,23 @@ func (s *Stun) Start(ctx context.Context) {
 
 	logger.Info().Msgf("starting to listen stun response on %d interfaces", len(s.handles))
 	s.once.Do(func() {
-		// Start a goroutine for each interface handle
-		s.waitGroup.Add(len(s.handles))
 		for _, ih := range s.handles {
 			logger.Debug().Msgf("start handle for interface: %s", ih.name)
-			go func(handle interfaceHandle) {
+			s.waitGroup.Go(func() {
 				defer func() {
-					handle.handle.Close()
-					logger.Debug().Msgf("closed handle for interface: %s", handle.name)
-					s.waitGroup.Done()
+					ih.handle.Close()
+					logger.Debug().Msgf("closed handle for interface: %s", ih.name)
 				}()
-				timeout := time.After(StunTimeout)
-				for {
-					select {
-					case <-ctx.Done():
-						return
-					case <-s.done:
-						return
-					case <-timeout:
-						return
-					default:
-						var (
-							buf []byte
-							err error
-						)
-						buf, _, err = handle.handle.ReadPacketData()
-						if err != nil {
-							logger.Trace().Msgf("fail to read packet data from %s, err %v", handle.name, err)
-							continue
-						}
-						m, err := decodeStunPacket(buf, handle.payloadOff)
-						if err != nil {
-							if errors.Is(err, errShortPacket) {
-								logger.Trace().Msgf("%v from %s", err, handle.name)
-							} else {
-								logger.Debug().Msgf("fail to decode stun msg from %s", handle.name)
-							}
-							continue
-						}
-						select {
-						case s.packetChan <- m:
-						case <-ctx.Done():
-							return
-						case <-s.done:
-							return
-						}
-						return
+				s.pump(ctx, ih.name, func() ([]byte, error) {
+					buf, _, err := ih.handle.ReadPacketData()
+					if err != nil && s.handleCtx.Err() != nil {
+						return nil, errReaderClosed
 					}
-				}
-			}(ih)
+					return buf, err
+				}, ih.payloadOff)
+			})
 		}
 	})
-}
-
-// errShortPacket marks decodeStunPacket's short-packet case so callers can
-// distinguish it from a STUN decode failure and log each at its own level.
-var errShortPacket = errors.New("short packet")
-
-// decodeStunPacket validates that buf is long enough to contain the STUN
-// payload at payloadOff, then decodes it. ReadPacketData can hand back a
-// short or empty buffer with a nil error (a timed-out read yields len 0), so
-// the payload offset is not safe to slice with until it is known to be in
-// range.
-func decodeStunPacket(buf []byte, payloadOff uint32) (*stun.Message, error) {
-	if uint32(len(buf)) < payloadOff {
-		return nil, fmt.Errorf("%w: %d bytes, need %d", errShortPacket, len(buf), payloadOff)
-	}
-
-	m := &stun.Message{
-		Raw: buf[payloadOff:],
-	}
-	if err := m.Decode(); err != nil {
-		return nil, err
-	}
-
-	return m, nil
 }
 
 func (s *Stun) writeTo(packet []byte, addr net.Addr) (int, error) {
@@ -304,17 +259,6 @@ func (s *Stun) writeTo(packet []byte, addr net.Addr) (int, error) {
 		return s.conn6.WriteTo(packet, nil, addr)
 	}
 	return s.conn4.WriteTo(packet, nil, addr)
-}
-
-func (s *Stun) Read(ctx context.Context) (*stun.Message, error) {
-	select {
-	case m := <-s.packetChan:
-		return m, nil
-	case <-time.After(StunTimeout):
-		return nil, ErrTimeout
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
 }
 
 // resolveListenInterfaces decides which underlay interfaces STUN discovery
