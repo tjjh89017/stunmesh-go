@@ -9,6 +9,7 @@ import (
 	"net"
 	"sync"
 	"syscall"
+	"time"
 
 	pcap "github.com/packetcap/go-pcap"
 	stun "github.com/pion/stun/v3"
@@ -20,6 +21,12 @@ import (
 )
 
 const PacketSize = 1600
+
+// pcapPollTimeout bounds each pcap read, so a reader sees Stop within one
+// period. The handles get a context that never ends: go-pcap wakes a read on
+// context end from a goroutine that can write to the read's pipe after the
+// read has closed it.
+const pcapPollTimeout = 250 * time.Millisecond
 
 type interfaceHandle struct {
 	name       string
@@ -40,11 +47,6 @@ type Stun struct {
 	// parked handing off a packet nobody reads any more.
 	done     chan struct{}
 	stopOnce sync.Once
-	// handleCtx is the context the pcap handles poll on. Stop cancels it so
-	// it does not wait out a poll timeout. Closing a handle instead would free
-	// its fd while its reader still polls and reads it.
-	handleCtx   context.Context
-	stopHandles context.CancelFunc
 }
 
 func calculatePayloadOffset(linkType uint32, protocol string) uint32 {
@@ -106,12 +108,10 @@ func New(ctx context.Context, excludeInterface string, port uint16, protocol str
 	var handles []interfaceHandle
 
 	var c net.PacketConn
-	handleCtx, stopHandles := context.WithCancel(ctx)
 	defer func() {
 		if err == nil {
 			return
 		}
-		stopHandles()
 		for _, ih := range handles {
 			ih.handle.Close()
 		}
@@ -123,7 +123,7 @@ func New(ctx context.Context, excludeInterface string, port uint16, protocol str
 	// Create pcap handle for each selected interface
 	for _, ifaceName := range interfaceNames {
 		logger.Debug().Msgf("attempting to register OpenLive for interface: %s", ifaceName)
-		handle, err := pcap.OpenLive(handleCtx, ifaceName, PacketSize, false, StunTimeout, pcap.DefaultSyscalls)
+		handle, err := pcap.OpenLive(context.WithoutCancel(ctx), ifaceName, PacketSize, false, pcapPollTimeout, pcap.DefaultSyscalls)
 		if err != nil {
 			// Tolerate open failures and move on; the daemon retries every
 			// refresh cycle, so a transiently-down interface heals itself. An
@@ -171,13 +171,11 @@ func New(ctx context.Context, excludeInterface string, port uint16, protocol str
 	}
 
 	s := &Stun{
-		port:        port,
-		protocol:    protocol,
-		handles:     handles,
-		packetChan:  make(chan *stun.Message),
-		done:        make(chan struct{}),
-		handleCtx:   handleCtx,
-		stopHandles: stopHandles,
+		port:       port,
+		protocol:   protocol,
+		handles:    handles,
+		packetChan: make(chan *stun.Message),
+		done:       make(chan struct{}),
 	}
 
 	if err = setPacketConn(s, c); err != nil {
@@ -215,16 +213,12 @@ func setPacketConn(s *Stun, c net.PacketConn) error {
 	return nil
 }
 
-// Stop signals the per-interface readers, wakes their pcap polls, waits for
-// them, then closes the socket. packetChan is deliberately left open: closing
-// it would race a reader still holding a late reply.
+// Stop signals the per-interface readers, waits for them (at most one pcap
+// poll period), then closes the socket. Each reader closes its own handle.
+// packetChan is deliberately left open: closing it would race a reader still
+// holding a late reply.
 func (s *Stun) Stop() error {
-	s.stopOnce.Do(func() {
-		close(s.done)
-		if s.stopHandles != nil {
-			s.stopHandles()
-		}
-	})
+	s.stopOnce.Do(func() { close(s.done) })
 	s.waitGroup.Wait()
 	if s.protocol == "ipv6" {
 		return s.conn6.Close()
@@ -246,9 +240,6 @@ func (s *Stun) Start(ctx context.Context) {
 				}()
 				s.pump(ctx, ih.name, func() ([]byte, error) {
 					buf, _, err := ih.handle.ReadPacketData()
-					if err != nil && s.handleCtx.Err() != nil {
-						return nil, errReaderClosed
-					}
 					return buf, err
 				}, ih.payloadOff)
 			})

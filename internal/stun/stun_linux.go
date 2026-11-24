@@ -155,16 +155,18 @@ func (s *Stun) readFrom(buf []byte) (int, error) {
 	return n, err
 }
 
+func (s *Stun) readPacket() ([]byte, error) {
+	buf := make([]byte, PacketSize)
+	n, err := s.readFrom(buf)
+	if errors.Is(err, net.ErrClosed) {
+		return nil, errReaderClosed
+	}
+	return buf[:n], err
+}
+
 func (s *Stun) Start(ctx context.Context) {
 	s.once.Do(func() {
-		go s.pump(ctx, "raw socket", func() ([]byte, error) {
-			buf := make([]byte, PacketSize)
-			n, err := s.readFrom(buf)
-			if errors.Is(err, net.ErrClosed) {
-				return nil, errReaderClosed
-			}
-			return buf[:n], err
-		}, udpHeaderSize)
+		go s.pump(ctx, "raw socket", s.readPacket, udpHeaderSize)
 	})
 }
 

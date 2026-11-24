@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"time"
 
 	stun "github.com/pion/stun/v3"
 	"github.com/rs/zerolog"
@@ -104,9 +105,14 @@ func (s *Stun) Read(ctx context.Context) (*stun.Message, error) {
 // errReaderClosed is returned by a pump source whose socket or handle is gone.
 var errReaderClosed = errors.New("stun reader closed")
 
+// readRetryDelay spaces out read errors other than a poll timeout, which can
+// repeat at once (a bpf device whose interface went away).
+const readRetryDelay = 50 * time.Millisecond
+
 // pump decodes what read returns and hands each STUN message to packetChan
 // until Stop, ctx ends, or read returns errReaderClosed. read must block until
-// a packet arrives or a poll timeout passes: pump does not pause between calls.
+// a packet arrives or report context.DeadlineExceeded after a poll timeout;
+// pump retries that at once and waits readRetryDelay after any other error.
 func (s *Stun) pump(ctx context.Context, name string, read func() ([]byte, error), payloadOff uint32) {
 	logger := zerolog.Ctx(ctx)
 	for {
@@ -124,6 +130,16 @@ func (s *Stun) pump(ctx context.Context, name string, read func() ([]byte, error
 				return
 			}
 			logger.Trace().Msgf("fail to read packet data from %s, err %v", name, err)
+			if errors.Is(err, context.DeadlineExceeded) {
+				continue
+			}
+			select {
+			case <-time.After(readRetryDelay):
+			case <-ctx.Done():
+				return
+			case <-s.done:
+				return
+			}
 			continue
 		}
 		m, err := decodeStunPacket(buf, payloadOff)
