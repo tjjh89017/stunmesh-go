@@ -570,6 +570,12 @@ go build -tags mobile ./mobile/...
       through the tunnel to the anchor's overlay canary, and without it both
       cells go red (network weather included), so "Re-run failed jobs" reruns anchor and subject together;
       the gate rule is unchanged.
+      Skip rule: both roles run a NAT probe (`natprobe`); if either role
+      reports `mapping=dependent` (symmetric NAT), the pair's traffic checks
+      (windows hard ones included) print as skipped and a missing
+      acknowledgement fails neither cell. The roles share that fact through
+      the OpenDHT proxies. Symmetric NAT is the only skip reason; the other
+      hard checks stay hard.
       The full-tunnel escape scenario runs only on the Linux subject (the
       netns crash bunker exists nowhere else)
 

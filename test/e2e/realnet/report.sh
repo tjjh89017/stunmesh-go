@@ -20,6 +20,13 @@
 # rate justifies it. The tunnel acknowledgement always fails both peer cells
 # of a pair (see run-peer.sh).
 #
+# Symmetric NAT skip: when a NAT probe of either role reported
+# mapping=dependent (before or after the tunnel phase), the pair's traffic
+# checks -- handshake, acknowledgement, transfer counters, ping and iperf3,
+# hard ones included -- are printed as skipped with their raw values, and
+# never fail. It is the only skip reason. The hard checks listed above that
+# are not traffic checks stay hard for every pair.
+#
 # Usage: report.sh ARTIFACT_DIR
 #   ARTIFACT_DIR holds one directory per uploaded result set, named
 #   realnet-results-<pair>-<role>-<attempt>, each containing results.json.
@@ -34,6 +41,7 @@ set -eu
 DIR=${1:?usage: report.sh ARTIFACT_DIR}
 SUM=${GITHUB_STEP_SUMMARY:-/dev/stdout}
 fail=0
+SKIP=''
 HARD_TRAFFIC=$(echo "${REALNET_HARD_TRAFFIC_PAIRS:-}" | tr -s ' ' ',')
 
 # Default to whatever arrived, which cannot notice a wholly missing pair --
@@ -64,15 +72,31 @@ member() { # NEEDLE CSV
 	[ -n "$1" ] && [ "$1" != "(none)" ] && [ "$1" != "(missing)" ] || return 1
 	case ",$2," in *",$1,"*) return 0 ;; *) return 1 ;; esac
 }
-traffic() { # PAIR NAME DETAIL VALUE... -- hard (every VALUE pass) or info
+skipped() { # PAIR NAME DETAIL
+	echo "| $1 | $2 | skipped | $SKIP; raw: $3 |" >> "$SUM"
+	echo "skip[$1]: $2 ($SKIP; raw: $3)"
+}
+# Traffic checks: skipped when the pair is, else hard (every VALUE pass) for
+# REALNET_HARD_TRAFFIC_PAIRS and info for the rest.
+traffic() { # PAIR NAME DETAIL VALUE...
 	_p=$1; _n=$2; _d=$3; shift 3
-	if member "$_p" "$HARD_TRAFFIC"; then
+	if [ -n "$SKIP" ]; then
+		skipped "$_p" "$_n" "$_d"
+	elif member "$_p" "$HARD_TRAFFIC"; then
 		_ok=ok
 		for _v in "$@"; do [ "$_v" = pass ] || _ok=bad; done
 		hard "$_p" "$_n" "$_ok" "$_d"
 	else
 		info "$_p" "$_n" "$_d"
 	fi
+}
+# Informational traffic checks: skipped when the pair is, else info.
+soft() { # PAIR NAME DETAIL
+	if [ -n "$SKIP" ]; then skipped "$@"; else info "$@"; fi
+}
+symmetric() { # FILE -> success when either probe reported dependent mapping
+	[ "$(get "$1" natprobe_before_mapping)" = dependent ] ||
+		[ "$(get "$1" natprobe_after_mapping)" = dependent ]
 }
 
 # natprobe PAIR ROLE FILE -- the NAT mapping class this runner showed before
@@ -138,6 +162,18 @@ for pair in $PAIRS; do
 		hard "$pair" "canary blob integrity" "$ok" "fetched $fetched vs served $served"
 	fi
 
+	SKIP=''
+	if symmetric "$a"; then
+		SKIP="anchor NAT is symmetric"
+	elif symmetric "$s"; then
+		SKIP="subject NAT is symmetric"
+	fi
+	if [ -n "$SKIP" ]; then
+		echo "skip[$pair]: $SKIP"
+		echo "::notice title=realnet $pair::pair skipped: $SKIP; traffic checks not evaluated"
+		echo "| $pair | traffic checks | skipped | $SKIP |" >> "$SUM"
+	fi
+
 	info "$pair" "subject platform" "$(get "$s" os)"
 	a_ack=$(get "$a" pair_ack); s_ack=$(get "$s" pair_ack)
 	traffic "$pair" "tunnel acknowledgement (anchor / subject)" \
@@ -152,14 +188,14 @@ for pair in $PAIRS; do
 		"$a_hs after $(get "$a" split_handshake_secs)s" "$a_hs"
 	traffic "$pair" "handshake (subject)" \
 		"$s_hs after $(get "$s" split_handshake_secs)s" "$s_hs"
-	info "$pair" "overlay ping (anchor / subject)" \
+	soft "$pair" "overlay ping (anchor / subject)" \
 		"$(get "$a" split_ping) / $(get "$s" split_ping)"
-	info "$pair" "full-MTU ping" "$(get "$s" split_ping_mtu)"
-	info "$pair" "iperf3 up / down" \
+	soft "$pair" "full-MTU ping" "$(get "$s" split_ping_mtu)"
+	soft "$pair" "iperf3 up / down" \
 		"$(get "$s" split_iperf_up) / $(get "$s" split_iperf_down)"
 	rise=$(get "$s" split_transfer_rise)
 	traffic "$pair" "transfer counters rose" "$rise" "$rise"
-	info "$pair" "ping resumes after 60s idle" "$(get "$s" split_idle_resume)"
+	soft "$pair" "ping resumes after 60s idle" "$(get "$s" split_idle_resume)"
 
 	# The full-tunnel scenario needs the Linux crash bunker; elsewhere the
 	# skip reason is recorded so an absent result is never read as a pass.
@@ -174,6 +210,8 @@ for pair in $PAIRS; do
 	fi
 	info "$pair" "daemon error lines (anchor / subject)" \
 		"$(get "$a" error_count) / $(get "$s" error_count)"
+	info "$pair" "skip seen by the cells (anchor / subject)" \
+		"$(get "$a" nat_skip) / $(get "$s" nat_skip)"
 done
 
 if [ -z "$PAIRS" ]; then

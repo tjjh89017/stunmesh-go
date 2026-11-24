@@ -24,6 +24,11 @@
 # for every destination, and the egress IP. One run is one sample of one
 # runner pair, so the values mean something only across many runs.
 #
+# Symmetric NAT is the one reason a pair is skipped: when a probe on either
+# role reports endpoint-dependent mapping, no traversal is expected, so the
+# report prints the traffic checks as skipped and a missing acknowledgement
+# fails neither cell. See phases.sh for how the two jobs share that fact.
+#
 # Usage: run-peer.sh /path/to/stunmesh
 # Env:
 #   ROLE               anchor | subject (required)
@@ -78,6 +83,9 @@ ANCHOR_HOLD_SECS=${ANCHOR_HOLD_SECS:-600}
 HANDSHAKE_TIMEOUT=${HANDSHAKE_TIMEOUT:-300}
 RUN_ATTEMPT=${GITHUB_RUN_ATTEMPT:-local}
 PAIR_ACK=fail
+OWN_SYMMETRIC=0
+PEER_SYMMETRIC=0
+NAT_SKIP_REASON=''
 
 case "$ROLE" in
 anchor) MY_OVERLAY=10.99.0.1 PEER_OVERLAY=10.99.0.2 ;;
@@ -317,7 +325,11 @@ subject)
 	# The full-tunnel checks are relative to the split-tunnel baseline: they
 	# run only if it handshook, so network weather can never masquerade as a
 	# routing or escape regression.
-	if [ "$split_ok" = 0 ]; then
+	if [ "$split_ok" = 0 ] && nat_skip; then
+		log "pair skipped ($NAT_SKIP_REASON); skipping the full-tunnel scenario"
+		rec fulltunnel_ran no
+		rec fulltunnel_skipped "$NAT_SKIP_REASON"
+	elif [ "$split_ok" = 0 ]; then
 		log "no baseline handshake; skipping the full-tunnel scenario"
 		rec fulltunnel_ran no
 		rec fulltunnel_skipped "no baseline handshake"
@@ -340,10 +352,21 @@ ns_exec wg show "$WG_IF" dump >> "$WORK/wg-final.log" 2>&1 || true
 wgep=$(ns_exec wg show "$WG_IF" endpoints | awk 'NR==1{print $2}')
 rec wg_endpoint "${wgep:-(none)}"
 
+# The report decides the skip from both sides' probes; this is the cell's own
+# view, which is enough to keep a skipped pair's cells green.
+if nat_skip; then
+	rec nat_skip "$NAT_SKIP_REASON"
+	echo "::notice title=realnet ${REALNET_PAIR:-local} $ROLE::pair skipped: $NAT_SKIP_REASON; traffic checks not evaluated"
+else
+	rec nat_skip no
+fi
+
 stop_daemon
 sh "$HERE/assert.sh" "$WORK"
 
-if [ "$PAIR_ACK" != pass ]; then
+if [ "$PAIR_ACK" != pass ] && [ -n "$NAT_SKIP_REASON" ]; then
+	log "pair acknowledgement missing, but the pair is skipped ($NAT_SKIP_REASON)"
+elif [ "$PAIR_ACK" != pass ]; then
 	echo "pair acknowledgement missing; failing this side of the pair" >&2
 	exit 1
 fi

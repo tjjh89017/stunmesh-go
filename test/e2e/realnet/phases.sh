@@ -10,6 +10,12 @@
 # Every probe records a conclusion via rec; nothing here exits the job. The
 # report step decides the verdict from the recorded conclusions of both sides;
 # only the pair acknowledgement also sets the peer jobs' exit code.
+#
+# Symmetric NAT skip: a probe that reports mapping=dependent on either role
+# makes the pair skipped. The role stores that fact under a signal key shared
+# by both jobs of the pair (run id, attempt, pair), through the same OpenDHT
+# proxies the daemon uses. A role that knows the pair is skipped stops its
+# handshake wait, and a missing acknowledgement then fails neither cell.
 
 # wait_handshake KEY -- poll until the peer's latest-handshake is nonzero.
 wait_handshake() {
@@ -17,6 +23,14 @@ wait_handshake() {
 	_hs_deadline=$((_hs_t0 + HANDSHAKE_TIMEOUT))
 	_hs_tick=0
 	while [ "$(date +%s)" -lt "$_hs_deadline" ]; do
+		if [ $((_hs_tick % 6)) -eq 0 ]; then
+			if nat_skip; then
+				log "pair skipped ($NAT_SKIP_REASON); stopping the handshake wait"
+				rec "$1" skipped
+				rec "$1_secs" "-"
+				return 1
+			fi
+		fi
 		_hs=$(ns_exec wg show "$WG_IF" latest-handshakes | awk 'NR==1{print $2}')
 		if [ "${_hs:-0}" -gt 0 ] 2>/dev/null; then
 			rec "$1" pass
@@ -85,12 +99,44 @@ nat_probe() {
 	done
 	_np_v=$(sed -n 's/^public_ip=//p' "$_np_out" | tail -n 1)
 	rec "egress_ip_$1" "${_np_v:-unknown}"
+	if grep -qx 'mapping=dependent' "$_np_out"; then
+		OWN_SYMMETRIC=1
+		nat_signal put "role=$ROLE nat=dependent" || true
+	fi
 	if [ -z "${NP_PORT:-}" ]; then
 		NP_PORT=$(sed -n 's/^local_port=//p' "$_np_out" | tail -n 1)
 		[ "$NP_PORT" = unknown ] && NP_PORT=''
 		NP_MAPPED=$(sed -n 's/^mapped=//p' "$_np_out" | tail -n 1)
 	fi
 	return 0
+}
+
+# nat_signal put|has VALUE -- store VALUE under this pair's signal key, or
+# succeed only if the other job stored it. CI-only: without a run id there is
+# no key both jobs share, so it always fails.
+nat_signal() {
+	[ -n "${GITHUB_RUN_ID:-}" ] && [ -n "${NATPROBE_BIN:-}" ] && [ -x "$NATPROBE_BIN" ] || return 1
+	"$NATPROBE_BIN" -signal-key "stunmesh-realnet-nat|${GITHUB_REPOSITORY:-}|$GITHUB_RUN_ID|$RUN_ATTEMPT|${REALNET_PAIR:-local}" \
+		-signal-endpoints "$ENDPOINTS" "-signal-$1" "$2" 2>>"$WORK/natsignal.log"
+}
+
+# nat_skip -- succeed when either role's NAT is known to be symmetric, and set
+# NAT_SKIP_REASON. The peer's fact is sticky once seen: its stored value
+# expires with the DHT entry.
+nat_skip() {
+	if [ "${OWN_SYMMETRIC:-0}" = 1 ]; then
+		NAT_SKIP_REASON="$ROLE NAT is symmetric"
+		return 0
+	fi
+	_peer_role=anchor; [ "$ROLE" = anchor ] && _peer_role=subject
+	if [ "${PEER_SYMMETRIC:-0}" != 1 ] && nat_signal has "role=$_peer_role nat=dependent"; then
+		PEER_SYMMETRIC=1
+	fi
+	if [ "${PEER_SYMMETRIC:-0}" = 1 ]; then
+		NAT_SKIP_REASON="$_peer_role NAT is symmetric"
+		return 0
+	fi
+	return 1
 }
 
 # store_count -- successful publishes so far, per the daemon log.
